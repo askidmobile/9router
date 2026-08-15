@@ -27,7 +27,6 @@ import {
   KIRO_AGENTIC_SYSTEM_PROMPT,
   resolveDefaultProfileArn,
   buildKiroAdditionalModelRequestFieldsForModel,
-  usesKiroNativeGptEffort,
   toKiroWireModelId,
 } from "../../config/kiroConstants.js";
 import { DEFAULT_IMAGE_MIME } from "../schema/index.js";
@@ -230,7 +229,6 @@ export function claudeToKiroRequest(model, body, stream, credentials) {
   const thinkingBody = applyKiroThinkingOverride(body, modelIntent.thinkingOverride);
   const thinkingBudget = resolveKiroThinkingBudget(thinkingBody, credentials?.rawHeaders, modelIntent.model);
   const additionalModelRequestFields = buildKiroAdditionalModelRequestFieldsForModel(thinkingBody, upstreamModel);
-  const usesNativeGptEffort = usesKiroNativeGptEffort(thinkingBody, upstreamModel);
 
   const { specs: toolSpecs, nameMap } = normalizeKiroToolSpecs(tools);
   const { history, currentMessage } = convertClaudeMessagesToKiro(messages, upstreamModel);
@@ -249,7 +247,7 @@ export function claudeToKiroRequest(model, body, stream, credentials) {
   // enforce top-level systemPrompt for direct calls.
   const timestamp = new Date().toISOString();
   const systemPromptParts = [];
-  if (thinkingBudget !== null && !usesNativeGptEffort) {
+  if (thinkingBudget !== null && !additionalModelRequestFields) {
     systemPromptParts.push(buildThinkingSystemPrefix(thinkingBudget));
   }
   if (agentic) systemPromptParts.push(KIRO_AGENTIC_SYSTEM_PROMPT);

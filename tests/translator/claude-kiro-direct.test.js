@@ -87,11 +87,11 @@ describe("Claude → Kiro (direct route)", () => {
     expect(out.agentMode).toBe("vibe");
   });
 
-  it("does not send additionalModelRequestFields for Kiro models without effort support", () => {
+  it("does not send additionalModelRequestFields for pre-4 Claude Kiro models", () => {
     const out = C2K({
       output_config: { effort: "high" },
       messages: [{ role: "user", content: "think with adaptive effort" }],
-    });
+    }, null, "claude-sonnet-3.7");
 
     expect(out.additionalModelRequestFields).toBeUndefined();
     expect(out.thinking).toBeUndefined();
@@ -106,7 +106,7 @@ describe("Claude → Kiro (direct route)", () => {
     );
 
     expect(out.conversationState.currentMessage.userInputMessage.modelId).toBe("claude-sonnet-4.5");
-    expect(out.additionalModelRequestFields).toBeUndefined();
+    expect(out.additionalModelRequestFields?.output_config?.effort).toBe("high");
     expect(out.systemPrompt).toContain("CHUNKED WRITE PROTOCOL");
   });
 
@@ -121,7 +121,8 @@ describe("Claude → Kiro (direct route)", () => {
       output_config: { effort: "high" },
     });
     expect(out.thinking).toBeUndefined();
-    expect(out.systemPrompt).toContain("<max_thinking_length>24576</max_thinking_length>");
+    // Native effort path replaces the legacy <thinking_mode> tag.
+    expect(out.systemPrompt || "").not.toContain("<thinking_mode>");
   });
 
   it("maps Claude-format effort to GPT-5.6 reasoning fields without legacy prompt tags", () => {

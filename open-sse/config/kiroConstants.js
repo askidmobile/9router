@@ -224,16 +224,13 @@ export function resolveKiroEffortPath(model) {
   if (!normalized.includes("claude")) return null;
   const match = normalized.match(/(?:^|[/.])claude(?:[/.][a-z]+)*[/.](\d+)(?:[/.](\d+))?(?:[/.]|$)/);
   if (!match) return null;
-  const [, majorText, minorText] = match;
+  const [, majorText] = match;
   const major = Number(majorText);
-  const minor = minorText === undefined ? null : Number(minorText);
-  const dateSuffixMinor = minor !== null && minor >= 1000;
-  // Kiro rejected additionalModelRequestFields on legacy 4.5 models in live smoke.
-  // Default future Claude/Kiro models to supported so new model releases do not
-  // need a code allowlist update.
-  return major < 4 || (major === 4 && (minor === null || minor <= 5 || dateSuffixMinor))
-    ? null
-    : "output_config";
+  // Claude 4+ supports native additionalModelRequestFields (output_config.effort).
+  // The legacy <thinking_mode> system-tag injection is no longer accepted by
+  // Kiro (rejects with REQUEST_BODY_INVALID), so even 4.5 must use the native
+  // path. Older Claude (3.x) and non-Claude models keep the tag fallback.
+  return major < 4 ? null : "output_config";
 }
 
 export function supportsKiroAdditionalModelRequestFields(model) {

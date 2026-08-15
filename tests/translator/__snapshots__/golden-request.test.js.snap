@@ -235,7 +235,7 @@ exports[`GOLDEN request: OpenAI → Kiro > full body (image base64 + tool_result
 {
   "agentMode": "vibe",
   "conversationState": {
-    "agentContinuationId": "8c8a1510-0971-48a9-bb98-8aacd495abbe",
+    "agentContinuationId": "54802a81-19cd-4e56-a30a-549887367b92",
     "agentTaskType": "vibe",
     "chatTriggerType": "MANUAL",
     "currentMessage": {

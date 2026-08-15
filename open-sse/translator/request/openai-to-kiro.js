@@ -15,7 +15,6 @@ import {
   KIRO_AGENTIC_SYSTEM_PROMPT,
   resolveDefaultProfileArn,
   buildKiroAdditionalModelRequestFieldsForModel,
-  usesKiroNativeGptEffort,
   toKiroWireModelId,
 } from "../../config/kiroConstants.js";
 import { parseDataUri } from "../concerns/image.js";
@@ -317,7 +316,6 @@ export function openaiToKiroRequest(model, body, stream, credentials) {
   const thinkingBody = applyKiroThinkingOverride(body, modelIntent.thinkingOverride);
   const thinkingBudget = resolveKiroThinkingBudget(thinkingBody, credentials?.rawHeaders, modelIntent.model);
   const additionalModelRequestFields = buildKiroAdditionalModelRequestFieldsForModel(thinkingBody, upstreamModel);
-  const usesNativeGptEffort = usesKiroNativeGptEffort(thinkingBody, upstreamModel);
 
   const { specs: toolSpecs, nameMap } = normalizeKiroToolSpecs(tools);
   const { history, currentMessage } = convertMessages(messages, upstreamModel);
@@ -346,7 +344,11 @@ export function openaiToKiroRequest(model, body, stream, credentials) {
   // too because the CodeWhisperer surface does not always enforce top-level
   // systemPrompt for direct calls.
   const systemPromptParts = [];
-  if (thinkingBudget !== null && !usesNativeGptEffort) {
+  // Inject the legacy <thinking_mode> tag ONLY for models without a native
+  // effort path (pre-4 Claude, non-Claude/non-GPT-5.6). Models that send
+  // additionalModelRequestFields must not also get the tag — Kiro rejects
+  // the duplicated thinking directive with REQUEST_BODY_INVALID.
+  if (thinkingBudget !== null && !additionalModelRequestFields) {
     systemPromptParts.push(buildThinkingSystemPrefix(thinkingBudget));
   }
   if (agentic) {
