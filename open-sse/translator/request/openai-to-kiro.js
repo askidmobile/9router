@@ -354,7 +354,10 @@ export function openaiToKiroRequest(model, body, stream, credentials) {
   }
   const systemPrompt = systemPromptParts.filter(Boolean).join("\n\n");
   const currentTimeContext = `[Context: Current time is ${timestamp}]`;
-  const contentPrefix = [systemPrompt, currentTimeContext].filter(Boolean).join("\n\n");
+  // Thinking mode + agentic prompts live ONLY in top-level systemPrompt.
+  // Injecting them into currentMessage.content duplicates the tags and Kiro
+  // rejects the body with REQUEST_BODY_INVALID (verified live: 4.5 models).
+  const contentPrefix = currentTimeContext;
 
   const sessionIdentity = resolveSessionIdentity({ headers: credentials?.rawHeaders, body, connectionId: credentials?.connectionId, scope: "kiro" });
   const conversationId = sessionIdentity.sessionId;

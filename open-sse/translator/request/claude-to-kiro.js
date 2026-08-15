@@ -257,7 +257,12 @@ export function claudeToKiroRequest(model, body, stream, credentials) {
   if (systemInstruction) systemPromptParts.push(systemInstruction);
   const systemPrompt = systemPromptParts.filter(Boolean).join("\n\n");
   const currentTimeContext = `[Context: Current time is ${timestamp}]`;
-  const contentPrefix = [systemPrompt, currentTimeContext].filter(Boolean).join("\n\n");
+  // Thinking mode + agentic prompts live ONLY in top-level systemPrompt.
+  // Injecting them into currentMessage.content duplicates the tags and Kiro
+  // rejects the body with REQUEST_BODY_INVALID (verified live: 4.5 models).
+  // Keep the user's own system instruction in content (CodeWhisperer does
+  // not always enforce top-level systemPrompt for direct calls).
+  const contentPrefix = [systemInstruction, currentTimeContext].filter(Boolean).join("\n\n");
 
   const sessionIdentity = resolveSessionIdentity({
     headers: credentials?.rawHeaders,
