@@ -351,9 +351,9 @@ function buildSearxngRequest(config, params) {
 // POST https://ollama.com/api/web_search { q, num }
 // Response: { results: [{ title, url, snippet, published_at? }] }
 function buildOllamaSearchRequest(config, params) {
-  const body = { q: params.query, num: params.maxResults };
-  if (params.country) body.gl = params.country.toLowerCase();
-  if (params.language) body.hl = params.language;
+  const body = { query: params.query, max_results: params.maxResults };
+  if (params.country) body.country = params.country;
+  if (params.language) body.language = params.language;
   return {
     url: config.baseUrl,
     init: {
