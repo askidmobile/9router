@@ -93,12 +93,11 @@ function buildKiroFingerprintHeaders(credentials) {
 }
 
 /**
- * Build the synthetic 9router variant set for a single upstream Kiro model.
+ * Build the 9router catalog entry for a single upstream Kiro model.
  *
- * Returns clean model objects shaped for `PROVIDER_MODELS` (`{ id, name }`).
- * Thinking and agentic behaviors are controlled dynamically via request
- * parameters (reasoning_effort, thinking budget, etc.) and translator
- * logic, avoiding duplicated model slots in the catalog and UI.
+ * One upstream model → one clean id. Thinking / agentic behavior is driven
+ * by request parameters (reasoning_effort, thinking budget) and translator
+ * suffix handling — not by duplicated model slots.
  */
 function buildVariants(upstream, displayName) {
   const safeUpstream = stripSyntheticSuffixes(upstream);
