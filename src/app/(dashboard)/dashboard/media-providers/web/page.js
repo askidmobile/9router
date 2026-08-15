@@ -17,11 +17,16 @@ function getEffectiveStatus(conn) {
 function ProviderCard({ provider, kind, connections }) {
   const providerInfo = AI_PROVIDERS[provider.id];
   const isNoAuth = !!providerInfo?.noAuth;
+  // Search providers with credentialFallback (ollama-search → ollama) reuse the
+  // chat provider's key — with no own connection, count the fallback's instead.
+  const fallbackId = providerInfo?.credentialFallback;
   const providerConns = connections.filter((c) => c.provider === provider.id);
-  const connected = providerConns.filter((c) => { const s = getEffectiveStatus(c); return s === "active" || s === "success"; }).length;
-  const error = providerConns.filter((c) => { const s = getEffectiveStatus(c); return s === "error" || s === "expired" || s === "unavailable"; }).length;
-  const total = providerConns.length;
-  const allDisabled = total > 0 && providerConns.every((c) => c.isActive === false);
+  const useFallback = fallbackId && providerConns.length === 0;
+  const countedConns = useFallback ? connections.filter((c) => c.provider === fallbackId) : providerConns;
+  const connected = countedConns.filter((c) => { const s = getEffectiveStatus(c); return s === "active" || s === "success"; }).length;
+  const error = countedConns.filter((c) => { const s = getEffectiveStatus(c); return s === "error" || s === "expired" || s === "unavailable"; }).length;
+  const total = countedConns.length;
+  const allDisabled = total > 0 && countedConns.every((c) => c.isActive === false);
 
   const renderStatus = () => {
     if (isNoAuth) return <Badge variant="success" size="sm">Ready</Badge>;
@@ -29,6 +34,7 @@ function ProviderCard({ provider, kind, connections }) {
     if (total === 0) return <span className="text-xs text-text-muted">No connections</span>;
     return (
       <>
+        {useFallback && <Badge variant="success" size="sm" dot>Via {AI_PROVIDERS[fallbackId]?.name || fallbackId}</Badge>}
         {connected > 0 && <Badge variant="success" size="sm" dot>{connected} Connected</Badge>}
         {error > 0 && <Badge variant="error" size="sm" dot>{error} Error</Badge>}
         {connected === 0 && error === 0 && <Badge variant="default" size="sm">{total} Added</Badge>}

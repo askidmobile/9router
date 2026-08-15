@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { getStatusVariant as getConnectionStatusVariant } from "@/shared/utils/connectionStatus";
 import PropTypes from "prop-types";
 import { Card, Badge, Button, Modal, Select, Toggle, EditConnectionModal, ConfirmModal } from "@/shared/components";
+import { AI_PROVIDERS } from "@/shared/constants/providers";
 
 // ── CooldownTimer ──────────────────────────────────────────────
 function CooldownTimer({ until }) {
@@ -297,6 +298,10 @@ AddApiKeyModal.propTypes = {
 // Self-contained card: fetches, displays and manages all connections for a provider.
 export default function ConnectionsCard({ providerId, isOAuth }) {
   const [connections, setConnections] = useState([]);
+  // Active key count of the credentialFallback provider (ollama-search → ollama):
+  // the search provider reuses that chat key at request time.
+  const [fallbackCount, setFallbackCount] = useState(0);
+  const fallbackId = AI_PROVIDERS[providerId]?.credentialFallback || null;
   const [proxyPools, setProxyPools] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -316,14 +321,18 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
       const connData = await connRes.json();
       const proxyData = await proxyRes.json();
       const settingsData = settingsRes.ok ? await settingsRes.json() : {};
-      if (connRes.ok) setConnections((connData.connections || []).filter((c) => c.provider === providerId));
+      if (connRes.ok) {
+        const all = connData.connections || [];
+        setConnections(all.filter((c) => c.provider === providerId));
+        if (fallbackId) setFallbackCount(all.filter((c) => c.provider === fallbackId && c.isActive !== false).length);
+      }
       if (proxyRes.ok) setProxyPools(proxyData.proxyPools || []);
       const override = (settingsData.providerStrategies || {})[providerId] || {};
       setProviderStrategy(override.fallbackStrategy || null);
       setProviderStickyLimit(override.stickyRoundRobinLimit != null ? String(override.stickyRoundRobinLimit) : "1");
     } catch (e) { console.log("ConnectionsCard fetch error:", e); }
     finally { setLoading(false); }
-  }, [providerId]);
+  }, [providerId, fallbackId]);
 
   useEffect(() => { fetch_(); }, [fetch_]);
 
@@ -429,7 +438,19 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
 
         {connections.length === 0 ? (
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm text-text-muted">No connections yet</p>
+            <div className="min-w-0">
+              <p className="text-sm text-text-muted">No connections yet</p>
+              {fallbackId && fallbackCount > 0 ? (
+                <p className="text-xs text-green-600 dark:text-green-400">
+                  Reuses {fallbackCount} active key{fallbackCount > 1 ? "s" : ""} from
+                  {" "}{AI_PROVIDERS[fallbackId]?.name || fallbackId} (chat provider). Ready to use — no own key needed.
+                </p>
+              ) : fallbackId ? (
+                <p className="text-xs text-text-muted">
+                  Or connect {AI_PROVIDERS[fallbackId]?.name || fallbackId} (chat provider) and its key is reused here automatically.
+                </p>
+              ) : null}
+            </div>
             <Button size="sm" icon="add" onClick={() => setShowAddModal(true)}>Add Connection</Button>
           </div>
         ) : (
