@@ -201,12 +201,14 @@ function normalizeSearxng(data, _query, _searchType) {
 
 function normalizeOllamaSearch(data, _query, _searchType) {
   const now = new Date().toISOString();
-  const items = Array.isArray(data.results) ? data.results : (Array.isArray(data) ? data : []);
+  const items = Array.isArray(data?.results) ? data.results : (Array.isArray(data) ? data : []);
   const results = items.map((item, idx) =>
     makeResult("ollama-search", {
       title: item.title,
       url: item.url,
-      snippet: item.snippet || item.content || "",
+      snippet: item.content || item.snippet || "",
+      full_text: item.content,
+      text_format: "text",
       published_at: item.published_at || null,
       source_type: item.source || null,
     }, idx, now)
@@ -229,10 +231,11 @@ function normalizeZaiSearch(data, _query, _searchType) {
   const results = items.map((item, idx) =>
     makeResult("zai-search", {
       title: item.title,
-      url: item.url,
-      snippet: item.snippet || item.content || "",
+      url: item.link || item.url,
+      snippet: item.content || "",
       published_at: item.publish_date || item.published_at || null,
-      source_type: item.source || null,
+      favicon_url: item.icon || null,
+      source_type: item.media || null,
     }, idx, now)
   );
   return { results, totalResults: results.length };
