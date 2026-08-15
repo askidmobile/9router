@@ -413,19 +413,16 @@ describe("openaiToKiroRequest", () => {
       expect(systemPromptOf(result)).toContain("<max_thinking_length>");
     });
 
-    it("sends native additionalModelRequestFields for Claude 4.5 (legacy tag no longer accepted)", () => {
+    it("does not inject thinking for Claude 4.5 (no native support, tag rejected)", () => {
       const body = {
         reasoning_effort: "high",
-        messages: [{ role: "user", content: "Claude 4.5 uses native effort fields now" }]
+        messages: [{ role: "user", content: "Claude 4.5 has no thinking path on Kiro" }]
       };
 
       const result = openaiToKiroRequest("claude-sonnet-4.5", body, true, {});
 
-      expect(result.additionalModelRequestFields).toEqual({
-        thinking: { type: "adaptive", display: "summarized" },
-        output_config: { effort: "high" },
-      });
-      expect(systemPromptOf(result)).not.toContain("<thinking_mode>");
+      expect(result.additionalModelRequestFields).toBeUndefined();
+      expect(systemPromptOf(result) || "").not.toContain("<thinking_mode>");
     });
 
     it.each([
@@ -465,52 +462,52 @@ describe("openaiToKiroRequest", () => {
       expect(systemPromptOf(result)).not.toContain("<thinking_mode>");
     });
 
-    it("does not send additionalModelRequestFields for pre-4 legacy Kiro model ids", () => {
+    it("does not inject thinking for pre-4 Claude Kiro model ids", () => {
       const body = {
         reasoning_effort: "high",
-        messages: [{ role: "user", content: "Older model id should not get adaptive fields" }]
+        messages: [{ role: "user", content: "Older model id has no thinking path" }]
       };
 
       const result = openaiToKiroRequest("claude-sonnet-3.7", body, true, {});
 
-      expect(systemPromptOf(result)).toContain("<max_thinking_length>24576</max_thinking_length>");
       expect(result.additionalModelRequestFields).toBeUndefined();
+      expect(systemPromptOf(result) || "").not.toContain("<thinking_mode>");
     });
 
-    it("does not send additionalModelRequestFields for prefixed pre-4 legacy Kiro model ids", () => {
+    it("does not inject thinking for prefixed pre-4 Claude Kiro model ids", () => {
       const body = {
         reasoning_effort: "high",
-        messages: [{ role: "user", content: "Prefixed older model id should not get adaptive fields" }]
+        messages: [{ role: "user", content: "Prefixed older model id has no thinking path" }]
       };
 
       const result = openaiToKiroRequest("kiro/claude-3-7-sonnet-20250219", body, true, {});
 
-      expect(systemPromptOf(result)).toContain("<max_thinking_length>24576</max_thinking_length>");
       expect(result.additionalModelRequestFields).toBeUndefined();
+      expect(systemPromptOf(result) || "").not.toContain("<thinking_mode>");
     });
 
-    it("does not send Claude-specific additionalModelRequestFields for prefixed non-Claude aliases", () => {
+    it("does not inject Claude-specific thinking for prefixed non-Claude aliases", () => {
       const body = {
         reasoning_effort: "high",
-        messages: [{ role: "user", content: "Prefixed non-Claude alias should not get adaptive fields" }]
+        messages: [{ role: "user", content: "Prefixed non-Claude alias has no thinking path" }]
       };
 
       const result = openaiToKiroRequest("kiro/gpt-4o", body, true, {});
 
-      expect(systemPromptOf(result)).toContain("<max_thinking_length>24576</max_thinking_length>");
       expect(result.additionalModelRequestFields).toBeUndefined();
+      expect(systemPromptOf(result) || "").not.toContain("<thinking_mode>");
     });
 
-    it("does not send Claude-specific additionalModelRequestFields for non-Claude aliases", () => {
+    it("does not inject Claude-specific thinking for non-Claude aliases", () => {
       const body = {
         reasoning_effort: "high",
-        messages: [{ role: "user", content: "Non-Claude aliases should not get Claude adaptive fields" }]
+        messages: [{ role: "user", content: "Non-Claude aliases have no thinking path" }]
       };
 
       const result = openaiToKiroRequest("gpt-4o", body, true, {});
 
-      expect(systemPromptOf(result)).toContain("<max_thinking_length>24576</max_thinking_length>");
       expect(result.additionalModelRequestFields).toBeUndefined();
+      expect(systemPromptOf(result) || "").not.toContain("<thinking_mode>");
     });
 
     it("defaults future Kiro model ids to additionalModelRequestFields support", () => {

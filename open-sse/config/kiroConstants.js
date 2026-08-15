@@ -146,6 +146,14 @@ REMEMBER: When in doubt, write LESS per operation. Multiple small operations > o
  */
 export function resolveKiroThinkingBudget(body, headers, model) {
   const cfg = extractThinking(body);
+  // Kiro no longer accepts the legacy <thinking_mode> system tag for any
+  // model, and only models with a native effort path (resolveKiroEffortPath)
+  // support thinking via additionalModelRequestFields. When the model has no
+  // native path, thinking cannot be delivered — return null so a plain
+  // request ships (no tag, no fields) instead of a 400 REQUEST_BODY_INVALID.
+  if (model && resolveKiroEffortPath(model) === null) {
+    return null;
+  }
   if (cfg) {
     if (cfg.mode === "none") return null;
     if (cfg.mode === "level" && cfg.level === "disabled") return null;
@@ -224,13 +232,16 @@ export function resolveKiroEffortPath(model) {
   if (!normalized.includes("claude")) return null;
   const match = normalized.match(/(?:^|[/.])claude(?:[/.][a-z]+)*[/.](\d+)(?:[/.](\d+))?(?:[/.]|$)/);
   if (!match) return null;
-  const [, majorText] = match;
+  const [, majorText, minorText] = match;
   const major = Number(majorText);
-  // Claude 4+ supports native additionalModelRequestFields (output_config.effort).
-  // The legacy <thinking_mode> system-tag injection is no longer accepted by
-  // Kiro (rejects with REQUEST_BODY_INVALID), so even 4.5 must use the native
-  // path. Older Claude (3.x) and non-Claude models keep the tag fallback.
-  return major < 4 ? null : "output_config";
+  const minor = minorText === undefined ? null : Number(minorText);
+  // Claude 4.6+ supports native additionalModelRequestFields (output_config.effort).
+  // Claude 4.5 and below neither accept the native fields nor the legacy
+  // <thinking_mode> tag anymore (Kiro rejects both with REQUEST_BODY_INVALID),
+  // so thinking cannot be delivered for them — resolveKiroThinkingBudget
+  // returns null to ship a plain request.
+  if (major < 4 || (major === 4 && (minor === null || minor < 6))) return null;
+  return "output_config";
 }
 
 export function supportsKiroAdditionalModelRequestFields(model) {

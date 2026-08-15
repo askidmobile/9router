@@ -71,7 +71,7 @@ describe("Claude → Kiro (direct route)", () => {
     expect(cur.userInputMessageContext?.toolResults?.length ?? 0).toBe(0);
   });
 
-  it("injects thinking_mode tag when model implies thinking", () => {
+  it("does not inject thinking for Claude 4.5-thinking (no native support, tag rejected)", () => {
     const out = translateRequest(
       FORMATS.CLAUDE,
       FORMATS.KIRO,
@@ -81,13 +81,11 @@ describe("Claude → Kiro (direct route)", () => {
       null,
       "kiro"
     );
-    expect(out.systemPrompt).toContain(
-      "<thinking_mode>enabled</thinking_mode>"
-    );
+    expect(out.systemPrompt || "").not.toContain("<thinking_mode>");
     expect(out.agentMode).toBe("vibe");
   });
 
-  it("does not send additionalModelRequestFields for pre-4 Claude Kiro models", () => {
+  it("does not inject thinking for pre-4 Claude Kiro models", () => {
     const out = C2K({
       output_config: { effort: "high" },
       messages: [{ role: "user", content: "think with adaptive effort" }],
@@ -95,10 +93,10 @@ describe("Claude → Kiro (direct route)", () => {
 
     expect(out.additionalModelRequestFields).toBeUndefined();
     expect(out.thinking).toBeUndefined();
-    expect(out.systemPrompt).toContain("<max_thinking_length>24576</max_thinking_length>");
+    expect(out.systemPrompt || "").not.toContain("<thinking_mode>");
   });
 
-  it("normalizes an unsupported Kiro intensity suffix while preserving agentic behavior", () => {
+  it("normalizes a Kiro intensity suffix while preserving agentic behavior", () => {
     const out = C2K(
       { messages: [{ role: "user", content: "hello" }] },
       null,
@@ -106,7 +104,7 @@ describe("Claude → Kiro (direct route)", () => {
     );
 
     expect(out.conversationState.currentMessage.userInputMessage.modelId).toBe("claude-sonnet-4.5");
-    expect(out.additionalModelRequestFields?.output_config?.effort).toBe("high");
+    // 4.5 has no thinking path; only the agentic prompt remains.
     expect(out.systemPrompt).toContain("CHUNKED WRITE PROTOCOL");
   });
 
