@@ -476,20 +476,38 @@ const PROVIDER_MODELS_CONFIG = {
           };
         }
         const data = await response.json();
-        // Cloudflare returns { result: [{ id, name, description, task: { id: "text-generation"|"image-generation", ... } }] }
+        // Cloudflare /ai/models/search returns { result: [{ id: <uuid>, name: "@cf/...", description, type, task }] }.
+        // `name` is the real model id used for inference (/ai/run/<name>); `id` is an internal UUID.
+        // `task` is frequently null, so kind is derived from the model name (image keywords) or type field.
         const raw = Array.isArray(data?.result) ? data.result : (Array.isArray(data) ? data : []);
+        const IMAGE = /flux|stable-diffusion|dreamshaper|sdxl|phoenix|lucid|sd-v|imagen/i;
+        // Skip embeddings, TTS, STT, classification, translation, guard, audio-turn-detection, reranker.
+        const SKIP = /bge-|embedding|plamo-embedding|aura-|melotts|whisper|nova-|deepgram\/flux|pipecat|smart-turn|resnet|distilbert|m2m100|indictrans|llama-guard|reranker|image-classif|speech|asr/i;
+        const prettyName = (m) => {
+          const parts = String(m.name || "").replace(/^@cf\//, "").split("/");
+          const last = parts[parts.length - 1];
+          return last
+            .replace(/-(fp8|awq|fast|instruct|it|chat|hf|lora)$/gi, " $1")
+            .replace(/[-_]/g, " ")
+            .replace(/\b\w/g, (c) => c.toUpperCase())
+            .trim() || m.name;
+        };
         const models = raw
-          .filter((m) => m && typeof m.id === "string")
-          .map((m) => ({
-            id: m.id,
-            name: m.name || m.id,
-            kind: m?.task?.id === "image-generation" || m?.task?.id === "text-to-image" ? "image" : "llm",
-            description: m.description || ""
-          }));
+          .filter((m) => m && typeof m.name === "string" && m.name.startsWith("@cf/"))
+          .filter((m) => !SKIP.test(m.name))
+          .map((m) => {
+            const isImage = IMAGE.test(m.name) || m?.task?.id === "image-generation" || m?.type === "image-generation";
+            return {
+              id: m.name,
+              name: prettyName(m),
+              kind: isImage ? "image" : "llm",
+              description: m.description || ""
+            };
+          });
         if (models.length) return { models };
         return {
           models: getStaticProviderModels("cloudflare-ai"),
-          warning: "Cloudflare returned no models; using static catalog."
+          warning: "Cloudflare returned no chat/image models; using static catalog."
         };
       } catch (error) {
         console.log("Cloudflare models search error:", error.message);
