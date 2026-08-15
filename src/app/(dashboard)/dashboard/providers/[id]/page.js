@@ -39,7 +39,11 @@ export default function ProviderDetailPage() {
   const router = useRouter();
   const providerId = params.id;
   const { getCaps } = useModelCaps();
+  // Static from registry (not providerNode) — search providers reusing a chat
+  // provider's key (ollama-search → ollama, zai-search → zai).
+  const credentialFallback = AI_PROVIDERS[providerId]?.credentialFallback || null;
   const [connections, setConnections] = useState([]);
+  const [fallbackCount, setFallbackCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [providerNode, setProviderNode] = useState(null);
   const [proxyPools, setProxyPools] = useState([]);
@@ -303,8 +307,13 @@ export default function ProviderDetailPage() {
       const proxyPoolsData = await proxyPoolsRes.json();
       const settingsData = settingsRes.ok ? await settingsRes.json() : {};
       if (connectionsRes.ok) {
-        const filtered = (connectionsData.connections || []).filter(c => c.provider === providerId);
+        const all = connectionsData.connections || [];
+        const filtered = all.filter(c => c.provider === providerId);
         setConnections(filtered);
+        // Search providers with credentialFallback reuse the chat provider's
+        // key — count it so the empty state can say "uses N key(s) from X".
+        const fbId = credentialFallback;
+        setFallbackCount(fbId ? all.filter(c => c.provider === fbId && c.isActive !== false).length : 0);
       }
       if (proxyPoolsRes.ok) {
         setProxyPools(proxyPoolsData.proxyPools || []);
@@ -342,7 +351,7 @@ export default function ProviderDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [providerId, isCompatible]);
+  }, [providerId, isCompatible, credentialFallback]);
 
   const handleUpdateNode = async (formData) => {
     try {
@@ -1500,11 +1509,20 @@ export default function ProviderDetailPage() {
                 </div>
                 <div className="min-w-0">
                   <p className="text-sm text-text-muted">No connections yet</p>
-                  {hasDualAuthModes && (
+                  {fallbackCount > 0 && credentialFallback ? (
+                    <p className="text-xs text-green-600 dark:text-green-400">
+                      Reuses {fallbackCount} active key{fallbackCount > 1 ? "s" : ""} from
+                      {" "}{AI_PROVIDERS[credentialFallback]?.name || credentialFallback} (chat provider). Ready to use.
+                    </p>
+                  ) : hasDualAuthModes ? (
                     <p className="text-xs text-text-muted">
                       Choose {oauthConnectionLabel} or {apiKeyConnectionLabel}.
                     </p>
-                  )}
+                  ) : credentialFallback ? (
+                    <p className="text-xs text-text-muted">
+                      Add an {apiKeyConnectionLabel.toLowerCase()}, or connect {AI_PROVIDERS[credentialFallback]?.name || credentialFallback} (chat provider) to reuse its key.
+                    </p>
+                  ) : null}
                 </div>
               </div>
               <div className="flex gap-2">

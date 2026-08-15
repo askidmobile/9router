@@ -12,6 +12,7 @@ import {
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import { getProviderIconSrc } from "@/shared/utils/providerIcon";
 import { OAUTH_PROVIDERS, APIKEY_PROVIDERS } from "@/shared/constants/config";
+import { AI_PROVIDERS } from "@/shared/constants/providers";
 import {
   FREE_PROVIDERS,
   FREE_TIER_PROVIDERS,
@@ -168,6 +169,16 @@ export default function ProvidersPage() {
 
   const getProviderStats = (providerId, authType) => {
     const authTypes = Array.isArray(authType) ? authType : [authType];
+    // Search providers with credentialFallback (ollama-search → ollama, zai-search
+    // → zai) reuse the chat provider's API key at request time. With no own
+    // connection, mirror the fallback provider's stats so the card reflects
+    // reality ("2 connected" via ollama) instead of an empty ghost card.
+    const fallbackId = AI_PROVIDERS[providerId]?.credentialFallback;
+    const hasOwn = connections.some((c) => c.provider === providerId);
+    if (fallbackId && !hasOwn) {
+      const fb = AI_PROVIDERS[fallbackId];
+      if (fb) return getProviderStats(fallbackId, fb.authModes || "apikey");
+    }
     const providerConnections = connections.filter(
       (c) => c.provider === providerId && authTypes.includes(c.authType),
     );
