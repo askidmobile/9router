@@ -421,11 +421,10 @@ export async function buildModelsList(kindFilter, options = {}) {
         rawModelIds = await fetchCompatibleModelIds(conn);
       }
 
-      // Config-driven live catalog override (e.g. Kiro returns dynamic
-      // -thinking/-agentic variants per account). On failure, fall back to
-      // whatever rawModelIds already holds.
+      // Config-driven live catalog override for providers that have no static list (or explicit enabledModels).
+      // If provider has static or custom models configured in UI, do not override with upstream live catalog.
       const liveResolver = LIVE_MODEL_RESOLVERS[providerId];
-      if (liveResolver && !hasExplicitEnabledModels) {
+      if (liveResolver && !hasExplicitEnabledModels && providerModels.length === 0 && customModelIds.length === 0) {
         try {
           const live = await liveResolver(conn);
           if (live?.models?.length) {
