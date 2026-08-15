@@ -199,6 +199,45 @@ function normalizeSearxng(data, _query, _searchType) {
   return { results, totalResults: results.length };
 }
 
+function normalizeOllamaSearch(data, _query, _searchType) {
+  const now = new Date().toISOString();
+  const items = Array.isArray(data.results) ? data.results : (Array.isArray(data) ? data : []);
+  const results = items.map((item, idx) =>
+    makeResult("ollama-search", {
+      title: item.title,
+      url: item.url,
+      snippet: item.snippet || item.content || "",
+      published_at: item.published_at || null,
+      source_type: item.source || null,
+    }, idx, now)
+  );
+  return { results, totalResults: results.length };
+}
+
+function normalizeZaiSearch(data, _query, _searchType) {
+  const now = new Date().toISOString();
+  // MCP envelope: { result: { content: [{ type: "text", text: "<json>" }] } }
+  let payload = data;
+  const textContent = data?.result?.content?.[0]?.text;
+  if (typeof textContent === "string") {
+    try { payload = JSON.parse(textContent); } catch { payload = {}; }
+  }
+  const items = Array.isArray(payload.results) ? payload.results
+    : Array.isArray(payload.news) ? payload.news
+    : Array.isArray(payload) ? payload
+    : [];
+  const results = items.map((item, idx) =>
+    makeResult("zai-search", {
+      title: item.title,
+      url: item.url,
+      snippet: item.snippet || item.content || "",
+      published_at: item.publish_date || item.published_at || null,
+      source_type: item.source || null,
+    }, idx, now)
+  );
+  return { results, totalResults: results.length };
+}
+
 const NORMALIZERS = {
   "serper": normalizeSerper,
   "brave-search": normalizeBrave,
@@ -210,6 +249,8 @@ const NORMALIZERS = {
   "searchapi": normalizeSearchApi,
   "youcom": normalizeYouCom,
   "searxng": normalizeSearxng,
+  "ollama-search": normalizeOllamaSearch,
+  "zai-search": normalizeZaiSearch,
 };
 
 /**

@@ -347,6 +347,57 @@ function buildSearxngRequest(config, params) {
   };
 }
 
+// ── Ollama Cloud web_search ──────────────────────────────────────────────
+// POST https://ollama.com/api/web_search { q, num }
+// Response: { results: [{ title, url, snippet, published_at? }] }
+function buildOllamaSearchRequest(config, params) {
+  const body = { q: params.query, num: params.maxResults };
+  if (params.country) body.gl = params.country.toLowerCase();
+  if (params.language) body.hl = params.language;
+  return {
+    url: config.baseUrl,
+    init: {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(params.token ? { Authorization: `Bearer ${params.token}` } : {}),
+      },
+      body: JSON.stringify(body),
+    },
+  };
+}
+
+// ── Z.AI Coding plan MCP web_search_prime ─────────────────────────────────
+// POST https://api.z.ai/api/mcp/web_search_prime/mcp
+// JSON-RPC-ish envelope: { jsonrpc: "2.0", id, method: "tools/call",
+//   params: { name: "web_search_prime", arguments: { search_query, count } } }
+// Response: { result: { content: [{ type: "text", text: "<json>" }] } }
+function buildZaiSearchRequest(config, params) {
+  const body = {
+    jsonrpc: "2.0",
+    id: `9r-${Date.now()}`,
+    method: "tools/call",
+    params: {
+      name: "web_search_prime",
+      arguments: {
+        search_query: params.query,
+        count: params.maxResults,
+      },
+    },
+  };
+  return {
+    url: config.baseUrl,
+    init: {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(params.token ? { Authorization: `Bearer ${params.token}` } : {}),
+      },
+      body: JSON.stringify(body),
+    },
+  };
+}
+
 // ── Dispatcher ──────────────────────────────────────────────────────────
 
 const BUILDERS = {
@@ -360,6 +411,8 @@ const BUILDERS = {
   "searchapi": buildSearchApiRequest,
   "youcom": buildYouComRequest,
   "searxng": buildSearxngRequest,
+  "ollama-search": buildOllamaSearchRequest,
+  "zai-search": buildZaiSearchRequest,
 };
 
 /**
