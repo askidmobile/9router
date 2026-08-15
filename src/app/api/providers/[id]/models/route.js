@@ -450,6 +450,55 @@ const PROVIDER_MODELS_CONFIG = {
       const data = await response.json();
       return { models: parseOpenAIStyleModels(data) };
     }
+  },
+  "cloudflare-ai": {
+    customResolver: async (connection) => {
+      const accountId = connection.providerSpecificData?.accountId;
+      if (!accountId) {
+        return { error: "Missing Cloudflare Account ID", status: 400 };
+      }
+      const token = connection.apiKey || connection.accessToken;
+      if (!token) {
+        return { error: "No API token found", status: 401 };
+      }
+      const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/models/search`;
+      try {
+        const response = await fetch(url, {
+          method: "GET",
+          headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" }
+        });
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.log(`Cloudflare models search failed (${response.status}):`, errorText);
+          return {
+            models: getStaticProviderModels("cloudflare-ai"),
+            warning: `Cloudflare models search failed (${response.status}); using static catalog.`
+          };
+        }
+        const data = await response.json();
+        // Cloudflare returns { result: [{ id, name, description, task: { id: "text-generation"|"image-generation", ... } }] }
+        const raw = Array.isArray(data?.result) ? data.result : (Array.isArray(data) ? data : []);
+        const models = raw
+          .filter((m) => m && typeof m.id === "string")
+          .map((m) => ({
+            id: m.id,
+            name: m.name || m.id,
+            kind: m?.task?.id === "image-generation" || m?.task?.id === "text-to-image" ? "image" : "llm",
+            description: m.description || ""
+          }));
+        if (models.length) return { models };
+        return {
+          models: getStaticProviderModels("cloudflare-ai"),
+          warning: "Cloudflare returned no models; using static catalog."
+        };
+      } catch (error) {
+        console.log("Cloudflare models search error:", error.message);
+        return {
+          models: getStaticProviderModels("cloudflare-ai"),
+          warning: `Failed to fetch Cloudflare models: ${error.message}`
+        };
+      }
+    }
   }
 };
 
