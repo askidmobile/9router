@@ -139,18 +139,11 @@ export const PROVIDER_CAPABILITIES = {
     "gpt-5.6-luna-review":       CODEX_GPT_56_DEFAULT_CAPS,
   },
   "kiro": {
+    // Base ids only — experimental rollouts arrive via the live catalog, and the
+    // translator strips legacy -thinking/-agentic suffixes for back-compat.
     "gpt-5.6-sol": KIRO_GPT_5_6_CAPABILITIES,
     "gpt-5.6-terra": KIRO_GPT_5_6_CAPABILITIES,
     "gpt-5.6-luna": KIRO_GPT_5_6_CAPABILITIES,
-    "gpt-5.6-sol-thinking": KIRO_GPT_5_6_CAPABILITIES,
-    "gpt-5.6-terra-thinking": KIRO_GPT_5_6_CAPABILITIES,
-    "gpt-5.6-luna-thinking": KIRO_GPT_5_6_CAPABILITIES,
-    "gpt-5.6-sol-agentic": KIRO_GPT_5_6_CAPABILITIES,
-    "gpt-5.6-terra-agentic": KIRO_GPT_5_6_CAPABILITIES,
-    "gpt-5.6-luna-agentic": KIRO_GPT_5_6_CAPABILITIES,
-    "gpt-5.6-sol-thinking-agentic": KIRO_GPT_5_6_CAPABILITIES,
-    "gpt-5.6-terra-thinking-agentic": KIRO_GPT_5_6_CAPABILITIES,
-    "gpt-5.6-luna-thinking-agentic": KIRO_GPT_5_6_CAPABILITIES,
   },
   // CodeBuddy.cn — authoritative per-model metadata from the gateway's model
   // config (contextWindow=maxInputTokens, maxOutput=maxOutputTokens, vision=

@@ -41,13 +41,14 @@ export default {
     },
   },
   models: [
+    // Base id "auto" = Kiro server-side model picker. Full live catalog
+    // (ListAvailableModels) is fetched per account at runtime — experimental
+    // rollouts (gpt-5.6 tiers, new Claude) appear there first and must NOT be
+    // hardcoded here: accounts outside the rollout get INVALID_MODEL_ID 400.
+    { id: "auto", name: "Auto (Recommended)" },
     // Opus (added per kiro.dev/changelog/models and kiro.dev/docs/models)
     { id: "claude-opus-5", name: "Claude Opus 5" },
     { id: "claude-opus-4.8", name: "Claude Opus 4.8" },
-    { id: "claude-opus-4.7", name: "Claude Opus 4.7" },
-    { id: "claude-opus-4.5", name: "Claude Opus 4.5" },
-    // Sonnet
-    { id: "claude-sonnet-5", name: "Claude Sonnet 5" },
     { id: "claude-sonnet-4.5", name: "Claude Sonnet 4.5" },
     // Haiku
     { id: "claude-haiku-4.5", name: "Claude Haiku 4.5" },
@@ -56,9 +57,6 @@ export default {
     { id: "qwen3-coder-next", name: "Qwen3 Coder Next", strip: ["image","audio"] },
     { id: "glm-5", name: "GLM 5" },
     { id: "MiniMax-M2.5", name: "MiniMax M2.5" },
-    { id: "gpt-5.6-sol", name: "GPT 5.6 Sol", contextLength: 272000, rateMultiplier: 2.4, upstreamModelId: "gpt-5.6-sol", description: "Experimental preview of OpenAI GPT 5.6 Sol with 272k context window" },
-    { id: "gpt-5.6-terra", name: "GPT 5.6 Terra", contextLength: 272000, rateMultiplier: 1.2, upstreamModelId: "gpt-5.6-terra", description: "Experimental preview of OpenAI GPT 5.6 Terra with 272k context window" },
-    { id: "gpt-5.6-luna", name: "GPT 5.6 Luna", contextLength: 272000, rateMultiplier: 0.6, upstreamModelId: "gpt-5.6-luna", description: "Experimental preview of OpenAI GPT 5.6 Luna with 272k context window" },
   ],
   oauth: {
     ssoOidcEndpoint: "https://oidc.us-east-1.amazonaws.com",
