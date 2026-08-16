@@ -5,13 +5,20 @@ import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, us
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { restrictToVerticalAxis, restrictToParentElement } from "@dnd-kit/modifiers";
-import { Card, Button, Modal, Input, CardSkeleton, ModelSelectModal, ConfirmModal, CapacityBadges, Select, Toggle } from "@/shared/components";
+import { Card, Button, Modal, Input, CardSkeleton, ModelSelectModal, ConfirmModal, CapacityBadges, Select, Toggle, Tooltip } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
+import { getConservativeComboCapabilities } from "open-sse/providers/capabilities.js";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
 
 // Validate combo name: only a-z, A-Z, 0-9, -, _
 const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
+
+// 128000 -> "128k", 1000000 -> "1M"
+function formatK(n) {
+  if (!Number.isFinite(n)) return "";
+  return n >= 1000000 ? `${+(n / 1000000).toFixed(1)}M` : `${Math.round(n / 1000)}k`;
+}
 
 // Capacity adapter: global fallback pools of models per input-modality capability.
 // A request needing a capability the target model/combo lacks switches straight
@@ -52,7 +59,7 @@ export default function CombosPage() {
   const [activeProviders, setActiveProviders] = useState([]);
   const [comboStrategies, setComboStrategies] = useState({});
   const [capacityAdapter, setCapacityAdapter] = useState(EMPTY_CAPACITY_ADAPTER);
-  const { getCaps } = useModelCaps();
+  const { getCaps, overrides } = useModelCaps();
   const [confirmState, setConfirmState] = useState(null);
   const { copied, copy } = useCopyToClipboard();
 
@@ -233,6 +240,7 @@ export default function CombosPage() {
               key={combo.id}
               combo={combo}
               getCaps={getCaps}
+              capsOverrides={overrides}
               activeProviders={activeProviders}
               copied={copied}
               onCopy={copy}
@@ -294,11 +302,15 @@ const STRATEGY_OPTIONS = [
   { value: "fusion", label: "Fusion — panel + judge" },
 ];
 
-function ComboCard({ combo, getCaps, activeProviders = [], copied, onCopy, onEdit, onDelete, strategy = {}, onSetStrategy }) {
+function ComboCard({ combo, getCaps, capsOverrides = {}, activeProviders = [], copied, onCopy, onEdit, onDelete, strategy = {}, onSetStrategy }) {
   const [showJudgeSelect, setShowJudgeSelect] = useState(false);
   const current = strategy.fallbackStrategy || "fallback";
   const judge = strategy.judgeModel || "";
   const isFusion = current === "fusion";
+
+  // Combined caps exactly as /v1/models exposes them: booleans intersect
+  // (AND), context/maxOutput take the minimum across members.
+  const comboCaps = getConservativeComboCapabilities(combo.models || [], capsOverrides);
 
   return (
     <Card padding="sm" className="group">
@@ -324,6 +336,28 @@ function ComboCard({ combo, getCaps, activeProviders = [], copied, onCopy, onEdi
                 <span className="text-[10px] text-text-muted">+{combo.models.length - 3} more</span>
               )}
             </div>
+            {/* 3rd row: combined caps as served by /v1/models */}
+            {combo.models.length > 0 && (
+              <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-[11px] text-text-muted">
+                <Tooltip text="Combined capabilities advertised by /v1/models for this combo: booleans require ALL members (AND), context/output take the MINIMUM across members">
+                  <span className="inline-flex cursor-help items-center gap-0.5 border-b border-dashed border-current">
+                    <span className="material-symbols-outlined text-[13px] align-middle">merge</span>
+                    effective
+                  </span>
+                </Tooltip>
+                <CapacityBadges caps={comboCaps} size={13} />
+                {Number.isFinite(comboCaps?.contextWindow) && (
+                  <Tooltip text="context_length — minimum across combo members">
+                    <span className="font-mono">ctx {formatK(comboCaps.contextWindow)}</span>
+                  </Tooltip>
+                )}
+                {Number.isFinite(comboCaps?.maxOutput) && (
+                  <Tooltip text="max_completion_tokens — minimum across combo members">
+                    <span className="font-mono">out {formatK(comboCaps.maxOutput)}</span>
+                  </Tooltip>
+                )}
+              </div>
+            )}
             {/* Fusion: judge picker (Auto = first model) */}
             {isFusion && (
               <div className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5">
