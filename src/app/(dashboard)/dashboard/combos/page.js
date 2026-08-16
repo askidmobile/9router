@@ -20,6 +20,17 @@ function formatK(n) {
   return n >= 1000000 ? `${+(n / 1000000).toFixed(1)}M` : `${Math.round(n / 1000)}k`;
 }
 
+// 45000 -> "45s", 125000 -> "2m 5s", 7200000 -> "2h 0m"
+function fmtRemaining(ms) {
+  const s = Math.max(0, Math.round(ms / 1000));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${s % 60}s`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ${m % 60}m`;
+  return `${Math.floor(h / 24)}d ${h % 24}h`;
+}
+
 // Capacity adapter: global fallback pools of models per input-modality capability.
 // A request needing a capability the target model/combo lacks switches straight
 // to the first enabled model here instead of erroring or dropping the data.
@@ -62,6 +73,25 @@ export default function CombosPage() {
   const { getCaps, overrides } = useModelCaps();
   const [confirmState, setConfirmState] = useState(null);
   const { copied, copy } = useCopyToClipboard();
+  // Active cooldown locks (modelLock_*) from /api/models/availability — polled.
+  const [availability, setAvailability] = useState([]);
+  const [now, setNow] = useState(() => Date.now());
+
+  // Poll cooldown locks every 30s; tick the clock every 1s only while some lock is active.
+  useEffect(() => {
+    const fetchAvail = () => fetch("/api/models/availability", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : { models: [] }))
+      .then((d) => setAvailability(d.models || []))
+      .catch(() => {});
+    fetchAvail();
+    const poll = setInterval(fetchAvail, 30000);
+    return () => clearInterval(poll);
+  }, []);
+  useEffect(() => {
+    if (availability.length === 0) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [availability.length]);
 
   useEffect(() => {
     fetchData();
@@ -241,6 +271,8 @@ export default function CombosPage() {
               combo={combo}
               getCaps={getCaps}
               capsOverrides={overrides}
+              availability={availability}
+              now={now}
               activeProviders={activeProviders}
               copied={copied}
               onCopy={copy}
@@ -302,7 +334,7 @@ const STRATEGY_OPTIONS = [
   { value: "fusion", label: "Fusion — panel + judge" },
 ];
 
-function ComboCard({ combo, getCaps, capsOverrides = {}, activeProviders = [], copied, onCopy, onEdit, onDelete, strategy = {}, onSetStrategy }) {
+function ComboCard({ combo, getCaps, capsOverrides = {}, availability = [], now = 0, activeProviders = [], copied, onCopy, onEdit, onDelete, strategy = {}, onSetStrategy }) {
   const [showJudgeSelect, setShowJudgeSelect] = useState(false);
   const current = strategy.fallbackStrategy || "fallback";
   const judge = strategy.judgeModel || "";
@@ -311,6 +343,26 @@ function ComboCard({ combo, getCaps, capsOverrides = {}, activeProviders = [], c
   // Combined caps exactly as /v1/models exposes them: booleans intersect
   // (AND), context/maxOutput take the minimum across members.
   const comboCaps = getConservativeComboCapabilities(combo.models || [], capsOverrides);
+
+  // Cooldown until-timestamp for a "provider/model" combo member (max lock
+  // across its connections; "__all" = whole connection down counts too).
+  const cooldownUntil = (fullModel) => {
+    const slash = fullModel.indexOf("/");
+    const provider = slash > 0 ? fullModel.slice(0, slash) : "";
+    const model = slash > 0 ? fullModel.slice(slash + 1) : fullModel;
+    let until = 0;
+    for (const a of availability) {
+      if (a.provider !== provider) continue;
+      if (a.model === model || a.model === "__all") {
+        const t = new Date(a.until || 0).getTime();
+        if (t > until) until = t;
+      }
+    }
+    return until > now ? until : 0;
+  };
+  const memberLocks = (combo.models || []).map(cooldownUntil);
+  const allLocked = combo.models?.length > 0 && memberLocks.every((t) => t > 0);
+  const maxLockMs = memberLocks.length ? Math.max(...memberLocks) - now : 0;
 
   return (
     <Card padding="sm" className="group">
@@ -325,17 +377,38 @@ function ComboCard({ combo, getCaps, capsOverrides = {}, activeProviders = [], c
               {combo.models.length === 0 ? (
                 <span className="text-xs text-text-muted italic">No models</span>
               ) : (
-                combo.models.slice(0, 3).map((model, index) => (
-                  <code key={index} className="inline-flex items-center gap-1 rounded bg-black/5 px-1.5 py-0.5 font-mono text-xs text-text-muted dark:bg-white/5">
+                combo.models.slice(0, 3).map((model, index) => {
+                  const lockUntil = cooldownUntil(model);
+                  return (
+                  <code key={index} className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-xs ${lockUntil ? "text-orange-600 dark:text-orange-400 bg-orange-500/10" : "text-text-muted bg-black/5 dark:bg-white/5"}`}>
                     <span>{model}</span>
+                    {lockUntil > 0 && (
+                      <Tooltip text={`Rate-limited — cooling down for ${fmtRemaining(lockUntil - now)}`}>
+                        <span className="inline-flex items-center gap-0.5 font-normal">
+                          <span className="material-symbols-outlined text-[12px] align-middle">timer</span>
+                          {fmtRemaining(lockUntil - now)}
+                        </span>
+                      </Tooltip>
+                    )}
                     <CapacityBadges caps={getCaps?.(model)} />
                   </code>
-                ))
+                  );
+                })
               )}
               {combo.models.length > 3 && (
                 <span className="text-[10px] text-text-muted">+{combo.models.length - 3} more</span>
               )}
             </div>
+            {/* All members cooling down — combo cannot serve until the longest lock expires */}
+            {allLocked && (
+              <div className="mt-1.5 flex items-center gap-1.5 rounded bg-red-500/10 px-2 py-1 text-xs text-red-600 dark:text-red-400">
+                <span className="material-symbols-outlined text-[14px] align-middle">block</span>
+                <span>
+                  Combo unavailable — all models cooling down, retries in {" "}
+                  <span className="font-mono font-medium">{fmtRemaining(maxLockMs)}</span>
+                </span>
+              </div>
+            )}
             {/* 3rd row: combined caps as served by /v1/models */}
             {combo.models.length > 0 && (
               <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-[11px] text-text-muted">
