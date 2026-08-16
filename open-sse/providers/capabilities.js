@@ -254,7 +254,8 @@ export const PATTERN_CAPABILITIES = [
   { pattern: "*kimi*",          caps: { reasoning: true, thinkingFormat: "kimi", contextWindow: 262144 } },
 
   // ── GLM / Z.ai (thinking.enabled; disable via enable_thinking:false) ─
-  // GLM-5.2 jumps to a 1M context (5.0/5.1 stay at 200K); 128K output.
+  // GLM-5.2/5.3 jump to a 1M context (5.0/5.1 stay at 200K); 128K output.
+  { pattern: "*glm-5.3*",       caps: { reasoning: true, thinkingFormat: "zai", contextWindow: 1000000, maxOutput: 131072 } },
   { pattern: "*glm-5.2*",       caps: { reasoning: true, thinkingFormat: "zai", contextWindow: 1000000, maxOutput: 131072 } },
   { pattern: "*glm-5*",         caps: { reasoning: true, thinkingFormat: "zai", contextWindow: 200000, maxOutput: 128000 } },
   { pattern: "*glm-4.7*",       caps: { reasoning: true, thinkingFormat: "zai", contextWindow: 200000, maxOutput: 128000 } },
