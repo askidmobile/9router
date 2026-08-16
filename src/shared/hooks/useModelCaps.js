@@ -76,5 +76,6 @@ export function useModelCaps() {
     [byFull, byId],
   );
 
-  return { getCaps };
+  // overrides exposed for combined-caps computation (combo card mirrors /v1/models)
+  return { getCaps, overrides };
 }
