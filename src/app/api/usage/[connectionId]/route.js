@@ -2,6 +2,7 @@
 import "open-sse/index.js";
 
 import { getProviderConnectionById, updateProviderConnection } from "@/lib/localDb";
+import { getUsageHistory } from "@/lib/usageDb";
 import { getUsageForProvider } from "open-sse/services/usage.js";
 import { getExecutor } from "open-sse/executors/index.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
@@ -116,6 +117,43 @@ export async function refreshAndUpdateCredentials(connection, force = false, pro
   };
 }
 
+// Providers with no upstream quota API: static plan limits + usage counted
+// from the local request log. Limits mirror OmniRoute's planRegistry.
+const LOCAL_USAGE_PLANS = {
+  // Alibaba Token Plan: monthly request allowance
+  "alitp-intl": { requestsMonthly: 90000 },
+};
+
+/** Build a quota payload from the local usage history (month-to-date). */
+async function buildLocalUsage(connection) {
+  const plan = LOCAL_USAGE_PLANS[connection.provider];
+  if (!plan) return null;
+  const now = new Date();
+  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const nextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+  const rows = await getUsageHistory({
+    provider: connection.provider,
+    startDate: monthStart.toISOString(),
+    endDate: nextMonth.toISOString(),
+  });
+  const used = rows.filter((r) => r.connectionId === connection.id && r.status === "ok").length;
+  const limit = plan.requestsMonthly;
+  const resetAt = nextMonth.toISOString();
+  return {
+    plan: `Token Plan (${limit.toLocaleString()} requests/month, counted locally)`,
+    resetDate: resetAt,
+    quotas: {
+      requests: {
+        used,
+        total: limit,
+        unlimited: false,
+        remainingPercentage: limit > 0 ? Math.max(0, Math.round(((limit - used) / limit) * 100)) : 0,
+        resetAt,
+      },
+    },
+  };
+}
+
 /**
  * GET /api/usage/[connectionId] - Get usage data for a specific connection
  */
@@ -167,6 +205,10 @@ export async function GET(request, { params }) {
         }, { status: 401 });
       }
     }
+
+    // No upstream quota API (e.g. Alibaba Token Plan): serve the local counter.
+    const localUsage = await buildLocalUsage(connection);
+    if (localUsage) return Response.json(localUsage);
 
     // Fetch usage from provider API
     let usage = await getUsageForProvider(connection, proxyOptions, { force });

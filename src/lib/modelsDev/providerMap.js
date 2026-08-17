@@ -34,6 +34,7 @@ export const MODELS_DEV_PROVIDER_CANDIDATES = {
   nvidia: ["nvidia"],
   "vercel-ai-gateway": ["vercel"],
   qwen: ["alibaba", "alibaba-cn"],
+  "alitp-intl": ["alibaba-token-plan"],
   alicode: ["alibaba-coding-plan-cn", "alibaba-coding-plan", "alibaba"],
   "alicode-intl": ["alibaba-coding-plan", "alibaba"],
   "alims-intl": ["alibaba"],

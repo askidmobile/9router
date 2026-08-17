@@ -888,6 +888,14 @@
       }
     ]
   },
+  "zai": {
+    "baseUrl": "https://api.z.ai/api/anthropic/v1/messages?beta=true",
+    "format": "claude",
+    "headers": {
+      "anthropic-version": "2023-06-01",
+      "anthropic-beta": "output-128k-2025-02-19,prompt-caching-2024-07-31"
+    }
+  },
   "alims-intl": {
     "baseUrl": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions",
     "headers": {},
