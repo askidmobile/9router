@@ -19,6 +19,9 @@ export default {
     },
   },
   category: "apikey",
+  // No upstream quota API — quota card is built from the local request
+  // counter (static plan, OmniRoute parity: 90k requests/month).
+  features: { usage: true, usageApikey: true },
   transport: {
     baseUrl: "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions",
     headers: {},
