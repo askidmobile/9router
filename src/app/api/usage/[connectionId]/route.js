@@ -130,7 +130,7 @@ const LOCAL_USAGE_PLANS = {
     // Badge text; credits themselves can't be counted locally (deducted by
     // Alibaba's per-model coefficients, visible only in their console), so
     // the card shows local request/token counters for the window instead.
-    planLabel: "Token Plan Standard · 10k credits/7d · local counters",
+    planLabel: "Token Plan Standard · 10k credits/7d",
     windowMs: 7 * 86400000,
   },
 };
@@ -153,13 +153,13 @@ async function buildLocalUsage(connection) {
   // Rolling window approximation: resets 7 days after the first call in it
   const firstTs = own.length ? own.map((r) => Date.parse(r.timestamp)).reduce((a, b) => Math.min(a, b)) : 0;
   const resetAt = firstTs ? new Date(firstTs + plan.windowMs).toISOString() : null;
+  const fmt = (n) => n.toLocaleString("en-US");
+  const resetStr = resetAt ? ` Window resets ~${new Date(resetAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}.` : "";
   return {
     plan: plan.planLabel,
+    message: `This window: ${fmt(ok.length)} requests · ${fmt(tokens)} tokens routed via 9Router.${resetStr} Credits are deducted by Alibaba's per-model coefficients — exact credit usage only in the Alibaba console.`,
     resetDate: resetAt,
-    quotas: {
-      requests: { used: ok.length, total: 0, unlimited: true, resetAt },
-      tokens: { used: tokens, total: 0, unlimited: true, resetAt },
-    },
+    quotas: {},
   };
 }
 
