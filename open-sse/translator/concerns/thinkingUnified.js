@@ -143,6 +143,24 @@ function normalizeOpenAILevel(level, supportedLevels) {
   return "xhigh";
 }
 
+// Clamp a level to the allowed set: nearest by effort rank, ties round UP
+// (more thinking beats less). Order from no-thinking to maximum.
+const LEVEL_RANK = ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
+function clampLevel(level, supportedLevels) {
+  if (!Array.isArray(supportedLevels) || supportedLevels.length === 0) return level;
+  if (supportedLevels.includes(level)) return level;
+  const want = LEVEL_RANK.indexOf(level);
+  if (want < 0) return level;
+  let best = null;
+  for (const candidate of supportedLevels) {
+    const d = Math.abs(LEVEL_RANK.indexOf(candidate) - want);
+    if (best === null || d < best.d || (d === best.d && LEVEL_RANK.indexOf(candidate) > LEVEL_RANK.indexOf(best.level))) {
+      best = { level: candidate, d };
+    }
+  }
+  return best ? best.level : level;
+}
+
 function toGeminiThinkingLevel(cfg) {
   const raw = cfg.mode === "auto" ? "high" : (toLevel(cfg) || "high");
   return effortToThinkingLevel(raw);
@@ -314,9 +332,11 @@ function applyFormat(fmt, body, cfg, caps, supportedLevels) {
       // TokenRouter's reasoning_effort enum is low/medium/high/xhigh/max — it rejects
       // "none"/"auto" with a 400 and supports "max" natively (no clamp like openai).
       // "none" → omit the field so the upstream default applies; pass levels through.
+      // Free-tier models restrict the enum further (e.g. qwen3.8-max-free:
+      // low/medium/xhigh) — clamp to the per-model allowed set.
       if (none || eff.mode === "auto") break;
       const level = toLevel(eff);
-      if (level) body.reasoning_effort = level;
+      if (level) body.reasoning_effort = clampLevel(level, supportedLevels);
       break;
     }
     case "kiro":

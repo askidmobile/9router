@@ -3,6 +3,7 @@
 import { getCapabilitiesForModel } from "./capabilities.js";
 import { matchPattern } from "./pricing.js";
 import { resolveKiroEffortPath } from "../config/kiroConstants.js";
+import PROVIDERS from "./registry/index.js";
 
 // Shared level sets (deduped) — verified against provider docs + wire in thinkingUnified.applyFormat.
 const L = {
@@ -33,12 +34,22 @@ const FORMAT_LEVELS = {
 
 const CODEX_GPT_5_6_LEVELS = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
 
+// Provider-format levels keyed by registry transport.thinkingFormat — used when
+// the provider overrides the model-native format (same precedence as
+// thinkingUnified.resolveFormat: provider > capability).
+const PROVIDER_FORMAT_LEVELS = {
+  tokenrouter: ["low", "medium", "high", "xhigh", "max"],
+};
+
 // Model-name pattern overrides (glob, first match wins) — more precise than format default.
 const PATTERN_THINKING = [
   { provider: "codex", pattern: "*gpt-5.6-sol*", levels: [...CODEX_GPT_5_6_LEVELS, "ultra"] },
   { provider: "codex", pattern: "*gpt-5.6-terra*", levels: [...CODEX_GPT_5_6_LEVELS, "ultra"] },
   { provider: "codex", pattern: "*gpt-5.6-luna*", levels: CODEX_GPT_5_6_LEVELS },
   { pattern: "*codex*", levels: ["low", "medium", "high", "xhigh"] }, // codex cannot disable thinking
+  // TokenRouter free-tier qwen rejects "high"/"max" — upstream enum is low/medium/xhigh
+  // (400: "reasoning_effort must be low, medium, or xhigh").
+  { provider: "tokenrouter", pattern: "*qwen3.8-max-free*", levels: ["low", "medium", "xhigh"] },
 ];
 
 // Returns valid thinking levels for a model, or null when the model has no reasoning.
@@ -49,7 +60,8 @@ export function getThinkingLevels(provider, model) {
   const hit = PATTERN_THINKING.find((entry) =>
     (!entry.provider || entry.provider === provider) && matchPattern(entry.pattern, model)
   );
-  let levels = hit?.levels || FORMAT_LEVELS[caps.thinkingFormat] || L.base;
+  const providerFmt = PROVIDERS.find((p) => p.id === provider)?.transport?.thinkingFormat;
+  let levels = hit?.levels || PROVIDER_FORMAT_LEVELS[providerFmt] || FORMAT_LEVELS[caps.thinkingFormat] || L.base;
   if (caps.thinkingCanDisable === false) levels = levels.filter((l) => l !== "none");
   return levels;
 }
