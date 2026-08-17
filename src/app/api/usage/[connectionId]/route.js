@@ -117,39 +117,48 @@ export async function refreshAndUpdateCredentials(connection, force = false, pro
   };
 }
 
-// Providers with no upstream quota API: static plan limits + usage counted
-// from the local request log. Limits mirror OmniRoute's planRegistry.
+// Providers with no upstream quota API: static plan facts + usage counted
+// from the local request log.
+// Alibaba Token Plan Personal Standard: 10,000 Credits per rolling 7-day
+// window (timer starts at first invocation). Credits are deducted by
+// Alibaba's internal per-model coefficients (model × tokens × thinking ×
+// tools) — no public formula and none in the API response, so exact credit
+// usage is only visible in the Alibaba console. We surface the local
+// request/token counters for the current window instead.
 const LOCAL_USAGE_PLANS = {
-  // Alibaba Token Plan: monthly request allowance
-  "alitp-intl": { requestsMonthly: 90000 },
+  "alitp-intl": {
+    // Badge text; credits themselves can't be counted locally (deducted by
+    // Alibaba's per-model coefficients, visible only in their console), so
+    // the card shows local request/token counters for the window instead.
+    planLabel: "Token Plan Standard · 10k credits/7d · local counters",
+    windowMs: 7 * 86400000,
+  },
 };
 
-/** Build a quota payload from the local usage history (month-to-date). */
+/** Build a quota payload from the local usage history (rolling window). */
 async function buildLocalUsage(connection) {
   const plan = LOCAL_USAGE_PLANS[connection.provider];
   if (!plan) return null;
-  const now = new Date();
-  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-  const nextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+  const windowStart = new Date(Date.now() - plan.windowMs);
   const rows = await getUsageHistory({
     provider: connection.provider,
-    startDate: monthStart.toISOString(),
-    endDate: nextMonth.toISOString(),
+    startDate: windowStart.toISOString(),
   });
-  const used = rows.filter((r) => r.connectionId === connection.id && r.status === "ok").length;
-  const limit = plan.requestsMonthly;
-  const resetAt = nextMonth.toISOString();
+  const own = rows.filter((r) => r.connectionId === connection.id);
+  const ok = own.filter((r) => r.status === "ok");
+  const tokens = ok.reduce(
+    (sum, r) => sum + ((r.tokens?.prompt_tokens || 0) + (r.tokens?.completion_tokens || 0)),
+    0,
+  );
+  // Rolling window approximation: resets 7 days after the first call in it
+  const firstTs = own.length ? own.map((r) => Date.parse(r.timestamp)).reduce((a, b) => Math.min(a, b)) : 0;
+  const resetAt = firstTs ? new Date(firstTs + plan.windowMs).toISOString() : null;
   return {
-    plan: `Token Plan (${limit.toLocaleString()} requests/month, counted locally)`,
+    plan: plan.planLabel,
     resetDate: resetAt,
     quotas: {
-      requests: {
-        used,
-        total: limit,
-        unlimited: false,
-        remainingPercentage: limit > 0 ? Math.max(0, Math.round(((limit - used) / limit) * 100)) : 0,
-        resetAt,
-      },
+      requests: { used: ok.length, total: 0, unlimited: true, resetAt },
+      tokens: { used: tokens, total: 0, unlimited: true, resetAt },
     },
   };
 }
