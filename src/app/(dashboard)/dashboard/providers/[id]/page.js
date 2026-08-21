@@ -11,6 +11,7 @@ import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
 import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
+import EditModelModal from "@/app/(dashboard)/dashboard/models/EditModelModal";
 import { translate } from "@/i18n/runtime";
 import { fetchSuggestedModels } from "@/shared/utils/providerModelsFetcher";
 import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
@@ -42,7 +43,8 @@ export default function ProviderDetailPage() {
   const params = useParams();
   const router = useRouter();
   const providerId = params.id;
-  const { getCaps } = useModelCaps();
+  const { getCaps, overrides: capsOverrides } = useModelCaps();
+  const [editingModel, setEditingModel] = useState(null);
   // Static from registry (not providerNode) — search providers reusing a chat
   // provider's key (ollama-search → ollama, zai-search → zai).
   const credentialFallback = AI_PROVIDERS[providerId]?.credentialFallback || null;
@@ -1127,6 +1129,13 @@ export default function ProviderDetailPage() {
             isTesting={testingModelIds.has(model.id)}
             isCustom
             isFree={false}
+            onEdit={() => setEditingModel({
+              id: model.id,
+              providerAlias: providerStorageAlias,
+              staticCaps: getCaps(`${providerId}/${model.id}`) || {},
+              override: capsOverrides[`${providerStorageAlias}|${model.id}`] || null,
+            })}
+            hasOverride={!!capsOverrides[`${providerStorageAlias}|${model.id}`]}
             caps={getCaps(`${providerId}/${model.id}`)}
             thinkingSuffix={resolveThinkingSuffix(model.id)}
           />
@@ -1153,6 +1162,14 @@ export default function ProviderDetailPage() {
               isTesting={testingModelIds.has(model.id)}
               isFree={model.isFree}
               onDisable={() => handleDisableModel(model.id)}
+              onEdit={() => setEditingModel({
+                id: model.id,
+                providerAlias: providerStorageAlias,
+                staticCaps: getCaps(`${providerId}/${model.id}`) || {},
+                override: capsOverrides[`${providerStorageAlias}|${model.id}`]
+                  || capsOverrides[`${providerId}|${model.id}`] || null,
+              })}
+              hasOverride={!!(capsOverrides[`${providerStorageAlias}|${model.id}`] || capsOverrides[`${providerId}|${model.id}`])}
               caps={getCaps(`${providerId}/${model.id}`)}
               thinkingSuffix={resolveThinkingSuffix(model.id)}
             />
@@ -1772,6 +1789,13 @@ export default function ProviderDetailPage() {
           onClose={() => setShowAddCustomModel(false)}
         />
       )}
+
+      <EditModelModal
+        isOpen={!!editingModel}
+        onClose={() => setEditingModel(null)}
+        model={editingModel}
+        onSaved={() => {}}
+      />
 
       <ImportModelsModal
         isOpen={showImportModels}

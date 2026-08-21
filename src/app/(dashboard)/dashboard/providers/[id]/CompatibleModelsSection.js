@@ -9,7 +9,9 @@ import EditModelModal from "@/app/(dashboard)/dashboard/models/EditModelModal";
 import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { usePricing } from "@/shared/hooks/usePricing";
-function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias, onTest, testStatus, isTesting, onEdit }) {
+import { CapacityBadges } from "@/shared/components";
+import { formatModelMeta } from "@/shared/utils/modelMeta";
+function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias, onTest, testStatus, isTesting, onEdit, hasOverride, caps }) {
   const borderColor = testStatus === "ok"
     ? "border-green-500/40"
     : testStatus === "error"
@@ -32,14 +34,18 @@ function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias,
       </span>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium truncate">{modelId}</p>
-        <div className="flex items-center gap-1 mt-1">
+        <div className="flex items-center gap-1 mt-1 flex-wrap">
           <code className="text-xs text-text-muted font-mono bg-sidebar px-1.5 py-0.5 rounded">{fullModel}</code>
+          <CapacityBadges caps={caps} colorOverride="text-text-muted/70" size={12} />
+          {hasOverride && (
+            <span className="text-[9px] font-semibold uppercase text-primary bg-primary/10 px-1 py-px rounded">configured</span>
+          )}
           <div className="relative group/btn">
             <button
               onClick={() => onCopy(fullModel, `model-${modelId}`)}
               className="p-0.5 hover:bg-sidebar rounded text-text-muted hover:text-primary"
             >
-              <span className="material-symbols-outlined text-sm">
+              <span className="material-symbols-outlined text-[13px]">
                 {copied === `model-${modelId}` ? "check" : "content_copy"}
               </span>
             </button>
@@ -54,7 +60,7 @@ function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias,
                 disabled={isTesting}
                 className="p-0.5 hover:bg-sidebar rounded text-text-muted hover:text-primary transition-colors"
               >
-                <span className="material-symbols-outlined text-sm" style={isTesting ? { animation: "spin 1s linear infinite" } : undefined}>
+                <span className="material-symbols-outlined text-[13px]" style={isTesting ? { animation: "spin 1s linear infinite" } : undefined}>
                   {isTesting ? "progress_activity" : "science"}
                 </span>
               </button>
@@ -67,13 +73,13 @@ function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias,
             <div className="relative group/btn">
               <button
                 onClick={onEdit}
-                className="p-0.5 hover:bg-sidebar rounded text-text-muted hover:text-primary transition-colors"
+                className={`p-0.5 rounded transition-colors ${hasOverride ? "text-primary" : "text-text-muted hover:text-primary"}`}
                 title="Edit model capabilities / pricing"
               >
-                <span className="material-symbols-outlined text-sm">tune</span>
+                <span className="material-symbols-outlined text-[13px]">tune</span>
               </button>
               <span className="pointer-events-none absolute top-5 left-1/2 -translate-x-1/2 text-[10px] text-text-muted whitespace-nowrap opacity-0 group-hover/btn:opacity-100 transition-opacity">
-                Settings
+                {hasOverride ? "Configured" : "Settings"}
               </span>
             </div>
           )}
@@ -198,6 +204,11 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
               onTest={connections.length > 0 ? () => handleTestModel(id) : undefined}
               testStatus={modelTestResults[id]}
               isTesting={testingModelId === id}
+              hasOverride={!!capsOverrides[`${providerStorageAlias}|${id}`]}
+              caps={(() => {
+                const base = getCapabilitiesForModel(providerStorageAlias, id) || {};
+                return { ...base, ...(capsOverrides[`${providerStorageAlias}|${id}`] || {}) };
+              })()}
               onEdit={() => {
                 const staticCaps = getCapabilitiesForModel(providerStorageAlias, id) || {};
                 const override = capsOverrides[`${providerStorageAlias}|${id}`] || null;
