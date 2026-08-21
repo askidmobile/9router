@@ -29,11 +29,71 @@ export async function getIflowUsage(accessToken) {
 
 /**
  * Ollama Cloud Usage
- * GET https://ollama.com/api/usage — session (5h) + weekly (7d) `usage` is a 0..1
- *   ratio (1.0 = limit reached, e.g. weekly 100% used). No reset timestamp exposed.
+ * Primary: GET https://ollama.com/api/usage — session (5h) + weekly (7d) `usage`
+ *   is a 0..1 ratio (1.0 = limit reached). No reset timestamps exposed.
+ * Optional precise reset dates: scrape https://ollama.com/settings with the
+ *   browser `__Secure-session` cookie (set via OLLAMA_USAGE_COOKIE env or the
+ *   connection's ollamaUsageCookie) — the page embeds per-track usage % and
+ *   reset times. Same approach as OmniRoute.
  * POST https://ollama.com/api/me — plan label (fail-open).
- * Auth: Authorization: Bearer <apiKey>
  */
+const OLLAMA_SETTINGS_URL = "https://ollama.com/settings";
+const OLLAMA_SESSION_COOKIE = "__Secure-session";
+
+function resolveOllamaUsageCookie(providerSpecificData) {
+  const env = process.env.OLLAMA_USAGE_COOKIE?.trim()
+    || process.env.OLLAMA_CLOUD_USAGE_COOKIE?.trim() || "";
+  if (env) return env.replace(new RegExp(`^${OLLAMA_SESSION_COOKIE}=`), "").trim();
+  const raw = providerSpecificData?.ollamaUsageCookie
+    || providerSpecificData?.usageCookie || "";
+  return String(raw).trim().replace(new RegExp(`^${OLLAMA_SESSION_COOKIE}=`), "").trim();
+}
+
+function parseOllamaSettingsHtml(html) {
+  const parts = html.split(/\bdata-usage-track\b/);
+  if (parts.length < 2) return null;
+  const extractPct = (seg) => {
+    const header = seg.match(/^[^>]*/)?.[0] ?? "";
+    const aria = header.match(/(\d+(?:\.\d+)?)%\s*used/);
+    if (aria) {
+      const pct = Number(aria[1]);
+      if (Number.isFinite(pct) && pct >= 0 && pct <= 100) return pct;
+    }
+    const style = header.match(/style="([^"]*)"/)?.[1] ?? "";
+    const w = Number(style.match(/(?:^|;)\s*width\s*:\s*([0-9.]+)%/)?.[1]);
+    return Number.isFinite(w) && w >= 0 && w <= 100 ? w : null;
+  };
+  const extractTime = (seg) => seg.match(/class="[^"]*local-time[^"]*"[^>]*data-time="([^"]*)"/)?.[1] || null;
+  const sessionPercent = extractPct(parts[1]);
+  const weeklyPercent = parts[2] ? extractPct(parts[2]) : null;
+  if (sessionPercent === null && weeklyPercent === null) return null;
+  return {
+    session: sessionPercent !== null ? { percent: sessionPercent, resetAt: extractTime(parts[1]) } : null,
+    weekly: weeklyPercent !== null ? { percent: weeklyPercent, resetAt: extractTime(parts[2]) } : null,
+    planTier: html.match(/class="[^"]*capitalize[^"]*"[^>]*>([^<]*)</)?.[1]?.trim() || null,
+  };
+}
+
+async function fetchOllamaSettingsUsage(cookie, proxyOptions) {
+  const response = await proxyAwareFetch(OLLAMA_SETTINGS_URL, {
+    redirect: "manual",
+    headers: {
+      Accept: "text/html",
+      Cookie: `${OLLAMA_SESSION_COOKIE}=${cookie}`,
+      "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Gecko/20100101 Firefox/152.0",
+    },
+  }, proxyOptions);
+  if (response.status >= 300 && response.status < 400) {
+    return { error: "Ollama Cloud cookie expired — copy a fresh __Secure-session cookie from ollama.com/settings." };
+  }
+  if (!response.ok) {
+    return { error: `Ollama Cloud settings error (${response.status}).` };
+  }
+  const parsed = parseOllamaSettingsHtml(await response.text());
+  if (!parsed) return { error: "Ollama Cloud settings page had no usage tracks." };
+  return { parsed };
+}
+
 export async function getOllamaUsage(apiKey, providerSpecificData, proxyOptions = null) {
   if (!apiKey) {
     return { message: "Ollama Cloud API key not available." };
@@ -108,7 +168,22 @@ export async function getOllamaUsage(apiKey, providerSpecificData, proxyOptions 
     if (hasSession) quotas["Session (5h)"] = ratioQuota(sessionNum);
     if (hasWeekly) quotas["Weekly (7d)"] = ratioQuota(weeklyNum);
 
-    return { plan, quotas };
+    // Optional precision layer: scrape the settings page with the browser
+    // session cookie for exact reset dates. Fail-open — ratios above remain.
+    const cookie = resolveOllamaUsageCookie(providerSpecificData);
+    if (cookie) {
+      const scraped = await fetchOllamaSettingsUsage(cookie, proxyOptions).catch(() => ({ error: "Ollama settings fetch failed" }));
+      if (scraped.parsed) {
+        for (const [name, win] of Object.entries(scraped.parsed)) {
+          if (name === "planTier") continue;
+          if (!win || !win.resetAt) continue;
+          const key = name === "session" ? "Session (5h)" : "Weekly (7d)";
+          if (quotas[key]) quotas[key].resetAt = win.resetAt;
+        }
+      }
+    }
+
+    return { plan, quotas, ...(cookie ? {} : { cookieHint: "Set OLLAMA_USAGE_COOKIE (or connection ollamaUsageCookie) for exact reset dates" }) };
   } catch (error) {
     return { message: `Ollama Cloud error: ${error.message}` };
   }
