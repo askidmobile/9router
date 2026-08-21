@@ -12,6 +12,8 @@ import { usePricing } from "@/shared/hooks/usePricing";
 import { CapacityBadges } from "@/shared/components";
 import { formatModelMeta } from "@/shared/utils/modelMeta";
 function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias, onTest, testStatus, isTesting, onEdit, hasOverride, caps }) {
+  const { getPricing } = usePricing();
+  const meta = formatModelMeta(caps, getPricing(fullModel.slice(0, fullModel.indexOf("/")), modelId));
   const borderColor = testStatus === "ok"
     ? "border-green-500/40"
     : testStatus === "error"
@@ -37,6 +39,7 @@ function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias,
         <div className="flex items-center gap-1 mt-1 flex-wrap">
           <code className="text-xs text-text-muted font-mono bg-sidebar px-1.5 py-0.5 rounded">{fullModel}</code>
           <CapacityBadges caps={caps} colorOverride="text-text-muted/70" size={12} />
+          {meta && <span className="text-[9px] text-text-muted/70 truncate">{meta}</span>}
           {hasOverride && (
             <span className="text-[9px] font-semibold uppercase text-primary bg-primary/10 px-1 py-px rounded">configured</span>
           )}
@@ -192,8 +195,9 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
       )}
 
       {allModels.length > 0 && (
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap gap-3">
           {allModels.map(({ id, alias, source }) => (
+            <div key={`${source}-${providerStorageAlias}/${id}`} className="w-full sm:w-[calc(50%-6px)] xl:w-[calc(33.333%-8px)]">
             <CompatibleModelRow
               key={`${source}-${providerStorageAlias}/${id}`}
               modelId={id}
@@ -222,6 +226,7 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
                 });
               }}
             />
+            </div>
           ))}
         </div>
       )}
