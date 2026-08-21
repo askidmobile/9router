@@ -27,74 +27,86 @@ function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias,
     : undefined;
 
   return (
-    <div className={`flex items-center gap-3 p-3 rounded-lg border ${borderColor} hover:bg-sidebar/50`}>
-      <span
-        className="material-symbols-outlined text-base text-text-muted"
-        style={iconColor ? { color: iconColor } : undefined}
-      >
-        {testStatus === "ok" ? "check_circle" : testStatus === "error" ? "cancel" : "smart_toy"}
-      </span>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate">{modelId}</p>
-        <div className="flex items-center gap-1 mt-1 flex-wrap">
-          <code className="text-xs text-text-muted font-mono bg-sidebar px-1.5 py-0.5 rounded">{fullModel}</code>
-          <CapacityBadges caps={caps} colorOverride="text-text-muted/70" size={12} />
-          {meta && <span className="text-[9px] text-text-muted/70 truncate">{meta}</span>}
-          {hasOverride && (
-            <span className="text-[9px] font-semibold uppercase text-primary bg-primary/10 px-1 py-px rounded">configured</span>
-          )}
-          <div className="relative group/btn">
-            <button
-              onClick={() => onCopy(fullModel, `model-${modelId}`)}
-              className="p-0.5 hover:bg-sidebar rounded text-text-muted hover:text-primary"
-            >
-              <span className="material-symbols-outlined text-[13px]">
-                {copied === `model-${modelId}` ? "check" : "content_copy"}
+    <div className={`group min-w-0 max-w-full rounded-lg border px-3 py-2 ${borderColor} hover:bg-sidebar/50`}>
+      <div className="flex min-w-0 items-start gap-2">
+        {/* Left: 3 info rows */}
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          {/* Row 1 — display name */}
+          <span className="truncate text-sm font-medium text-text-main">{modelId}</span>
+          {/* Row 2 — routed id + copy on hover */}
+          <div className="flex min-w-0 items-center gap-1.5">
+            <code className="max-w-[72vw] truncate rounded bg-sidebar px-1.5 py-0.5 font-mono text-xs text-text-muted sm:max-w-[360px]">{fullModel}</code>
+            <div className="relative shrink-0 group/btn">
+              <button
+                onClick={() => onCopy(fullModel, `model-${modelId}`)}
+                className="rounded p-0.5 text-text-muted opacity-100 transition-opacity hover:bg-sidebar hover:text-primary sm:opacity-0 sm:group-hover:opacity-100"
+              >
+                <span className="material-symbols-outlined text-[13px]">
+                  {copied === `model-${modelId}` ? "check" : "content_copy"}
+                </span>
+              </button>
+              <span className="pointer-events-none absolute mt-1 top-5 left-1/2 -translate-x-1/2 text-[10px] text-text-muted whitespace-nowrap opacity-0 group-hover/btn:opacity-100 transition-opacity">
+                {copied === `model-${modelId}` ? "Copied!" : "Copy"}
               </span>
-            </button>
-            <span className="pointer-events-none absolute top-5 left-1/2 -translate-x-1/2 text-[10px] text-text-muted whitespace-nowrap opacity-0 group-hover/btn:opacity-100 transition-opacity">
-              {copied === `model-${modelId}` ? "Copied!" : "Copy"}
-            </span>
+            </div>
           </div>
+          {/* Row 3 — capabilities, ctx/out/prices, configured */}
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 pl-0.5">
+            <CapacityBadges caps={caps} colorOverride="text-text-muted/70" size={12} />
+            {meta && <span className="truncate text-[9px] text-text-muted/70">{meta}</span>}
+            {hasOverride && (
+              <span className="text-[9px] font-semibold uppercase text-primary bg-primary/10 px-1 py-px rounded">configured</span>
+            )}
+          </div>
+        </div>
+
+        {/* Right: action column (test / settings / delete) */}
+        <div className="flex shrink-0 flex-col items-center gap-1 pt-0.5">
           {onTest && (
-            <div className="relative group/btn">
+            <div className="relative shrink-0 group/btn">
               <button
                 onClick={onTest}
                 disabled={isTesting}
-                className="p-0.5 hover:bg-sidebar rounded text-text-muted hover:text-primary transition-colors"
+                title="Test"
+                className={`rounded p-0.5 text-text-muted transition-opacity hover:bg-sidebar hover:text-primary ${isTesting ? "opacity-100" : "opacity-100 sm:opacity-0 sm:group-hover:opacity-100"}`}
               >
                 <span className="material-symbols-outlined text-[13px]" style={isTesting ? { animation: "spin 1s linear infinite" } : undefined}>
                   {isTesting ? "progress_activity" : "science"}
                 </span>
               </button>
-              <span className="pointer-events-none absolute top-5 left-1/2 -translate-x-1/2 text-[10px] text-text-muted whitespace-nowrap opacity-0 group-hover/btn:opacity-100 transition-opacity">
+              <span className="pointer-events-none absolute mt-1 top-5 left-1/2 -translate-x-1/2 text-[10px] text-text-muted whitespace-nowrap opacity-0 group-hover/btn:opacity-100 transition-opacity">
                 {isTesting ? "Testing..." : "Test"}
               </span>
             </div>
           )}
           {onEdit && (
-            <div className="relative group/btn">
+            <div className="relative shrink-0 group/btn">
               <button
                 onClick={onEdit}
-                className={`p-0.5 rounded transition-colors ${hasOverride ? "text-primary" : "text-text-muted hover:text-primary"}`}
                 title="Edit model capabilities / pricing"
+                className={`rounded p-0.5 transition-opacity hover:bg-sidebar ${hasOverride ? "text-primary opacity-100" : "text-text-muted opacity-100 hover:text-primary sm:opacity-0 sm:group-hover:opacity-100"}`}
               >
                 <span className="material-symbols-outlined text-[13px]">tune</span>
               </button>
-              <span className="pointer-events-none absolute top-5 left-1/2 -translate-x-1/2 text-[10px] text-text-muted whitespace-nowrap opacity-0 group-hover/btn:opacity-100 transition-opacity">
+              <span className="pointer-events-none absolute mt-1 top-5 left-1/2 -translate-x-1/2 text-[10px] text-text-muted whitespace-nowrap opacity-0 group-hover/btn:opacity-100 transition-opacity">
                 {hasOverride ? "Configured" : "Settings"}
               </span>
             </div>
           )}
+          <div className="relative shrink-0 group/btn">
+            <button
+              onClick={onDeleteAlias}
+              title="Remove model"
+              className="rounded p-0.5 text-text-muted opacity-100 transition-opacity hover:bg-red-500/10 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100"
+            >
+              <span className="material-symbols-outlined text-[13px]">close</span>
+            </button>
+            <span className="pointer-events-none absolute mt-1 top-5 left-1/2 -translate-x-1/2 text-[10px] text-text-muted whitespace-nowrap opacity-0 group-hover/btn:opacity-100 transition-opacity">
+              Remove
+            </span>
+          </div>
         </div>
       </div>
-      <button
-        onClick={onDeleteAlias}
-        className="p-1 hover:bg-red-50 rounded text-red-500"
-        title="Remove model"
-      >
-        <span className="material-symbols-outlined text-sm">delete</span>
-      </button>
     </div>
   );
 }
