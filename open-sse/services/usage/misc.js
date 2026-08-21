@@ -81,24 +81,12 @@ export async function getOllamaUsage(apiKey, providerSpecificData, proxyOptions 
 
     // Ollama `usage` is a 0..1 ratio (1.0 = limit reached). Convert to a 0..100
     // bar. Do NOT set absolute `remaining` — QuotaTable reads remainingPercentage.
-    function ratioQuota(usageRatio, windowSeconds = null, endingAt = null) {
+    // The API exposes no reset timestamp: both windows are ROLLING (usage frees
+    // up as requests age out), so any "resets at" date would be fabricated.
+    function ratioQuota(usageRatio) {
       const ratio = Math.max(0, Math.min(1, Number(usageRatio) || 0));
       const usedPct = Math.round(ratio * 100);
-      let resetAt = null;
-      if (endingAt && windowSeconds && ratio > 0) {
-        const endMs = new Date(endingAt).getTime();
-        if (Number.isFinite(endMs)) {
-          resetAt = new Date(endMs + (windowSeconds * 1000)).toISOString();
-        }
-      }
-      return {
-        used: usedPct,
-        total: 100,
-        remainingPercentage: 100 - usedPct,
-        resetAt,
-        windowSeconds,
-        unlimited: false,
-      };
+      return { used: usedPct, total: 100, remainingPercentage: 100 - usedPct, unlimited: false };
     }
 
     const sessionRaw = limits.session?.usage;
@@ -107,8 +95,6 @@ export async function getOllamaUsage(apiKey, providerSpecificData, proxyOptions 
     const weeklyNum = Number(weeklyRaw);
     const hasSession = sessionRaw !== undefined && sessionRaw !== null && !Number.isNaN(sessionNum);
     const hasWeekly = weeklyRaw !== undefined && weeklyRaw !== null && !Number.isNaN(weeklyNum);
-
-    const endingAt = data?.activity?.period?.ending_at || null;
 
     if (!hasSession && !hasWeekly) {
       return {
@@ -119,8 +105,8 @@ export async function getOllamaUsage(apiKey, providerSpecificData, proxyOptions 
     }
 
     const quotas = {};
-    if (hasSession) quotas["Session (5h)"] = ratioQuota(sessionNum, 18000, endingAt);
-    if (hasWeekly) quotas["Weekly (7d)"] = ratioQuota(weeklyNum, 604800, endingAt);
+    if (hasSession) quotas["Session (5h)"] = ratioQuota(sessionNum);
+    if (hasWeekly) quotas["Weekly (7d)"] = ratioQuota(weeklyNum);
 
     return { plan, quotas };
   } catch (error) {
