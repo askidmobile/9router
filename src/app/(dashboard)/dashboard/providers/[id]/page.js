@@ -1106,7 +1106,7 @@ export default function ProviderDetailPage() {
     });
 
     return (
-      <div className="flex flex-wrap gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {/* Custom models first */}
         {customModelRows.map((model) => (
           <ModelRow
