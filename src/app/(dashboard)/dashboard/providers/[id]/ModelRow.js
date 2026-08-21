@@ -3,7 +3,7 @@ import { CapacityBadges } from "@/shared/components";
 import { usePricing } from "@/shared/hooks/usePricing";
 import { formatModelMeta } from "@/shared/utils/modelMeta";
 
-export default function ModelRow({ model, fullModel, alias, copied, onCopy, testStatus, isCustom, isFree, onDeleteAlias, onTest, isTesting, onDisable, caps, thinkingSuffix }) {
+export default function ModelRow({ model, fullModel, alias, copied, onCopy, testStatus, isCustom, isFree, onDeleteAlias, onTest, isTesting, onDisable, onEdit, hasOverride, caps, thinkingSuffix }) {
   const { getPricing } = usePricing();
   const displayModel = thinkingSuffix ? `${fullModel}(${thinkingSuffix})` : fullModel;
   const providerKey = fullModel.includes("/") ? fullModel.slice(0, fullModel.indexOf("/")) : null;
@@ -44,7 +44,7 @@ export default function ModelRow({ model, fullModel, alias, copied, onCopy, test
               disabled={isTesting}
               className={`rounded p-0.5 text-text-muted transition-opacity hover:bg-sidebar hover:text-primary ${isTesting ? "opacity-100" : "opacity-100 sm:opacity-0 sm:group-hover:opacity-100"}`}
             >
-              <span className="material-symbols-outlined text-sm" style={isTesting ? { animation: "spin 1s linear infinite" } : undefined}>
+              <span className="material-symbols-outlined text-[13px]" style={isTesting ? { animation: "spin 1s linear infinite" } : undefined}>
                 {isTesting ? "progress_activity" : "science"}
               </span>
             </button>
@@ -58,7 +58,7 @@ export default function ModelRow({ model, fullModel, alias, copied, onCopy, test
             onClick={() => onCopy(displayModel, `model-${model.id}`)}
             className="rounded p-0.5 text-text-muted hover:bg-sidebar hover:text-primary"
           >
-            <span className="material-symbols-outlined text-sm">
+            <span className="material-symbols-outlined text-[13px]">
               {copied === `model-${model.id}` ? "check" : "content_copy"}
             </span>
           </button>
@@ -66,13 +66,27 @@ export default function ModelRow({ model, fullModel, alias, copied, onCopy, test
             {copied === `model-${model.id}` ? "Copied!" : "Copy"}
           </span>
         </div>
+        {onEdit && (
+          <div className="relative shrink-0 group/btn">
+            <button
+              onClick={onEdit}
+              title="Edit model capabilities / pricing"
+              className={`rounded p-0.5 transition-opacity hover:bg-sidebar ${hasOverride ? "text-primary" : "text-text-muted hover:text-primary"} ${hasOverride ? "opacity-100" : "opacity-100 sm:opacity-0 sm:group-hover:opacity-100"}`}
+            >
+              <span className="material-symbols-outlined text-[13px]">tune</span>
+            </button>
+            <span className="pointer-events-none absolute mt-1 top-5 left-1/2 -translate-x-1/2 text-[10px] text-text-muted whitespace-nowrap opacity-0 group-hover/btn:opacity-100 transition-opacity">
+              {hasOverride ? "Configured" : "Settings"}
+            </span>
+          </div>
+        )}
         {isCustom ? (
           <button
             onClick={onDeleteAlias}
             className="ml-auto rounded p-0.5 text-text-muted opacity-100 transition-opacity hover:bg-red-500/10 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100"
             title="Remove custom model"
           >
-            <span className="material-symbols-outlined text-sm">close</span>
+            <span className="material-symbols-outlined text-[13px]">close</span>
           </button>
         ) : onDisable ? (
           <button
@@ -80,7 +94,7 @@ export default function ModelRow({ model, fullModel, alias, copied, onCopy, test
             className="ml-auto rounded p-0.5 text-text-muted opacity-100 transition-opacity hover:bg-red-500/10 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100"
             title="Disable this model"
           >
-            <span className="material-symbols-outlined text-sm">close</span>
+            <span className="material-symbols-outlined text-[13px]">close</span>
           </button>
         ) : null}
       </div>
@@ -103,6 +117,8 @@ ModelRow.propTypes = {
   onTest: PropTypes.func,
   isTesting: PropTypes.bool,
   onDisable: PropTypes.func,
+  onEdit: PropTypes.func,
+  hasOverride: PropTypes.bool,
   caps: PropTypes.object,
   thinkingSuffix: PropTypes.string,
 };
