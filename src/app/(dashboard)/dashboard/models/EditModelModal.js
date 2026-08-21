@@ -33,6 +33,33 @@ export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
   const [prices, setPrices] = useState({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [importMsg, setImportMsg] = useState("");
+
+  // Pull caps/pricing for this model's provider from the models.dev catalog
+  // and write them as overrides. Exact values beat manual guessing.
+  const handleImportFromModelsDev = async () => {
+    setImporting(true);
+    setImportMsg("");
+    setError("");
+    try {
+      const res = await fetch("/api/models-dev/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: model.providerAlias, targets: ["caps", "pricing"] }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Import failed");
+      invalidateModelCapsCache();
+      invalidatePricingCache();
+      setImportMsg(`Imported ${data.caps?.imported ?? 0} capability sets, ${data.pricing?.imported ?? 0} prices from models.dev`);
+      onSaved?.();
+    } catch (err) {
+      setImportMsg(err.message || "Import failed");
+    } finally {
+      setImporting(false);
+    }
+  };
 
   useEffect(() => {
     if (!isOpen || !model) return;
@@ -224,16 +251,27 @@ export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
         <div>
           <div className="flex items-center justify-between mb-2">
             <p className="text-sm font-medium text-text-main">Capabilities</p>
-            {model?.override && (
+            <div className="flex items-center gap-3">
               <button
-                onClick={handleResetCaps}
-                disabled={saving}
-                className="text-xs text-red-500 hover:underline"
+                onClick={handleImportFromModelsDev}
+                disabled={importing}
+                className="text-xs text-primary hover:underline disabled:opacity-50"
+                title="Fill capabilities from the models.dev catalog for this provider"
               >
-                Reset to defaults
+                {importing ? "Importing..." : "Import from models.dev"}
               </button>
-            )}
+              {model?.override && (
+                <button
+                  onClick={handleResetCaps}
+                  disabled={saving}
+                  className="text-xs text-red-500 hover:underline"
+                >
+                  Reset to defaults
+                </button>
+              )}
+            </div>
           </div>
+          {importMsg && <p className={`text-xs mb-2 ${importMsg.includes("fail") || importMsg.includes("not") ? "text-red-500" : "text-green-600"}`}>{importMsg}</p>}
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label htmlFor="edit-model-ctx" className="text-xs text-text-muted mb-1 block">Context window (tokens)</label>

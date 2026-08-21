@@ -528,16 +528,19 @@ export default function ProviderDetailPage() {
   // no upstream call). Drives visibility of the "Import Models" button. For
   // compatible providers the check requires a Base URL on the connection.
   const activeConnectionId = connections.find((conn) => conn.isActive !== false)?.id || null;
+  // noAuth providers (opencode free) have no connections — probe/fetch at the
+  // provider level instead (the models route accepts a provider id for them).
+  const modelsSourceId = activeConnectionId || (isFreeNoAuth ? providerId : null);
   useEffect(() => {
     setImportSupported(false);
-    if (!activeConnectionId) return;
+    if (!modelsSourceId) return;
     let cancelled = false;
-    fetch(`/api/providers/${activeConnectionId}/models?check=1`)
+    fetch(`/api/providers/${modelsSourceId}/models?check=1`)
       .then((res) => res.json())
       .then((data) => { if (!cancelled) setImportSupported(data.supported === true); })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [activeConnectionId]);
+  }, [modelsSourceId]);
 
   const handleSetAlias = async (modelId, alias, providerAliasOverride = providerAlias) => {
     const fullModel = `${providerAliasOverride}/${modelId}`;
@@ -1166,7 +1169,7 @@ export default function ProviderDetailPage() {
         </button>
 
         {/* Import models from the provider's /models endpoint — only when supported */}
-        {importSupported && activeConnectionId && (
+        {importSupported && modelsSourceId && (
           <button
             onClick={() => setShowImportModels(true)}
             className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-blue-500/40 px-3 py-2 text-xs text-blue-600 dark:text-blue-400 transition-colors hover:border-blue-500 hover:bg-blue-500/5 sm:w-auto"
@@ -1773,7 +1776,7 @@ export default function ProviderDetailPage() {
       <ImportModelsModal
         isOpen={showImportModels}
         onClose={() => setShowImportModels(false)}
-        connectionId={activeConnectionId}
+        connectionId={modelsSourceId}
         providerStorageAlias={providerStorageAlias}
         existingIds={importExistingIds}
         transformId={providerId === "qoder" ? stripQoderPrefix : undefined}

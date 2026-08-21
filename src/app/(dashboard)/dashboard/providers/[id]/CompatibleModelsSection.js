@@ -5,7 +5,11 @@ import PropTypes from "prop-types";
 import { Button } from "@/shared/components";
 import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
 import ImportModelsModal from "./ImportModelsModal";
-function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias, onTest, testStatus, isTesting }) {
+import EditModelModal from "@/app/(dashboard)/dashboard/models/EditModelModal";
+import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
+import { useModelCaps } from "@/shared/hooks/useModelCaps";
+import { usePricing } from "@/shared/hooks/usePricing";
+function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias, onTest, testStatus, isTesting, onEdit }) {
   const borderColor = testStatus === "ok"
     ? "border-green-500/40"
     : testStatus === "error"
@@ -59,6 +63,20 @@ function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias,
               </span>
             </div>
           )}
+          {onEdit && (
+            <div className="relative group/btn">
+              <button
+                onClick={onEdit}
+                className="p-0.5 hover:bg-sidebar rounded text-text-muted hover:text-primary transition-colors"
+                title="Edit model capabilities / pricing"
+              >
+                <span className="material-symbols-outlined text-sm">tune</span>
+              </button>
+              <span className="pointer-events-none absolute top-5 left-1/2 -translate-x-1/2 text-[10px] text-text-muted whitespace-nowrap opacity-0 group-hover/btn:opacity-100 transition-opacity">
+                Settings
+              </span>
+            </div>
+          )}
         </div>
       </div>
       <button
@@ -78,6 +96,9 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
   const [showImport, setShowImport] = useState(false);
   const [testingModelId, setTestingModelId] = useState(null);
   const [modelTestResults, setModelTestResults] = useState({});
+  const [editing, setEditing] = useState(null);
+  const { overrides: capsOverrides } = useModelCaps();
+  const { getPricing } = usePricing();
 
   const handleTestModel = async (modelId) => {
     if (testingModelId) return;
@@ -177,6 +198,18 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
               onTest={connections.length > 0 ? () => handleTestModel(id) : undefined}
               testStatus={modelTestResults[id]}
               isTesting={testingModelId === id}
+              onEdit={() => {
+                const staticCaps = getCapabilitiesForModel(providerStorageAlias, id) || {};
+                const override = capsOverrides[`${providerStorageAlias}|${id}`] || null;
+                setEditing({
+                  id,
+                  providerAlias: providerStorageAlias,
+                  staticCaps,
+                  override,
+                  pricing: getPricing(providerStorageAlias, id) || {},
+                  alias,
+                });
+              }}
             />
           ))}
         </div>
@@ -189,6 +222,13 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
         providerStorageAlias={providerStorageAlias}
         existingIds={existingIds}
         onImported={onModelsChanged}
+      />
+
+      <EditModelModal
+        isOpen={!!editing}
+        onClose={() => setEditing(null)}
+        model={editing}
+        onSaved={onModelsChanged}
       />
     </div>
   );

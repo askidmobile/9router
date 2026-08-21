@@ -526,7 +526,17 @@ const PROVIDER_MODELS_CONFIG = {
 export async function GET(request, { params }) {
   try {
     const { id } = await params;
-    const connection = await getProviderConnectionById(id);
+    let connection = await getProviderConnectionById(id);
+
+    // No connection with this id — allow provider-level access for noAuth
+    // providers (e.g. opencode free): the id may be a registry provider id.
+    // Their endpoints need no credentials, so a pseudo-connection suffices.
+    if (!connection) {
+      const entry = getRegistryEntry(id);
+      if (entry?.transport?.noAuth && deriveModelsEndpoint(entry)) {
+        connection = { id: null, provider: id, apiKey: null, accessToken: null, providerSpecificData: {} };
+      }
+    }
 
     if (!connection) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 });
