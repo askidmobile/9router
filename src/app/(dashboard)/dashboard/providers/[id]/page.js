@@ -12,6 +12,7 @@ import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import EditModelModal from "@/app/(dashboard)/dashboard/models/EditModelModal";
+import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
 import { translate } from "@/i18n/runtime";
 import { fetchSuggestedModels } from "@/shared/utils/providerModelsFetcher";
 import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
@@ -45,6 +46,15 @@ export default function ProviderDetailPage() {
   const providerId = params.id;
   const { getCaps, overrides: capsOverrides } = useModelCaps();
   const [editingModel, setEditingModel] = useState(null);
+  // Effective caps for display: static base + user override. Tries both the
+  // storage alias and the registry id as override key (models.dev import keys
+  // by alias; manual edits may use either).
+  const effectiveCaps = (modelId) => {
+    const base = getCapabilitiesForModel(providerId, modelId) || {};
+    const override = capsOverrides[`${providerStorageAlias}|${modelId}`]
+      || capsOverrides[`${providerId}|${modelId}`] || null;
+    return { ...base, ...(override || {}) };
+  };
   // Static from registry (not providerNode) — search providers reusing a chat
   // provider's key (ollama-search → ollama, zai-search → zai).
   const credentialFallback = AI_PROVIDERS[providerId]?.credentialFallback || null;
@@ -1136,7 +1146,7 @@ export default function ProviderDetailPage() {
               override: capsOverrides[`${providerStorageAlias}|${model.id}`] || null,
             })}
             hasOverride={!!capsOverrides[`${providerStorageAlias}|${model.id}`]}
-            caps={getCaps(`${providerId}/${model.id}`)}
+            caps={effectiveCaps(model.id)}
             thinkingSuffix={resolveThinkingSuffix(model.id)}
           />
         ))}
@@ -1170,7 +1180,7 @@ export default function ProviderDetailPage() {
                   || capsOverrides[`${providerId}|${model.id}`] || null,
               })}
               hasOverride={!!(capsOverrides[`${providerStorageAlias}|${model.id}`] || capsOverrides[`${providerId}|${model.id}`])}
-              caps={getCaps(`${providerId}/${model.id}`)}
+              caps={effectiveCaps(model.id)}
               thinkingSuffix={resolveThinkingSuffix(model.id)}
             />
           );
