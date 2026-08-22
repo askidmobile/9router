@@ -22,6 +22,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
     organization: "",
   });
   const [cloudflareData, setCloudflareData] = useState({ accountId: "" });
+  const [ollamaCookie, setOllamaCookie] = useState("");
   const [region, setRegion] = useState("");
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
@@ -48,6 +49,10 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
       if (connection.provider === "cloudflare-ai" && connection.providerSpecificData) {
         setCloudflareData({ accountId: connection.providerSpecificData.accountId || "" });
       }
+      // Ollama Cloud: optional settings-page session cookie for exact quota resets
+      if (connection.provider === "ollama" && connection.providerSpecificData) {
+        setOllamaCookie(connection.providerSpecificData.ollamaUsageCookie || "");
+      }
       // Load region for providers that support it (e.g. xiaomi-tokenplan)
       const providerCfg = AI_PROVIDERS?.[connection.provider];
       if (providerCfg?.regions) {
@@ -62,6 +67,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
   const isOAuth = connection?.authType === "oauth";
   const isAzure = connection?.provider === "azure";
   const isCloudflareAi = connection?.provider === "cloudflare-ai";
+  const isOllama = connection?.provider === "ollama";
   const isCompatible = connection
     ? (isOpenAICompatibleProvider(connection.provider) || isAnthropicCompatibleProvider(connection.provider))
     : false;
@@ -167,6 +173,13 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
       if (isCloudflareAi) {
         updates.providerSpecificData = { accountId: cloudflareData.accountId };
       }
+      // Ollama Cloud: persist the optional settings-page cookie (exact quota resets)
+      if (isOllama && ollamaCookie.trim()) {
+        updates.providerSpecificData = {
+          ...((connection.providerSpecificData) || {}),
+          ollamaUsageCookie: ollamaCookie.trim(),
+        };
+      }
       // Persist updated region for region-aware providers
       if (providerRegions && region) {
         updates.providerSpecificData = buildRegionSpecificData();
@@ -261,6 +274,22 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
                 hint="Required for billing"
               />
             </div>
+          </div>
+        )}
+
+        {isOllama && (
+          <div className="bg-sidebar/50 p-4 rounded-lg border border-accent/20">
+            <h3 className="font-semibold mb-3 text-sm">Quota precision (optional)</h3>
+            <Input
+              label="Settings session cookie"
+              type="password"
+              value={ollamaCookie}
+              onChange={(e) => setOllamaCookie(e.target.value)}
+              placeholder="__Secure-session=..."
+              hint="Adds exact reset dates to the quota card. Copy the __Secure-session cookie from ollama.com/settings (DevTools → Cookies). Leave blank to keep the current value."
+              autoComplete="off"
+              spellCheck={false}
+            />
           </div>
         )}
 
