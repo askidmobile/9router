@@ -68,6 +68,7 @@ export default function CombosPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingCombo, setEditingCombo] = useState(null);
   const [activeProviders, setActiveProviders] = useState([]);
+  const { getCaps, overrides } = useModelCaps();
   // Map compatible-node prefixes (combo member prefix) → their UUID providerId,
   // so override keys stored under the providerId resolve when a combo lists
   // the user-facing prefix (e.g. oc-zen → openai-compatible-chat-...).
@@ -102,7 +103,6 @@ export default function CombosPage() {
   }, [combos, getCaps]);
   const [comboStrategies, setComboStrategies] = useState({});
   const [capacityAdapter, setCapacityAdapter] = useState(EMPTY_CAPACITY_ADAPTER);
-  const { getCaps, overrides } = useModelCaps();
   const [confirmState, setConfirmState] = useState(null);
   const { copied, copy } = useCopyToClipboard();
   // Active cooldown locks (modelLock_*) from /api/models/availability — polled.
