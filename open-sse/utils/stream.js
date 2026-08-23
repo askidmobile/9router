@@ -75,6 +75,8 @@ export function createSSEStream(options = {}) {
   let openAIResponsesTerminalSeen = false;
   let openAIResponsesDoneSent = false;
   let streamDoneSent = false;  // track duplicate [DONE] across transform + flush
+  let passthroughFinishSeen = false;  // passthrough: duplicate finish chunks from upstream
+  let passthroughDoneSent = false;    // passthrough: upstream already sent [DONE]
 
   return new TransformStream({
     transform(chunk, controller) {
@@ -105,6 +107,13 @@ export function createSSEStream(options = {}) {
         if (mode === STREAM_MODE.PASSTHROUGH) {
           let output;
           let injectedUsage = false;
+
+          // Dedup terminators: some upstreams (e.g. stealth/ox-alpha) send the
+          // finish chunk twice and/or their own [DONE]; clients like AI SDK
+          // treat anything after the first finish_reason as a protocol error.
+          const isDoneLine = trimmed.startsWith("data:") && trimmed.slice(5).trim() === "[DONE]";
+          if (isDoneLine && passthroughDoneSent) continue;
+          if (isDoneLine) passthroughDoneSent = true;
 
           if (trimmed.startsWith("data:") && trimmed.slice(5).trim() !== "[DONE]") {
             try {
@@ -169,6 +178,13 @@ export function createSSEStream(options = {}) {
               }
 
               const isFinishChunk = parsed.choices?.[0]?.finish_reason;
+              if (isFinishChunk && passthroughFinishSeen) {
+                // Duplicate finish chunk (the second usually carries only
+                // upstream-side usage) — drop it: two finish_reasons in one
+                // stream break AI SDK clients ("content after finish reason").
+                continue;
+              }
+              if (isFinishChunk) passthroughFinishSeen = true;
               if (isFinishChunk && !hasValidUsage(parsed.usage)) {
                 const estimated = estimateUsage(body, totalContentLength, FORMATS.OPENAI);
                 parsed.usage = filterUsageForFormat(estimated, FORMATS.OPENAI);
@@ -371,7 +387,7 @@ export function createSSEStream(options = {}) {
           // Without it they can hang until timeout and trigger failover.
           // Gemini-family clients (Antigravity, Vertex, Gemini) reject this sentinel with 400 syntax errors.
           const isGeminiFamily = provider === "antigravity" || provider === "gemini" || provider === "vertex";
-          if (!streamDoneSent && !isGeminiFamily) {
+          if (!streamDoneSent && !passthroughDoneSent && !isGeminiFamily) {
             const doneOutput = "data: [DONE]\n\n";
             reqLogger?.appendConvertedChunk?.(doneOutput);
             controller.enqueue(sharedEncoder.encode(doneOutput));
