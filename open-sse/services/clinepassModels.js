@@ -4,7 +4,11 @@ import { buildClineHeaders } from "../shared/clineAuth.js";
 // the legacy /api/v1/models answers 404. The payload carries three buckets:
 // `clinePass` (subscription), `recommended`, and `free`. The endpoint is
 // public, so discovery does not require credentials.
+// The full /api/v1/ai/cline/models catalog (422+ models incl. stealth/ox-alpha)
+// is also public and is the source for the sibling Cline provider — it is
+// filtered to text-output models, excluding the cline-pass/* namespace.
 const CLINE_RECOMMENDED_MODELS_ENDPOINT = "https://api.cline.bot/api/v1/ai/cline/recommended-models";
+const CLINE_FULL_CATALOG_ENDPOINT = "https://api.cline.bot/api/v1/ai/cline/models";
 const CLINE_PASS_ID_PREFIX = "cline-pass/";
 const FETCH_TIMEOUT_MS = 5000;
 
@@ -82,14 +86,34 @@ export async function resolveClinepassModels(credentials) {
   return fetchClineCatalog((b) => b.clinePass.filter((m) => m.id.startsWith(CLINE_PASS_ID_PREFIX)), credentials);
 }
 
-/**
- * Cline (regular OAuth/API-key) live catalog — recommended + free buckets,
- * excluding `cline-pass/*` ids which are billable only for ClinePass.
- *
- * @param {object} [credentials] - optional; attached when present
- * @returns {Promise<{ models: { id: string, name: string }[] } | null>}
- */
 export async function resolveClineModels(credentials) {
+  const isApiKey = Boolean(credentials?.apiKey);
+  const token = isApiKey ? credentials.apiKey : credentials?.accessToken;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetch(CLINE_FULL_CATALOG_ENDPOINT, {
+      method: "GET",
+      headers: buildModelListHeaders(token, isApiKey),
+      signal: controller.signal,
+    });
+    if (response.ok) {
+      const data = (await response.json())?.data;
+      if (Array.isArray(data)) {
+        const models = data
+          .filter((m) => {
+            const arch = m?.architecture;
+            const modality = typeof arch?.modality === "string" ? arch.modality : "";
+            const [, out] = modality.toLowerCase().split("->", 2);
+            return out?.trim() === "text" && typeof m?.id === "string" && !m.id.startsWith(CLINE_PASS_ID_PREFIX);
+          })
+          .map((m) => ({ id: m.id, name: m.name || m.id }));
+        if (models.length) return { models };
+      }
+    }
+  } catch { /* fall through to recommended-models */ }
+  finally { clearTimeout(timer); }
+
   return fetchClineCatalog((b) => {
     const seen = new Set();
     const models = [];
