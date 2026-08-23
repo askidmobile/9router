@@ -300,6 +300,20 @@ export async function buildModelsList(kindFilter, options = {}) {
 
   const models = [];
 
+  // Resolve nested combo references (slash-less members that are themselves
+  // combos) to their own conservative caps — with a cycle guard.
+  const comboByName = new Map(combos.map((c) => [c.name, c]));
+  const resolveNestedCombo = (name, seen = new Set()) => {
+    const nested = comboByName.get(name);
+    if (!nested || seen.has(name)) return null;
+    seen.add(name);
+    return getConservativeComboCapabilities(
+      Array.isArray(nested.models) ? nested.models : [],
+      capsOverrides,
+      { nestedResolver: (n) => resolveNestedCombo(n, seen) },
+    );
+  };
+
   // Combos first (filtered by kind). Web combos expose `kind` so AI knows search vs fetch.
   for (const combo of combos) {
     if (!comboMatchesKinds(combo, kindFilter)) continue;
@@ -314,7 +328,9 @@ export async function buildModelsList(kindFilter, options = {}) {
       // Conservative minimal capabilities: minimum context window, minimum max output,
       // and intersection (all must support) for boolean modalities (vision, tools, reasoning).
       const comboModelsList = Array.isArray(combo.models) ? combo.models : [];
-      const comboCaps = getConservativeComboCapabilities(comboModelsList, capsOverrides);
+      const comboCaps = getConservativeComboCapabilities(comboModelsList, capsOverrides, {
+        nestedResolver: (n) => resolveNestedCombo(n),
+      });
       if (comboCaps) {
         entry.capabilities = comboCaps;
         if (Number.isFinite(comboCaps.contextWindow)) entry.context_length = comboCaps.contextWindow;

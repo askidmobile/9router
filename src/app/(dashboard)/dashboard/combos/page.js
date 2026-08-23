@@ -271,6 +271,7 @@ export default function CombosPage() {
               combo={combo}
               getCaps={getCaps}
               capsOverrides={overrides}
+              allCombos={combos}
               availability={availability}
               now={now}
               activeProviders={activeProviders}
@@ -334,7 +335,7 @@ const STRATEGY_OPTIONS = [
   { value: "fusion", label: "Fusion — panel + judge" },
 ];
 
-function ComboCard({ combo, getCaps, capsOverrides = {}, availability = [], now = 0, activeProviders = [], copied, onCopy, onEdit, onDelete, strategy = {}, onSetStrategy }) {
+function ComboCard({ combo, getCaps, capsOverrides = {}, allCombos = [], availability = [], now = 0, activeProviders = [], copied, onCopy, onEdit, onDelete, strategy = {}, onSetStrategy }) {
   const [showJudgeSelect, setShowJudgeSelect] = useState(false);
   const current = strategy.fallbackStrategy || "fallback";
   const judge = strategy.judgeModel || "";
@@ -342,7 +343,20 @@ function ComboCard({ combo, getCaps, capsOverrides = {}, availability = [], now 
 
   // Combined caps exactly as /v1/models exposes them: booleans intersect
   // (AND), context/maxOutput take the minimum across members.
-  const comboCaps = getConservativeComboCapabilities(combo.models || [], capsOverrides);
+  // Resolve nested combo references (slash-less members naming another combo)
+  // to their own conservative caps — cycle-guarded.
+  const comboByName = new Map((allCombos || []).map((c) => [c.name, c]));
+  const resolveNestedCombo = (name, seen = new Set()) => {
+    const nested = comboByName.get(name);
+    if (!nested || seen.has(name)) return null;
+    seen.add(name);
+    return getConservativeComboCapabilities(nested.models || [], capsOverrides, {
+      nestedResolver: (n) => resolveNestedCombo(n, seen),
+    });
+  };
+  const comboCaps = getConservativeComboCapabilities(combo.models || [], capsOverrides, {
+    nestedResolver: (n) => resolveNestedCombo(n),
+  });
 
   // Cooldown until-timestamp for a "provider/model" combo member (max lock
   // across its connections; "__all" = whole connection down counts too).

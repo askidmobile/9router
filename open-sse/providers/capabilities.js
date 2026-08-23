@@ -358,9 +358,13 @@ export function getCapabilitiesForModel(provider, model) {
  *
  * @param {Array<string|object>} models - array of model identifiers (e.g. "openai/gpt-4o") or objects
  * @param {object} [capsOverrides] - optional { "provider|model": overrideObj }
+ * @param {object} [options] - optional { nestedResolver?: (modelStr, resolve) => caps|null }
+ *   nestedResolver lets callers resolve slash-less members that are themselves
+ *   combos (nested combo references), whose caps are the nested combo's own
+ *   conservative caps rather than a bare-model pattern match.
  * @returns {object} minimal capabilities object
  */
-export function getConservativeComboCapabilities(models, capsOverrides = {}) {
+export function getConservativeComboCapabilities(models, capsOverrides = {}, options = {}) {
   if (!Array.isArray(models) || models.length === 0) {
     return { ...DEFAULT_CAPABILITIES };
   }
@@ -373,6 +377,16 @@ export function getConservativeComboCapabilities(models, capsOverrides = {}) {
     const slash = modelStr.indexOf("/");
     const provider = slash > 0 ? modelStr.slice(0, slash) : "";
     const model = slash > 0 ? modelStr.slice(slash + 1) : modelStr;
+
+    // Slash-less members may be nested combo references — let the caller
+    // resolve them with their own conservative caps first (cycle-guarded).
+    if (options.nestedResolver && slash <= 0) {
+      const nested = options.nestedResolver(modelStr);
+      if (nested) {
+        allCaps.push(nested);
+        continue;
+      }
+    }
 
     const override = capsOverrides[`${provider}|${model}`];
     const baseCaps = getCapabilitiesForModel(provider, model);
