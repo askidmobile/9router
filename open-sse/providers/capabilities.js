@@ -388,8 +388,22 @@ export function getConservativeComboCapabilities(models, capsOverrides = {}, opt
       }
     }
 
-    const override = capsOverrides[`${provider}|${model}`];
-    const baseCaps = getCapabilitiesForModel(provider, model);
+    // Override keys: try the combo's provider prefix first, then any
+    // alias→providerId candidates the caller supplies (compatible nodes
+    // store overrides under their UUID providerId, but combos list the
+    // node's user prefix — both must resolve to the same override).
+    const overrideKeys = [`${provider}|${model}`];
+    if (options.aliasCandidates) {
+      const extra = options.aliasCandidates(provider, model);
+      if (Array.isArray(extra)) for (const k of extra) if (!overrideKeys.includes(k)) overrideKeys.push(k);
+    }
+    let override = null;
+    for (const k of overrideKeys) { if (capsOverrides[k]) { override = capsOverrides[k]; break; } }
+    // Live-catalog caps (from /v1/models, already merged with overrides
+    // server-side) win over the static pattern table — they carry real
+    // upstream limits for models the static table misguesses.
+    const liveCaps = options.modelCaps ? options.modelCaps.get(modelStr) : null;
+    const baseCaps = liveCaps || getCapabilitiesForModel(provider, model);
     const effective = { ...baseCaps, ...(override || {}) };
     allCaps.push(effective);
   }
