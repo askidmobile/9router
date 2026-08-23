@@ -300,6 +300,45 @@ export async function buildModelsList(kindFilter, options = {}) {
 
   const models = [];
 
+  // Map compatible-node prefixes (combo member prefix) → their UUID
+  // providerId, so override keys stored under the providerId resolve when
+  // the combo lists the user-facing prefix (e.g. oc-zen → openai-compatible-chat-...).
+  const prefixToProviderIds = new Map();
+  for (const conn of connections) {
+    const prefix = conn?.providerSpecificData?.prefix;
+    if (prefix && typeof prefix === "string") {
+      if (!prefixToProviderIds.has(prefix)) prefixToProviderIds.set(prefix, []);
+      prefixToProviderIds.get(prefix).push(conn.provider);
+    }
+  }
+  const aliasCandidates = (provider, model) => {
+    const ids = prefixToProviderIds.get(provider) || [];
+    return ids.map((id) => `${id}|${model}`);
+  };
+
+  // Build a per-model caps map (fullModel → caps) so combo conservative caps
+  // prefer real upstream limits (live catalog + overrides) over the static
+  // pattern table, which misguesses many newer models (e.g. stealth/ox-alpha).
+  const modelCaps = new Map();
+  const recordCaps = (fullModel, provider, model) => {
+    if (!fullModel) return;
+    const overrideKeys = [`${provider}|${model}`, ...aliasCandidates(provider, model)];
+    let override = null;
+    for (const k of overrideKeys) { if (capsOverrides[k]) { override = capsOverrides[k]; break; } }
+    const base = getCapabilitiesForModel(provider, model) || {};
+    modelCaps.set(fullModel, { ...base, ...(override || {}) });
+  };
+  for (const [alias, providerModels] of Object.entries(PROVIDER_MODELS)) {
+    const providerId = (Object.entries(PROVIDER_ID_TO_ALIAS).find(([, a]) => a === alias) || [alias])[0];
+    for (const m of providerModels) recordCaps(`${alias}/${m.id}`, providerId, m.id);
+  }
+  for (const conn of connections) {
+    const prefix = conn?.providerSpecificData?.prefix;
+    if (prefix) for (const m of (conn?.providerSpecificData?.enabledModels || [])) {
+      if (typeof m === "string") recordCaps(`${prefix}/${m}`, conn.provider, m);
+    }
+  }
+
   // Resolve nested combo references (slash-less members that are themselves
   // combos) to their own conservative caps — with a cycle guard.
   const comboByName = new Map(combos.map((c) => [c.name, c]));
@@ -310,11 +349,14 @@ export async function buildModelsList(kindFilter, options = {}) {
     return getConservativeComboCapabilities(
       Array.isArray(nested.models) ? nested.models : [],
       capsOverrides,
-      { nestedResolver: (n) => resolveNestedCombo(n, seen) },
+      { nestedResolver: (n) => resolveNestedCombo(n, seen), aliasCandidates, modelCaps },
     );
   };
 
   // Combos first (filtered by kind). Web combos expose `kind` so AI knows search vs fetch.
+  // Caps are filled in a second pass after per-model caps are fully resolved
+  // (live catalogs + overrides), so combos inherit real upstream limits.
+  const comboEntries = [];
   for (const combo of combos) {
     if (!comboMatchesKinds(combo, kindFilter)) continue;
     const entry = {
@@ -324,20 +366,8 @@ export async function buildModelsList(kindFilter, options = {}) {
     };
     if (combo.kind === "webSearch" || combo.kind === "webFetch") {
       entry.kind = combo.kind;
-    } else if (!combo.kind || combo.kind === LLM_KIND) {
-      // Conservative minimal capabilities: minimum context window, minimum max output,
-      // and intersection (all must support) for boolean modalities (vision, tools, reasoning).
-      const comboModelsList = Array.isArray(combo.models) ? combo.models : [];
-      const comboCaps = getConservativeComboCapabilities(comboModelsList, capsOverrides, {
-        nestedResolver: (n) => resolveNestedCombo(n),
-      });
-      if (comboCaps) {
-        entry.capabilities = comboCaps;
-        if (Number.isFinite(comboCaps.contextWindow)) entry.context_length = comboCaps.contextWindow;
-        if (Number.isFinite(comboCaps.maxOutput)) entry.max_completion_tokens = comboCaps.maxOutput;
-      }
     }
-    models.push(entry);
+    comboEntries.push({ entry, combo });
   }
 
   if (connections.length === 0) {
@@ -591,6 +621,33 @@ export async function buildModelsList(kindFilter, options = {}) {
       }
       models.push(aliasEntry);
     }
+  }
+
+  // Enrich modelCaps with the now-fully-resolved per-model caps (live
+  // catalogs + overrides), then compute combo caps in a second pass so
+  // combos inherit real upstream limits instead of static-pattern guesses.
+  for (const m of models) {
+    if (m?.id && m.capabilities && !m.id.includes("/") === false && m.owned_by !== "combo" && m.owned_by !== "alias") {
+      modelCaps.set(m.id, m.capabilities);
+    }
+  }
+  for (const { entry, combo } of comboEntries) {
+    if (combo.kind === "webSearch" || combo.kind === "webFetch") {
+      models.push(entry);
+      continue;
+    }
+    const comboModelsList = Array.isArray(combo.models) ? combo.models : [];
+    const comboCaps = getConservativeComboCapabilities(comboModelsList, capsOverrides, {
+      nestedResolver: (n) => resolveNestedCombo(n),
+      aliasCandidates,
+      modelCaps,
+    });
+    if (comboCaps) {
+      entry.capabilities = comboCaps;
+      if (Number.isFinite(comboCaps.contextWindow)) entry.context_length = comboCaps.contextWindow;
+      if (Number.isFinite(comboCaps.maxOutput)) entry.max_completion_tokens = comboCaps.maxOutput;
+    }
+    models.push(entry);
   }
 
   const dedupedModels = [];

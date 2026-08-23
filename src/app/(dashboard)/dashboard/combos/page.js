@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -68,6 +68,38 @@ export default function CombosPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingCombo, setEditingCombo] = useState(null);
   const [activeProviders, setActiveProviders] = useState([]);
+  // Map compatible-node prefixes (combo member prefix) → their UUID providerId,
+  // so override keys stored under the providerId resolve when a combo lists
+  // the user-facing prefix (e.g. oc-zen → openai-compatible-chat-...).
+  const prefixToProviderIds = useMemo(() => {
+    const m = new Map();
+    for (const c of activeProviders) {
+      const prefix = c?.providerSpecificData?.prefix;
+      if (prefix && typeof prefix === "string") {
+        if (!m.has(prefix)) m.set(prefix, []);
+        m.get(prefix).push(c.provider);
+      }
+    }
+    return m;
+  }, [activeProviders]);
+  const aliasCandidates = useCallback((provider, model) => {
+    const ids = prefixToProviderIds.get(provider) || [];
+    return ids.map((id) => `${id}|${model}`);
+  }, [prefixToProviderIds]);
+  // Per-model caps from the /api/models cache (already merged with overrides
+  // + live catalogs server-side) — preferred over the static pattern table.
+  const modelCaps = useMemo(() => {
+    const m = new Map();
+    for (const c of combos) {
+      for (const full of (c.models || [])) {
+        if (typeof full === "string" && full.includes("/")) {
+          const caps = getCaps(full);
+          if (caps) m.set(full, caps);
+        }
+      }
+    }
+    return m;
+  }, [combos, getCaps]);
   const [comboStrategies, setComboStrategies] = useState({});
   const [capacityAdapter, setCapacityAdapter] = useState(EMPTY_CAPACITY_ADAPTER);
   const { getCaps, overrides } = useModelCaps();
@@ -272,6 +304,8 @@ export default function CombosPage() {
               getCaps={getCaps}
               capsOverrides={overrides}
               allCombos={combos}
+              aliasCandidates={aliasCandidates}
+              modelCaps={modelCaps}
               availability={availability}
               now={now}
               activeProviders={activeProviders}
@@ -335,7 +369,7 @@ const STRATEGY_OPTIONS = [
   { value: "fusion", label: "Fusion — panel + judge" },
 ];
 
-function ComboCard({ combo, getCaps, capsOverrides = {}, allCombos = [], availability = [], now = 0, activeProviders = [], copied, onCopy, onEdit, onDelete, strategy = {}, onSetStrategy }) {
+function ComboCard({ combo, getCaps, capsOverrides = {}, allCombos = [], aliasCandidates = null, modelCaps = null, availability = [], now = 0, activeProviders = [], copied, onCopy, onEdit, onDelete, strategy = {}, onSetStrategy }) {
   const [showJudgeSelect, setShowJudgeSelect] = useState(false);
   const current = strategy.fallbackStrategy || "fallback";
   const judge = strategy.judgeModel || "";
@@ -352,10 +386,14 @@ function ComboCard({ combo, getCaps, capsOverrides = {}, allCombos = [], availab
     seen.add(name);
     return getConservativeComboCapabilities(nested.models || [], capsOverrides, {
       nestedResolver: (n) => resolveNestedCombo(n, seen),
+      aliasCandidates,
+      modelCaps,
     });
   };
   const comboCaps = getConservativeComboCapabilities(combo.models || [], capsOverrides, {
     nestedResolver: (n) => resolveNestedCombo(n),
+    aliasCandidates,
+    modelCaps,
   });
 
   // Cooldown until-timestamp for a "provider/model" combo member (max lock
