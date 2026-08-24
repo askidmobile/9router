@@ -168,6 +168,7 @@ export function createSSEStream(options = {}) {
               if (delta && typeof delta.reasoning === "string" && delta.reasoning_content === undefined) {
                 delta.reasoning_content = delta.reasoning;
                 delete delta.reasoning;
+                fieldsInjected = true; // force output from the mutated parsed
               }
               const content = delta?.content;
               const reasoning = delta?.reasoning_content;
