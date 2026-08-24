@@ -17,6 +17,8 @@ export default {
   category: "freeTier",
   authType: "apikey",
   authModes: ["apikey"],
+  // Quota card: per-key spend limit + account balance via /api/v1/key and /credits
+  features: { usage: true, usageApikey: true },
   transport: {
     baseUrl: "https://openrouter.ai/api/v1/chat/completions",
     thinkingFormat: "openai",
