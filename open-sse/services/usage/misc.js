@@ -467,6 +467,104 @@ export async function getVercelAiGatewayUsage(apiKey, proxyOptions = null) {
   }
 }
 
+/**
+ * OpenRouter usage — per-key limits + account credits.
+ *   GET https://openrouter.ai/api/v1/key     → { data: { usage, limit,
+ *   limit_reset, limit_remaining, is_free_tier, ... } }
+ *   GET https://openrouter.ai/api/v1/credits → { data: { total_credits, total_usage } }
+ * Docs: https://openrouter.ai/docs/api_reference/limits
+ */
+const OPENROUTER_KEY_URL = "https://openrouter.ai/api/v1/key";
+const OPENROUTER_CREDITS_URL = "https://openrouter.ai/api/v1/credits";
+
+// Approximate the next reset instant for a rolling limit_reset period.
+function openRouterResetAt(limitReset) {
+  const now = new Date();
+  if (limitReset === "daily") return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1)).toISOString();
+  if (limitReset === "weekly") return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 7)).toISOString();
+  if (limitReset === "monthly") return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)).toISOString();
+  return null;
+}
+
+export async function getOpenRouterUsage(apiKey, proxyOptions = null) {
+  if (!apiKey || typeof apiKey !== "string" || !apiKey.trim()) {
+    return { message: "OpenRouter API key not available. Add a key to view usage." };
+  }
+  const headers = {
+    Authorization: `Bearer ${apiKey.trim()}`,
+    Accept: "application/json",
+  };
+
+  try {
+    const keyRes = await proxyAwareFetch(OPENROUTER_KEY_URL, { method: "GET", headers }, proxyOptions);
+    if (keyRes.status === 401 || keyRes.status === 403) {
+      return { plan: "OpenRouter", message: "OpenRouter authentication failed. Check the API key." };
+    }
+    if (!keyRes.ok) {
+      return { plan: "OpenRouter", message: `OpenRouter key API error (${keyRes.status}).` };
+    }
+    const keyData = (await keyRes.json().catch(() => null))?.data;
+    if (!keyData || typeof keyData !== "object") {
+      return { plan: "OpenRouter", message: "OpenRouter key response was not JSON." };
+    }
+
+    const quotas = {};
+    let plan = "OpenRouter";
+    if (keyData.is_free_tier) plan += " (Free tier)";
+
+    // Per-key spend cap — the hard 402 boundary for this connection.
+    const keyLimit = Number(keyData.limit);
+    if (Number.isFinite(keyLimit) && keyLimit > 0) {
+      const used = Number(keyData.usage) || 0;
+      const remainingPct = Math.max(0, Math.round(((keyLimit - used) / keyLimit) * 100));
+      quotas["Key limit (USD)"] = {
+        used,
+        total: keyLimit,
+        remainingPercentage: remainingPct,
+        resetAt: openRouterResetAt(keyData.limit_reset),
+        unlimited: false,
+      };
+    }
+
+    // Account-level balance (credits purchased vs spent across all keys).
+    const creditsRes = await proxyAwareFetch(OPENROUTER_CREDITS_URL, { method: "GET", headers }, proxyOptions).catch(() => null);
+    if (creditsRes?.ok) {
+      const creditsData = (await creditsRes.json().catch(() => null))?.data;
+      const totalCredits = Number(creditsData?.total_credits);
+      const totalUsage = Number(creditsData?.total_usage);
+      if (Number.isFinite(totalCredits) && totalCredits > 0) {
+        const balance = Math.max(0, totalCredits - (Number.isFinite(totalUsage) ? totalUsage : 0));
+        const balancePct = Math.round((balance / totalCredits) * 100);
+        quotas["Balance (USD)"] = {
+          used: Number.isFinite(totalUsage) ? Math.round(totalUsage * 100) / 100 : 0,
+          total: totalCredits,
+          remainingPercentage: balancePct,
+          unlimited: false,
+        };
+        if (balance <= 0) plan += " (Insufficient Balance)";
+      }
+    }
+
+    // Free-tier daily request caps depend on lifetime credits (< $10 → 50/day).
+    if (keyData.is_free_tier) {
+      quotas["Free requests/day"] = {
+        used: 0,
+        total: Number.isFinite(totalCredits) && totalCredits >= 10 ? 1000 : 50,
+        remainingPercentage: 100,
+        unlimited: false,
+      };
+    }
+
+    if (Object.keys(quotas).length === 0) {
+      return { plan, message: "OpenRouter connected. No spend limits configured." };
+    }
+
+    return { plan, quotas };
+  } catch (error) {
+    return { message: `OpenRouter error: ${error.message}` };
+  }
+}
+
 export async function getQoderUsage(accessToken, proxyOptions = null) {
   if (!accessToken) {
     return { message: "Qoder usage unavailable: no access token" };

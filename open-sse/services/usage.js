@@ -24,6 +24,7 @@ import {
   getQoderUsage,
   getOpencodeGoUsage,
   getCommandCodeUsage,
+  getOpenRouterUsage,
 } from "./usage/misc.js";
 
 /**
@@ -47,6 +48,7 @@ const USAGE_HANDLERS = {
   },
   iflow: (c) => getIflowUsage(c.accessToken),
   ollama: (c) => getOllamaUsage(c.apiKey, c.providerSpecificData, c.proxyOptions),
+  openrouter: (c) => getOpenRouterUsage(c.apiKey, c.proxyOptions),
   glm: (c) => getGlmUsage(c.apiKey, c.provider, c.proxyOptions),
   "glm-cn": (c) => getGlmUsage(c.apiKey, c.provider, c.proxyOptions),
   minimax: (c) => getMiniMaxUsage(c.apiKey, c.provider, c.proxyOptions),
