@@ -161,6 +161,14 @@ export function createSSEStream(options = {}) {
               }
 
               const delta = parsed.choices?.[0]?.delta;
+              // OpenRouter-style gateways (e.g. stealth/ox-alpha) stream
+              // reasoning under `delta.reasoning`, but OpenAI-compatible
+              // clients (Cursor, OpenCode, pi) expect `delta.reasoning_content`.
+              // Normalize so clients render reasoning instead of an empty answer.
+              if (delta && typeof delta.reasoning === "string" && delta.reasoning_content === undefined) {
+                delta.reasoning_content = delta.reasoning;
+                delete delta.reasoning;
+              }
               const content = delta?.content;
               const reasoning = delta?.reasoning_content;
               if (content && typeof content === "string") {
