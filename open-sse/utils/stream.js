@@ -386,6 +386,10 @@ export function createSSEStream(options = {}) {
             if (buffer.startsWith("data:") && !buffer.startsWith("data: ")) {
               output = "data: " + buffer.slice(5);
             }
+            // Ensure the trailing SSE frame ends with a newline before the
+            // [DONE] sentinel — upstreams that close without a final \n
+            // would glue "...}data: [DONE]" together and break client parsers.
+            if (!output.endsWith("\n")) output += "\n";
             reqLogger?.appendConvertedChunk?.(output);
             controller.enqueue(sharedEncoder.encode(output));
           }
