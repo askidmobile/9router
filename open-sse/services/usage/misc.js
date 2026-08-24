@@ -535,13 +535,13 @@ export async function getOpenRouterUsage(apiKey, proxyOptions = null) {
       if (Number.isFinite(totalCredits) && totalCredits > 0) {
         const balance = Math.max(0, totalCredits - (Number.isFinite(totalUsage) ? totalUsage : 0));
         const balancePct = Math.round((balance / totalCredits) * 100);
-        // Show the CURRENT BALANCE as the headline number — the user cares
-        // about what is left to spend, not how much was historically spent.
+        // Show the CURRENT BALANCE as the headline number, as an unlimited
+        // row (no total denominator) — the user cares only about what's left.
         quotas["Balance (USD)"] = {
           used: Math.round(balance * 100) / 100,
-          total: totalCredits,
-          remainingPercentage: balancePct,
-          unlimited: false,
+          total: 0,
+          remainingPercentage: 100,
+          unlimited: true,
         };
         if (balance <= 0) plan += " (Insufficient Balance)";
       }

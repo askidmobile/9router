@@ -94,14 +94,13 @@ export async function getDeepseekUsage(apiKey = null, proxyOptions = null) {
       // Credit pot: show full remaining against current balance; never set absolute
       // `remaining` — QuotaTable treats it as a 0–100 percentage.
       quotas[`Balance (${b.currency})`] = {
-        // used = current balance (what is left to spend), total = balance too
-        // so the bar shows 100% remaining — matching how the DeepSeek quota
-        // card already surfaces its live balance in the progress bar.
+        // used = current balance shown as an unlimited row (no denominator) —
+        // the number itself is what the user wants to see.
         used: total,
-        total,
-        remainingPercentage: total > 0 ? 100 : 0,
+        total: 0,
+        remainingPercentage: 100,
         resetAt: null,
-        unlimited: total > 0,
+        unlimited: true,
       };
     }
 
