@@ -222,6 +222,23 @@ export async function GET(request, { params }) {
     // Fetch usage from provider API
     let usage = await getUsageForProvider(connection, proxyOptions, { force });
 
+    // OpenRouter free-tier: replace the static daily-request row with the
+    // actual local counter (usageHistory is better than OmniRoute's in-memory
+    // tracker — survives restarts and counts exactly what we routed).
+    if (connection.provider === "openrouter" && usage?.quotas?.["Free requests/day"]) {
+      const todayStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate()));
+      const rows = await getUsageHistory({ provider: "openrouter", startDate: todayStart.toISOString() }).catch(() => []);
+      const used = rows.filter((r) => r.connectionId === connection.id).length;
+      const limit = usage.quotas["Free requests/day"].total || 50;
+      usage.quotas["Free requests/day"] = {
+        used,
+        total: limit,
+        unlimited: false,
+        remainingPercentage: limit > 0 ? Math.max(0, Math.round(((limit - used) / limit) * 100)) : 0,
+        resetAt: new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate() + 1)).toISOString(),
+      };
+    }
+
     // If provider returned an auth-expired message instead of throwing,
     // force-refresh token and retry once (OAuth only)
     if (isOAuth && isAuthExpiredMessage(usage) && connection.refreshToken) {
