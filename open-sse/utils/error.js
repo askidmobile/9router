@@ -85,6 +85,16 @@ export function extractResetsAtMs(response, message) {
     if (Number.isFinite(dateMs) && dateMs > Date.now()) return dateMs;
   }
 
+  // OpenRouter X-RateLimit-Reset header (epoch ms or s)
+  const rlReset = response?.headers?.get?.("x-ratelimit-reset");
+  if (rlReset) {
+    const n = Number(rlReset);
+    if (Number.isFinite(n) && n > 0) {
+      const ms = n > 10_000_000_000 ? n : n * 1000;
+      if (ms > Date.now()) return ms;
+    }
+  }
+
   return null;
 }
 

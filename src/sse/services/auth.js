@@ -241,7 +241,11 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   if (!shouldFallback) return { shouldFallback: false, cooldownMs: 0 };
 
   const reason = typeof errorText === "string" ? errorText.slice(0, 100) : "Provider error";
-  const lockUpdate = buildModelLockUpdate(githubResetAtMs ? null : model, cooldownMs);
+  // 402 (credits/quota exhausted) is account-wide — the failed model is not
+  // the culprit. Lock the whole connection (__all) so the router skips every
+  // model on it until the credits situation changes.
+  const lockModel = (status === 402 || githubResetAtMs) ? null : model;
+  const lockUpdate = buildModelLockUpdate(lockModel, cooldownMs);
 
   await updateProviderConnection(connectionId, {
     ...lockUpdate,
