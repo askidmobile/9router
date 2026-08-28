@@ -164,7 +164,7 @@ describe("Claude → Kiro (direct route)", () => {
     }
   );
 
-  it("keeps explicit Claude effort ahead of an injected OpenAI effort", () => {
+  it("keeps explicit reasoning_effort ahead of alternate Claude effort", () => {
     const out = C2K({
       output_config: { effort: "low" },
       reasoning_effort: "high",
@@ -172,7 +172,7 @@ describe("Claude → Kiro (direct route)", () => {
     }, null, "gpt-5.6-sol");
 
     expect(out.additionalModelRequestFields).toEqual({
-      reasoning: { effort: "low" },
+      reasoning: { effort: "high" },
     });
   });
 

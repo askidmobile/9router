@@ -200,6 +200,17 @@ describe("GrokCliExecutor", () => {
     expect(out.reasoning.effort).toBe("medium");
   });
 
+  it("prefers reasoning_effort over nested reasoning.effort", () => {
+    const out = executor.transformRequest("grok-4.5", {
+      model: "grok-4.5",
+      input: [{ type: "message", role: "user", content: "hi" }],
+      reasoning_effort: "high",
+      reasoning: { effort: "low", summary: "detailed" },
+    }, true, { connectionId: "c1" });
+
+    expect(out.reasoning).toEqual({ effort: "high", summary: "detailed" });
+  });
+
   it("normalizes Codex cross-provider tool and reasoning history", () => {
     const out = executor.transformRequest("grok-4.5", {
       model: "grok-4.5",

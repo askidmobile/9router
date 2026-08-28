@@ -71,6 +71,17 @@ describe("Codex fast tier and capacity handling", () => {
 });
 
 describe("Codex reasoning normalization", () => {
+  it("prefers reasoning_effort over nested reasoning.effort", () => {
+    const body = new CodexExecutor().transformRequest("gpt-5.6-sol", {
+      model: "gpt-5.6-sol",
+      input: "hi",
+      reasoning_effort: "high",
+      reasoning: { effort: "low", summary: "detailed" },
+    }, true, {});
+
+    expect(body.reasoning).toEqual({ effort: "high", summary: "detailed" });
+  });
+
   it.each([
     ["gpt-5.6-sol", "max", "max"],
     ["gpt-5.6-sol", "ultra", "ultra"],

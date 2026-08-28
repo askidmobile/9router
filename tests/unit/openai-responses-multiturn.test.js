@@ -11,6 +11,22 @@ import { GrokCliExecutor, _resetGrokCliTurnStore } from "../../open-sse/executor
 import { translateRequest } from "../../open-sse/translator/index.js";
 
 describe("openai ↔ responses multi-turn reasoning", () => {
+  it("reasoning_effort wins over nested reasoning.effort in both directions", () => {
+    const chat = openaiToOpenAIResponsesRequest("grok-4.5", {
+      messages: [{ role: "user", content: "hi" }],
+      reasoning_effort: "high",
+      reasoning: { effort: "low", summary: "detailed" },
+    }, true, null);
+    expect(chat.reasoning).toEqual({ effort: "high", summary: "auto" });
+
+    const responses = openaiResponsesToOpenAIRequest("grok-4.5", {
+      input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }],
+      reasoning_effort: "high",
+      reasoning: { effort: "low" },
+    }, true, null);
+    expect(responses.reasoning_effort).toBe("high");
+  });
+
   it("openai→responses re-emits reasoning item with summary + encrypted_content", () => {
     const body = {
       model: "grok-4.5",

@@ -34,6 +34,12 @@ const FORMAT_LEVELS = {
 
 const CODEX_GPT_5_6_LEVELS = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
 
+// Provider-specific wire enums. OpenRouter accepts literal max in addition to
+// OpenAI's normal xhigh ceiling.
+const PROVIDER_THINKING_LEVELS = {
+  openrouter: ["none", "minimal", "low", "medium", "high", "xhigh", "max"],
+};
+
 // Provider-format levels keyed by registry transport.thinkingFormat — used when
 // the provider overrides the model-native format (same precedence as
 // thinkingUnified.resolveFormat: provider > capability).
@@ -61,7 +67,7 @@ export function getThinkingLevels(provider, model) {
     (!entry.provider || entry.provider === provider) && matchPattern(entry.pattern, model)
   );
   const providerFmt = PROVIDERS.find((p) => p.id === provider)?.transport?.thinkingFormat;
-  let levels = hit?.levels || PROVIDER_FORMAT_LEVELS[providerFmt] || FORMAT_LEVELS[caps.thinkingFormat] || L.base;
+  let levels = hit?.levels || PROVIDER_THINKING_LEVELS[provider] || PROVIDER_FORMAT_LEVELS[providerFmt] || FORMAT_LEVELS[caps.thinkingFormat] || L.base;
   if (caps.thinkingCanDisable === false) levels = levels.filter((l) => l !== "none");
   return levels;
 }

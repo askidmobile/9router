@@ -443,12 +443,12 @@ export class CodexExecutor extends BaseExecutor {
       }
     }
 
-    // Priority: explicit reasoning.effort > reasoning_effort param > model suffix > default (medium)
+    // Priority: reasoning_effort > reasoning.effort > model suffix > default.
     if (!body.reasoning) {
       const effort = normalizeReasoningEffort(body.model, body.reasoning_effort || modelEffort || 'low');
       body.reasoning = { effort, summary: "auto" };
     } else {
-      body.reasoning.effort = normalizeReasoningEffort(body.model, body.reasoning.effort);
+      body.reasoning.effort = normalizeReasoningEffort(body.model, body.reasoning_effort || body.reasoning.effort);
       if (!body.reasoning.summary) body.reasoning.summary = "auto";
     }
     delete body.reasoning_effort;

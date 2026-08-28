@@ -84,7 +84,7 @@ export default function ProviderDetailPage() {
   const [bulkUpdatingProxy, setBulkUpdatingProxy] = useState(false);
   const [providerStrategy, setProviderStrategy] = useState(null);
   const [providerStickyLimit, setProviderStickyLimit] = useState("");
-  const [thinkingMode, setThinkingMode] = useState("auto");
+  const [thinkingMode, setThinkingMode] = useState("passthrough");
   const [autoPing, setAutoPing] = useState({ enabled: false, connections: {} });
   const [suggestedModels, setSuggestedModels] = useState([]);
   const [liveModels, setLiveModels] = useState([]);
@@ -186,7 +186,7 @@ export default function ProviderDetailPage() {
     : "API Key";
   // Resolve suffix "(level)" for a model when a thinking level is picked and the model supports it.
   const resolveThinkingSuffix = (modelId) => {
-    if (!thinkingMode || thinkingMode === "auto") return null;
+    if (!thinkingMode || thinkingMode === "passthrough") return null;
     const levels = getThinkingLevels(providerId, modelId);
     return levels && levels.includes(thinkingMode) ? thinkingMode : null;
   };
@@ -194,7 +194,7 @@ export default function ProviderDetailPage() {
   // Union of levels across this provider's reasoning models — drives the level picker options.
   // Include custom models too (e.g. manually added gpt-5.6-sol → max).
   const providerThinkingLevels = (() => {
-    const set = new Set();
+    const set = new Set(["passthrough"]);
     const seen = new Set();
     const addLevels = (modelId) => {
       if (!modelId || seen.has(modelId)) return;
@@ -209,7 +209,7 @@ export default function ProviderDetailPage() {
       if ((entry.kind || entry.type || "llm") !== "llm") continue;
       addLevels(entry.id);
     }
-    return set.size ? ["auto", ...[...set]] : null;
+    return set.size > 1 ? [...set] : null;
   })();
   const providerDisplayAlias = isCompatible
     ? (providerNode?.prefix || providerId)
@@ -358,7 +358,7 @@ export default function ProviderDetailPage() {
       setProviderStickyLimit(override.stickyRoundRobinLimit != null ? String(override.stickyRoundRobinLimit) : "1");
       // Load per-provider thinking config
       const thinkingCfg = (settingsData.providerThinking || {})[providerId] || {};
-      setThinkingMode(thinkingCfg.mode || "auto");
+      setThinkingMode(thinkingCfg.mode && thinkingCfg.mode !== "auto" ? thinkingCfg.mode : "passthrough");
       const autoPingSettingsKey = AUTO_PING_SETTINGS_KEYS[providerId];
       const apCfg = autoPingSettingsKey ? settingsData[autoPingSettingsKey] || {} : {};
       setAutoPing({ enabled: apCfg.enabled === true, connections: apCfg.connections || {} });
@@ -454,7 +454,7 @@ export default function ProviderDetailPage() {
       const settingsData = settingsRes.ok ? await settingsRes.json() : {};
       const current = settingsData.providerThinking || {};
       const updated = { ...current };
-      if (!mode || mode === "auto") {
+      if (!mode || mode === "passthrough") {
         delete updated[providerId];
       } else {
         updated[providerId] = { mode };
@@ -1676,11 +1676,15 @@ export default function ProviderDetailPage() {
               <select
                 value={thinkingMode}
                 onChange={(e) => handleThinkingModeChange(e.target.value)}
-                title="Appends (level) suffix to copied model names"
+                title="Client passthrough preserves request reasoning; server default applies only when the request has no reasoning control"
                 className="rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-primary focus:outline-none"
               >
                 {providerThinkingLevels.map((opt) => (
-                  <option key={opt} value={opt}>{`Thinking: ${opt.charAt(0).toUpperCase() + opt.slice(1)}`}</option>
+                  <option key={opt} value={opt}>
+                    {opt === "passthrough"
+                      ? "Reasoning: Client passthrough"
+                      : `Reasoning: Server default · ${opt.charAt(0).toUpperCase() + opt.slice(1)}`}
+                  </option>
                 ))}
               </select>
             )}

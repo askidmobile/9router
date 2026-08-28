@@ -472,7 +472,7 @@ export class GrokCliExecutor extends BaseExecutor {
     body.model = resolvedModel;
     this._currentModel = resolvedModel;
 
-    // Reasoning effort priority: explicit > reasoning_effort > model suffix > default high.
+    // Reasoning effort priority: reasoning_effort > reasoning.effort > model suffix > default.
     // grok-build and Composer reject reasoningEffort but still accept summary/encrypted continuity.
     const supportsReasoningEffort = supportsGrokCliReasoningEffort(resolvedModel);
     if (!body.reasoning || typeof body.reasoning !== "object") {
@@ -483,7 +483,7 @@ export class GrokCliExecutor extends BaseExecutor {
     } else {
       if (supportsReasoningEffort) {
         body.reasoning.effort = normalizeGrokCliEffort(
-          body.reasoning.effort || body.reasoning_effort || modelEffort,
+          body.reasoning_effort || body.reasoning.effort || modelEffort,
         );
       } else {
         delete body.reasoning.effort;

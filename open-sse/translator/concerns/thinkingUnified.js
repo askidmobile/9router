@@ -49,10 +49,13 @@ export function parseSuffix(model) {
 export function extractThinking(body) {
   if (!body || typeof body !== "object") return null;
 
-  // Claude output_config.effort (explicit) — priority over adaptive thinking
-  const oc = body.output_config?.effort;
-  if (typeof oc === "string" && oc) {
-    const e = oc.toLowerCase();
+  // OpenAI reasoning_effort is the explicit cross-provider control and wins
+  // when clients also send derived/native thinking fields.
+  const effort = body.reasoning_effort
+    ?? (typeof body.reasoning === "object" ? body.reasoning?.effort : null)
+    ?? body.output_config?.effort;
+  if (typeof effort === "string" && effort) {
+    const e = effort.toLowerCase();
     if (e === "none" || e === "off") return { mode: "none" };
     if (e === "auto") return { mode: "auto" };
     return { mode: "level", level: e };
@@ -67,15 +70,6 @@ export function extractThinking(body) {
       if (Number.isFinite(budget) && budget > 0) return { mode: "budget", budget };
       return { mode: "auto" };
     }
-  }
-
-  // OpenAI chat / Responses shape
-  const effort = body.reasoning_effort ?? (typeof body.reasoning === "object" ? body.reasoning?.effort : null);
-  if (typeof effort === "string" && effort) {
-    const e = effort.toLowerCase();
-    if (e === "none" || e === "off") return { mode: "none" };
-    if (e === "auto") return { mode: "auto" };
-    return { mode: "level", level: e };
   }
 
   // Gemini shape (top-level, generationConfig, or request envelope)
@@ -99,6 +93,15 @@ export function extractThinking(body) {
   }
 
   return null;
+}
+
+// Apply a server-side provider default only when the client sent no reasoning
+// control. Passthrough is the default; explicit client intent always wins.
+export function applyProviderThinking(body, mode) {
+  if (!body || typeof body !== "object" || !mode || mode === "auto" || mode === "passthrough" || extractThinking(body)) return body;
+  if (mode === "on") return { ...body, thinking: { type: "enabled", budget_tokens: 10000 } };
+  if (mode === "off") return { ...body, thinking: { type: "disabled" } };
+  return { ...body, reasoning_effort: mode };
 }
 
 // Capture thinking intent from a body. Alias of extractThinking, named for clarity

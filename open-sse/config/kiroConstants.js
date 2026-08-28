@@ -181,9 +181,9 @@ export function resolveKiroThinkingBudget(body, headers, model) {
 
 export function extractKiroEffortLevel(body) {
   const effort =
-    body?.output_config?.effort ??
     body?.reasoning_effort ??
-    (typeof body?.reasoning === "object" ? body.reasoning?.effort : null);
+    (typeof body?.reasoning === "object" ? body.reasoning?.effort : null) ??
+    body?.output_config?.effort;
   if (typeof effort !== "string") return null;
   const normalized = effort.toLowerCase();
   if (normalized === "none" || normalized === "off" || normalized === "disabled") return null;
@@ -194,9 +194,9 @@ export function extractKiroEffortLevel(body) {
 
 function extractKiroGptEffortLevel(body) {
   const effort =
-    body?.output_config?.effort ??
     body?.reasoning_effort ??
-    (typeof body?.reasoning === "object" ? body.reasoning?.effort : null);
+    (typeof body?.reasoning === "object" ? body.reasoning?.effort : null) ??
+    body?.output_config?.effort;
   if (typeof effort !== "string") return null;
   const normalized = effort.toLowerCase();
   if (normalized === "max") return "xhigh";

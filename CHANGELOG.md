@@ -23,6 +23,7 @@
   tabs tripping 429; manual refresh (↻) sends `force=1` to bypass the cache
 
 ## Fixes
+- **Reasoning**: make explicit `reasoning_effort` win over alternate thinking fields across translators and Responses executors; provider controls now distinguish client passthrough from server defaults, and OpenRouter preserves its valid literal `max` effort
 - **Docker**: ship `sql.js` in the image so the pure-JS DB fallback can start —
   file tracing carried the package's JS without `dist/sql-wasm.wasm`, so a
   container with no native driver aborted with ENOENT and never got a database

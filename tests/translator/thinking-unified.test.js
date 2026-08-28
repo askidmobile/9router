@@ -4,6 +4,7 @@ import { describe, it, expect } from "vitest";
 import {
   parseSuffix,
   extractThinking,
+  applyProviderThinking,
   applyThinking,
 } from "../../open-sse/translator/concerns/thinkingUnified.js";
 import { extractReasoningText } from "../../open-sse/translator/concerns/reasoning.js";
@@ -46,6 +47,20 @@ describe("extractThinking", () => {
   it("openai reasoning_effort", () => {
     expect(extractThinking({ reasoning_effort: "high" })).toEqual({ mode: "level", level: "high" });
   });
+  it("reasoning_effort wins over alternate thinking fields", () => {
+    expect(extractThinking({
+      reasoning_effort: "max",
+      reasoning: { effort: "low" },
+      output_config: { effort: "medium" },
+      thinking: { type: "enabled", clear_thinking: false },
+    })).toEqual({ mode: "level", level: "max" });
+  });
+  it("OpenRouter preserves literal max reasoning_effort", () => {
+    expect(apply("openai", "z-ai/glm-5.3-flash", {
+      reasoning_effort: "max",
+      thinking: { type: "enabled", clear_thinking: false },
+    }, "openrouter").reasoning_effort).toBe("max");
+  });
   it("responses reasoning.effort none", () => {
     expect(extractThinking({ reasoning: { effort: "none" } })).toEqual({ mode: "none" });
   });
@@ -57,6 +72,21 @@ describe("extractThinking", () => {
   });
   it("no intent → null", () => {
     expect(extractThinking({ messages: [] })).toBeNull();
+  });
+});
+
+describe("applyProviderThinking", () => {
+  it("keeps explicit client reasoning in server-controlled mode", () => {
+    const body = {
+      reasoning_effort: "max",
+      thinking: { type: "enabled", clear_thinking: false },
+    };
+    expect(applyProviderThinking(body, "low")).toBe(body);
+    expect(applyProviderThinking(body, "passthrough")).toBe(body);
+  });
+
+  it("injects server effort only when client intent is absent", () => {
+    expect(applyProviderThinking({ messages: [] }, "high").reasoning_effort).toBe("high");
   });
 });
 
