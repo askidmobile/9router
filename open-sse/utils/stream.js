@@ -61,6 +61,8 @@ export function createSSEStream(options = {}) {
   const state = mode === STREAM_MODE.TRANSLATE
     ? { ...initState(sourceFormat), provider, toolNameMap, customToolNames: new Set(customToolNames || []), model }
     : null;
+  // ponytail: flatten only this route's reasoning; remove when OpenRouter/Z.AI stops interleaving newline tokens between words.
+  const flattenReasoningNewlines = provider === "openrouter" && /^z-ai\/glm-5\.3-flash(?:$|[-:])/i.test(model || "");
 
   let totalContentLength = 0;
   let accumulatedContent = "";
@@ -169,6 +171,16 @@ export function createSSEStream(options = {}) {
                 delta.reasoning_content = delta.reasoning;
                 delete delta.reasoning;
                 fieldsInjected = true; // force output from the mutated parsed
+              }
+              if (flattenReasoningNewlines && typeof delta?.reasoning_content === "string" && /[\r\n]/.test(delta.reasoning_content)) {
+                const rawReasoning = delta.reasoning_content;
+                let normalized = rawReasoning.replace(/[ \t]*[\r\n]+[ \t]*/g, " ");
+                if ((!accumulatedThinking || /\s$/.test(accumulatedThinking)) && /^\s/.test(normalized)) normalized = normalized.replace(/^\s+/, "");
+                delta.reasoning_content = normalized;
+                for (const detail of delta.reasoning_details || []) {
+                  if (detail?.type === "reasoning.text" && detail.text === rawReasoning) detail.text = normalized;
+                }
+                fieldsInjected = true;
               }
               const content = delta?.content;
               const reasoning = delta?.reasoning_content;
