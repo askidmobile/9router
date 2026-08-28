@@ -185,6 +185,29 @@ function delay(ms, signal) {
   });
 }
 
+/** Runtime model config handed to session/create: our provider points the
+ * app-server at the Coding Plan endpoint and resolves the key from its env. */
+export function buildZcodeRuntimeModel(modelId) {
+  return {
+    revision: "1",
+    generatedAt: Date.now(),
+    model: { providerId: DEFAULT_PROVIDER_ID, modelId: modelId || ZCODE_REGISTRY.models[0].id },
+    provider: {
+      providerId: DEFAULT_PROVIDER_ID,
+      kind: "openai-compatible",
+      apiFormat: "openai-chat-completions",
+      label: "Z.AI Coding Plan (9router)",
+      baseURL: process.env.ZCODE_API_BASE_URL?.trim() || ZAI_CODING_BASE_URL,
+      apiKey: { source: "env", name: "ZHIPU_API_KEY" },
+      models: ZCODE_REGISTRY.models.map((m) => ({
+        modelId: m.id,
+        label: m.name,
+        ...(m.contextLength ? { contextWindow: m.contextLength } : {}),
+      })),
+    },
+  };
+}
+
 function estimateTokens(text) {
   return Math.max(1, Math.ceil(text.length / 4));
 }
@@ -289,6 +312,9 @@ export class ZcodeExecutor extends BaseExecutor {
 
   async runTurn({ bin, apiKey, model, prompt, signal, log }) {
     const cwd = workspaceDir();
+    // Upstream turn failures carry their reason in telemetry events, e.g.
+    // "Invalid API Key or Public Key" — surface it instead of a bare status.
+    let lastTurnError = "";
     const client = new ZcodeAppServerClient({
       command: bin.command,
       args: bin.args,
@@ -296,6 +322,12 @@ export class ZcodeExecutor extends BaseExecutor {
       env: apiKey ? { ZHIPU_API_KEY: apiKey } : {},
       startupTimeoutMs: envInt("ZCODE_STARTUP_TIMEOUT_MS", 10_000),
       requestTimeoutMs: envInt("ZCODE_RPC_TIMEOUT_MS", 30_000),
+      onNotification: (msg) => {
+        const params = msg?.params;
+        if (msg?.method === "v4/telemetry/event" && params?.kind === "turn.terminal" && params?.status === "failed") {
+          lastTurnError = [params.errorCode, params.errorMessage].filter(Boolean).join(": ");
+        }
+      },
     });
 
     let sessionId;
@@ -304,24 +336,7 @@ export class ZcodeExecutor extends BaseExecutor {
       await client.start();
       if (signal?.aborted) throw new ZcodeProtocolError("ZCode request aborted");
 
-      const runtimeModel = {
-        revision: "1",
-        generatedAt: Date.now(),
-        model: { providerId: DEFAULT_PROVIDER_ID, modelId: model },
-        provider: {
-          providerId: DEFAULT_PROVIDER_ID,
-          kind: "openai-compatible",
-          apiFormat: "openai-chat-completions",
-          label: "Z.AI Coding Plan (9router)",
-          baseURL: process.env.ZCODE_API_BASE_URL?.trim() || ZAI_CODING_BASE_URL,
-          apiKey: { source: "env", name: "ZHIPU_API_KEY" },
-          models: ZCODE_REGISTRY.models.map((m) => ({
-            modelId: m.id,
-            label: m.name,
-            ...(m.contextLength ? { contextWindow: m.contextLength } : {}),
-          })),
-        },
-      };
+      const runtimeModel = buildZcodeRuntimeModel(model);
 
       const created = await client.call("session/create", {
         workspace: { workspacePath: cwd, workspaceIdentity: cwd, workspaceKey: cwd },
@@ -345,7 +360,9 @@ export class ZcodeExecutor extends BaseExecutor {
         const status = state?.session?.status;
         text = extractAssistantText(state);
         if (text && (status === undefined || TERMINAL_STATUSES.has(status))) return text;
-        if (status === "error") throw new ZcodeProtocolError("turn failed upstream (model returned an error status)");
+        if (status === "error") {
+          throw new ZcodeProtocolError(lastTurnError || "turn failed upstream (model returned an error status)");
+        }
         await delay(pollIntervalMs, signal);
       }
       turnTimedOut = true;
