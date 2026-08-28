@@ -1,4 +1,4 @@
-export default {
+const zcodeProvider = {
   id: "zcode",
   alias: "zc",
   uiAlias: "zc",
@@ -31,3 +31,5 @@ export default {
   ],
   serviceKinds: ["llm"],
 };
+
+export default zcodeProvider;

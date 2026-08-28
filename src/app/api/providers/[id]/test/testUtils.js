@@ -4,6 +4,7 @@ import { testProxyUrl } from "@/lib/network/proxyTest";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
 import { getDefaultModel } from "open-sse/config/providerModels.js";
 import { resolveOllamaLocalHost, PROVIDERS } from "open-sse/config/providers.js";
+import { probeZcodeConnection } from "open-sse/executors/zcodeProbe.js";
 import {
   refreshProviderCredentials,
   shouldRefreshCredentials,
@@ -689,6 +690,12 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
         const host = resolveOllamaLocalHost(connection);
         const res = await fetch(`${host}/api/tags`);
         return { valid: res.ok, error: res.ok ? null : `Ollama not reachable at ${host}` };
+      }
+      case "zcode": {
+        // Spawn the local ZCode app-server and verify it accepts a session
+        // create with the saved Coding Plan key. No tokens are spent: the
+        // session is closed immediately.
+        return await probeZcodeConnection(connection?.apiKey);
       }
       case "deepgram": {
         const res = await fetchWithConnectionProxy("https://api.deepgram.com/v1/projects", { headers: { Authorization: `Token ${connection.apiKey}` } }, effectiveProxy);

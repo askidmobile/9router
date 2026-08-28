@@ -65,6 +65,9 @@ export const THINKING_CONFIG = {
 export const OAUTH_PROVIDERS = byCategory("oauth");
 export const APIKEY_PROVIDERS = byCategory("apikey");
 
+// CLI-tool providers — wrap a locally installed coding CLI (first: ZCode CLI).
+export const CLI_PROVIDERS = byCategory("cli");
+
 // Web Cookie Providers (use browser session cookie instead of API key)
 export const WEB_COOKIE_PROVIDERS = byCategory("webCookie");
 
@@ -98,7 +101,7 @@ export function isCustomEmbeddingProvider(providerId) {
 }
 
 // All providers (combined)
-export const AI_PROVIDERS = { ...FREE_PROVIDERS, ...FREE_TIER_PROVIDERS, ...OAUTH_PROVIDERS, ...APIKEY_PROVIDERS, ...WEB_COOKIE_PROVIDERS };
+export const AI_PROVIDERS = { ...FREE_PROVIDERS, ...FREE_TIER_PROVIDERS, ...OAUTH_PROVIDERS, ...APIKEY_PROVIDERS, ...WEB_COOKIE_PROVIDERS, ...CLI_PROVIDERS };
 
 // Auth methods
 export const AUTH_METHODS = {
