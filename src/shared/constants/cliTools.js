@@ -400,6 +400,36 @@ devin auth login
 devin --version`,
     },
   },
+  zcode: {
+    id: "zcode",
+    name: "ZCode CLI",
+    image: "/providers/zai.svg",
+    color: "#3F74FB",
+    description: "Z.ai ZCode CLI — local binary whose app-server backs the ZCode CLI provider (Coding Plan quotas)",
+    configType: "guide",
+    installUrl: "https://z.ai",
+    notes: [
+      { type: "info", text: "This is a local dependency, not a routed CLI. The ZCode CLI provider spawns `zcode app-server` over a line-JSON stdio protocol and turns each /v1 request into one coding turn." },
+      { type: "info", text: "Model traffic authenticates with your Z.ai Coding Plan API key (console.z.ai), which is passed to the local app-server via the ZHIPU_API_KEY env var only — it is never logged or sent anywhere else." },
+      { type: "warning", text: "Verified against ZCode CLI 0.16.5. The app-server protocol is internal to Z.ai and may change in newer releases — the codec lives in open-sse/shared/zcode/protocol.js for quick patching." },
+      { type: "warning", text: "Text-only: client tool calls are not bridged into ZCode agent tools. Point chat-style clients at zcode models; agentic clients (Cline/Roo) should use a plain model provider instead." },
+    ],
+    guideSteps: [
+      { step: 1, title: "Install ZCode CLI", desc: "Install the Z.ai ZCode CLI (macOS app ships it at /Applications/ZCode.app/Contents/Resources/glm/zcode.cjs) or set ZCODE_BIN.", docsUrl: "https://z.ai" },
+      { step: 2, title: "Get a Coding Plan API key", desc: "Create a key at console.z.ai — Coding Plan keys bill against plan quotas, not pay-as-you-go." },
+      { step: 3, title: "Add the provider", desc: "Providers → Add provider → ZCode CLI (under API keys), paste the key, run Test. Models appear as zc/glm-5.3-flash etc." },
+    ],
+    codeBlock: {
+      language: "bash",
+      code: `# Verify the local CLI (any install works; ZCODE_BIN overrides discovery)
+node /Applications/ZCode.app/Contents/Resources/glm/zcode.cjs --version
+
+# Optional env overrides
+# ZCODE_BIN=/path/to/zcode.cjs
+# ZCODE_MAX_CONCURRENT=2
+# ZCODE_TURN_TIMEOUT_MS=120000`,
+    },
+  },
   opendesign: {
     id: "opendesign",
     name: "OpenDesign",

@@ -11,7 +11,7 @@ import {
 } from "@/shared/components";
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import { getProviderIconSrc } from "@/shared/utils/providerIcon";
-import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, CLI_PROVIDERS } from "@/shared/constants/config";
+import { OAUTH_PROVIDERS, APIKEY_PROVIDERS } from "@/shared/constants/config";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
 import {
   FREE_PROVIDERS,
@@ -355,15 +355,7 @@ export default function ProvidersPage() {
       : apikeyEntries.slice(0, APIKEY_INITIAL_VISIBLE);
   const hiddenApikeyCount = apikeyEntries.length - APIKEY_INITIAL_VISIBLE;
 
-  // CLI providers (locally installed coding CLIs, e.g. ZCode CLI): apikey-auth.
-  const cliEntries = Object.entries(CLI_PROVIDERS)
-    .filter(([, info]) => !info.hidden && matchSearch(info.name))
-    .sort(([ka, a], [kb, b]) => {
-      const ca = getProviderStats(ka, "apikey").total > 0 ? 0 : 1;
-      const cb = getProviderStats(kb, "apikey").total > 0 ? 0 : 1;
-      if (ca !== cb) return ca - cb;
-      return (a.name || "").localeCompare(b.name || "");
-    });
+
 
   if (loading) {
     return (
@@ -378,7 +370,6 @@ export default function ProvidersPage() {
     oauthEntries.length > 0 ||
     freeEntries.length > 0 ||
     freeTierEntries.length > 0 ||
-    cliEntries.length > 0 ||
     apikeyEntries.length > 0 ||
     compatibleProviders.length > 0 ||
     anthropicCompatibleProviders.length > 0;
@@ -489,29 +480,6 @@ export default function ProvidersPage() {
               />
             );
           })}
-        </div>
-      </div>
-      )}
-
-      {/* CLI Providers — locally installed coding CLIs */}
-      {cliEntries.length > 0 && (
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2 leading-tight">
-            CLI Providers
-          </h2>
-        </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
-          {cliEntries.map(([key, info]) => (
-            <ApiKeyProviderCard
-              key={key}
-              providerId={key}
-              provider={info}
-              stats={getProviderStats(key, "apikey")}
-              authType="apikey"
-              onToggle={(active) => handleToggleProvider(key, ["apikey", "api_key"], active)}
-            />
-          ))}
         </div>
       </div>
       )}

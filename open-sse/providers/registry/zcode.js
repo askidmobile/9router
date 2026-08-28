@@ -13,6 +13,10 @@ const zcodeProvider = {
       text: "Runs the local ZCode CLI app-server (`zcode app-server`). Needs a Z.ai Coding Plan API key and the ZCode CLI installed; model traffic uses Coding Plan quotas.",
     },
   },
+  // Hidden from the providers grid (devin-cli pattern): ZCode CLI is presented
+  // as a CLI Tool (Dashboard → CLI Tools → ZCode CLI); connections are added
+  // via Providers → Add provider → ZCode CLI.
+  hidden: true,
   category: "cli",
   authType: "apikey",
   authModes: ["apikey"],

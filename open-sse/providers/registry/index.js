@@ -100,7 +100,7 @@ import p97 from "./xiaomi-tokenplan.js";
 import p98 from "./youcom.js";
 import p123 from "./zai.js";
 import p124 from "./zai-search.js";
-import p125 from "./zcode.js";
+import p125 from "./zcode.js"; // zcode — hidden, CLI-tool companion for the local ZCode CLI
 import p99 from "./alims-intl.js";
 import p100 from "./codebuddy-intl.js";
 // Temporarily hidden — no tool calling support (trae SOLO agent / windsurf gRPC skip ToolCallChunk).
@@ -250,5 +250,5 @@ export default [
   p119,
   p120,
   p121,
-  p125,
+  // p125, // zcode — hidden, spawns local ZCode CLI app-server (see CLI Tools → ZCode CLI)
 ];
