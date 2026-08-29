@@ -4,6 +4,9 @@ const isNode = typeof process !== "undefined" && process.versions?.node && typeo
 // Check if logging is enabled via environment variable (default: false)
 const LOGGING_ENABLED = typeof process !== "undefined" && process.env?.ENABLE_REQUEST_LOGS === 'true';
 
+// ponytail: capped at REQUEST_LOG_MAX_SESSIONS sessions (default 500). Bump when debugging needs deeper history; remove the cap only if logs live on a volume with its own rotation.
+const MAX_SESSIONS = Math.max(10, parseInt(process.env?.REQUEST_LOG_MAX_SESSIONS, 10) || 500);
+
 let fs = null;
 let path = null;
 let LOGS_DIR = null;
@@ -49,6 +52,7 @@ async function createLogSession(sourceFormat, targetFormat, model) {
     const sessionPath = path.join(LOGS_DIR, folderName);
     
     fs.mkdirSync(sessionPath, { recursive: true });
+    pruneOldSessions();
     
     return sessionPath;
   } catch (err) {
@@ -66,6 +70,28 @@ function writeJsonFile(sessionPath, filename, data) {
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
   } catch (err) {
     console.log(`[LOG] Failed to write ${filename}:`, err.message);
+  }
+}
+
+// Fail-open rotation: drop oldest session dirs when count exceeds MAX_SESSIONS.
+// Any error returns null and leaves the folder untouched — never throws.
+function pruneOldSessions() {
+  if (!fs || !LOGS_DIR) return;
+  try {
+    const entries = fs.readdirSync(LOGS_DIR, { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => {
+        let mtime = 0;
+        try { mtime = fs.statSync(path.join(LOGS_DIR, e.name)).mtimeMs; } catch {}
+        return { name: e.name, mtime };
+      })
+      .sort((a, b) => a.mtime - b.mtime);
+    const excess = entries.length - MAX_SESSIONS;
+    for (let i = 0; i < excess; i++) {
+      fs.rmSync(path.join(LOGS_DIR, entries[i].name), { recursive: true, force: true });
+    }
+  } catch {
+    // Rotation is best-effort; never block request logging.
   }
 }
 

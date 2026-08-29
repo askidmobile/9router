@@ -1385,6 +1385,50 @@ exports[`GOLDEN buildHeaders (default executor providers) > xiaomi-mimo → head
 }
 `;
 
+exports[`GOLDEN buildHeaders (default executor providers) > zai → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Content-Type": "application/json",
+    "anthropic-beta": "output-128k-2025-02-19,prompt-caching-2024-07-31",
+    "anthropic-version": "2023-06-01",
+    "x-api-key": "<CRED>",
+  },
+  "nonStream": {
+    "Content-Type": "application/json",
+    "anthropic-beta": "output-128k-2025-02-19,prompt-caching-2024-07-31",
+    "anthropic-version": "2023-06-01",
+    "x-api-key": "<CRED>",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Content-Type": "application/json",
+    "anthropic-beta": "output-128k-2025-02-19,prompt-caching-2024-07-31",
+    "anthropic-version": "2023-06-01",
+    "x-api-key": "<CRED>",
+  },
+}
+`;
+
+exports[`GOLDEN buildHeaders (default executor providers) > zcode → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
 exports[`GOLDEN buildHeaders (default executor providers) > zed → headers (apiKey / oauth) 1`] = `
 {
   "apiKey": {
@@ -1838,6 +1882,20 @@ exports[`GOLDEN buildUrl (default executor providers) > xiaomi-mimo → url (str
 {
   "nonStream": "https://api.xiaomimimo.com/v1/chat/completions",
   "stream": "https://api.xiaomimimo.com/v1/chat/completions",
+}
+`;
+
+exports[`GOLDEN buildUrl (default executor providers) > zai → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://api.z.ai/api/anthropic/v1/messages?beta=true",
+  "stream": "https://api.z.ai/api/anthropic/v1/messages?beta=true",
+}
+`;
+
+exports[`GOLDEN buildUrl (default executor providers) > zcode → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "zcode://app-server/stdio",
+  "stream": "zcode://app-server/stdio",
 }
 `;
 
