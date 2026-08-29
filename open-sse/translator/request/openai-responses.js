@@ -175,10 +175,16 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   // explicit `name` field and cannot be represented as Chat Completions function declarations.
   // Filter them out to avoid sending nameless functionDeclarations to downstream providers
   // such as Gemini, which strictly validates function names.
-  const responseTools = [
+  // Codex ≥0.151 ships tools inside the input as `additional_tools` items whose
+  // entries are namespace wrappers ({type:"namespace", name:"functions", tools:[...]}).
+  // Unwrap namespaces to the real tool declarations before mapping them to Chat format.
+  const flattenToolList = (list) => (list ?? []).flatMap((t) =>
+    t?.type === "namespace" && Array.isArray(t.tools) ? flattenToolList(t.tools) : [t]
+  );
+  const responseTools = flattenToolList([
     ...(Array.isArray(body.tools) ? body.tools : []),
     ...additionalTools,
-  ];
+  ]);
   if (responseTools.length > 0) {
     result.tools = responseTools
       .map(tool => {

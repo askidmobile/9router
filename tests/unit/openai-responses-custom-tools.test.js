@@ -43,6 +43,40 @@ describe("Codex Responses Lite custom tools → OpenAI Chat", () => {
     expect(out.messages.some((message) => message.role === "developer")).toBe(false);
   });
 
+  it("unwraps codex 0.151 namespace-wrapped additional_tools into real tool declarations", () => {
+    // Real payload from codex-tui/0.151.0: tools arrive as namespace wrappers
+    // ({type:"namespace", name:"functions", tools:[...]}) inside the input items.
+    const out = openaiResponsesToOpenAIRequest("Coding", {
+      input: [
+        {
+          type: "additional_tools",
+          role: "developer",
+          tools: [
+            {
+              type: "namespace",
+              name: "functions",
+              description: "",
+              tools: [EXEC_TOOL, { type: "function", name: "wait", description: "Wait", parameters: { type: "object", properties: {} }, strict: false }],
+            },
+            {
+              type: "namespace",
+              name: "collaboration",
+              description: "Tools for spawning and managing sub-agents.",
+              tools: [{ type: "function", name: "spawn_agent", description: "Spawn", parameters: { type: "object", properties: {} }, strict: false }],
+            },
+          ],
+        },
+        { type: "message", role: "user", content: [{ type: "input_text", text: "List files" }] },
+      ],
+    }, true, null);
+
+    const names = out.tools.map((tool) => tool.function.name);
+    expect(names).toEqual(["exec", "wait", "spawn_agent"]);
+    expect(out._customToolNames).toEqual(["exec"]);
+    expect(names).not.toContain("functions");
+    expect(names).not.toContain("collaboration");
+  });
+
   it("translates custom tool call/output history into Chat assistant/tool messages", () => {
     const program = "const result = await tools.shell({command: 'pwd'});\nreturn result;";
     const out = openaiResponsesToOpenAIRequest("cx/gpt-5.6-sol", {
