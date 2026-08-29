@@ -171,10 +171,13 @@ describe("openaiToClaudeRequest", () => {
 describe("openaiToClaudeResponse", () => {
   it("omits empty Read pages tool argument before emitting Claude input deltas", () => {
     const state = { toolCalls: new Map() };
+    // Tool args are buffered and sanitized at finish, so the delta only
+    // emits once the terminal chunk with finish_reason arrives.
     const chunk = {
       id: "chatcmpl-test",
       model: "gpt-test",
       choices: [{
+        finish_reason: "tool_calls",
         delta: {
           tool_calls: [{
             index: 0,

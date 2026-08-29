@@ -58,7 +58,7 @@ describe("GitHub monthly usage exhaustion", () => {
     }
   });
 
-  it("keeps unrelated GitHub 402 errors model-scoped", async () => {
+  it("GitHub 402 locks the whole connection — credits are account-wide", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-04T19:30:00.000Z"));
 
@@ -71,14 +71,16 @@ describe("GitHub monthly usage exhaustion", () => {
         "claude-fable-5",
       );
 
+      // 402 (credits/quota exhausted) is account-wide — the failed model is
+      // not the culprit, so every model on the connection locks until reset.
       expect(dbMocks.updateProviderConnection).toHaveBeenCalledWith(
         "github-a",
         expect.objectContaining({
-          "modelLock_claude-fable-5": "2026-08-04T19:32:00.000Z",
+          "modelLock___all": "2026-08-04T19:32:00.000Z",
         }),
       );
       expect(dbMocks.updateProviderConnection.mock.calls[0][1])
-        .not.toHaveProperty("modelLock___all");
+        .not.toHaveProperty("modelLock_claude-fable-5");
     } finally {
       vi.useRealTimers();
     }

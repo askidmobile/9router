@@ -43,7 +43,12 @@ async function chatWith(jwt, ua) {
   return proxyAwareFetch(CHAT_URL, { method: "POST", headers, body: JSON.stringify(body) });
 }
 
-describe("MiMo Free bootstrap (live)", () => {
+// Live gate: as of 2026-08-29 xiaomimimo.com rejects chat even with a Chrome
+// UA + fresh bootstrap JWT ("403 illegal_access"), so the old repro of #1933
+// no longer passes against the real service. Enable explicitly when probing.
+const liveDescribe = process.env.RUN_LIVE_TESTS === "1" ? describe : describe.skip;
+
+liveDescribe("MiMo Free bootstrap (live)", () => {
   it("bootstrap returns 200 with JWT", async () => {
     const { status, jwt } = await bootstrapWith(CHROME_UA);
     expect(status).toBe(200);
@@ -51,7 +56,7 @@ describe("MiMo Free bootstrap (live)", () => {
   });
 });
 
-describe("MiMo Free anti-abuse gate (live)", () => {
+liveDescribe("MiMo Free anti-abuse gate (live)", () => {
   it("chat WITH Chrome User-Agent → 200", async () => {
     const { jwt } = await bootstrapWith(CHROME_UA);
     const r = await chatWith(jwt, CHROME_UA);

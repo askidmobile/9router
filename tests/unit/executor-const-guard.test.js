@@ -39,9 +39,12 @@ describe("provider baseUrl const (full path, no trailing slash)", () => {
   });
 });
 
-describe("antigravity retry (intentional change: 429=6, 503=3)", () => {
-  it("429 attempts = 6", () => {
-    expect(antigravity.transport.retry["429"].attempts).toBe(6);
+// Upstream normalized all retry attempts to 3 in 639f1204 ("retry transient
+// upstream failures"); quota-aware routing (1a3db1ef) handles 429s by
+// skipping to the next account instead of brute-force retries.
+describe("antigravity retry (uniform attempts=3)", () => {
+  it("429 attempts = 3", () => {
+    expect(antigravity.transport.retry["429"].attempts).toBe(3);
   });
   it("503 attempts = 3", () => {
     expect(antigravity.transport.retry["503"].attempts).toBe(3);

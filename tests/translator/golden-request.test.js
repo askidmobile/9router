@@ -31,6 +31,7 @@ function baseBody() {
 function clean(body) {
   const s = JSON.stringify(body, (k, v) => {
     if (k === "_toolNameMap" || k === "conversationId") return undefined;
+    if (k === "agentContinuationId") return "<UUID>";
     return v;
   }).replace(/Current time is [^"\\]+/g, "Current time is <TS>");
   return JSON.parse(s);

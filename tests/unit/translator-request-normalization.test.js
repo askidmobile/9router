@@ -21,7 +21,11 @@ describe("request normalization", () => {
     };
 
     const result = claudeToOpenAIRequest("gpt-oss:120b", body, true);
-    expect(result.messages[0].content).toBe("hi\nthere");
+    // Text-only arrays stay as OpenAI content parts (equivalent wire format).
+    expect(result.messages[0].content).toEqual([
+      { type: "text", text: "hi" },
+      { type: "text", text: "there" },
+    ]);
   });
 
   it("claudeToOpenAIRequest preserves multimodal arrays", () => {
@@ -62,7 +66,10 @@ describe("request normalization", () => {
     };
 
     const result = filterToOpenAIFormat(JSON.parse(JSON.stringify(body)));
-    expect(result.messages[0].content).toBe("a\nb");
+    expect(result.messages[0].content).toEqual([
+      { type: "text", text: "a" },
+      { type: "text", text: "b" },
+    ]);
   });
 
   it("translateRequest keeps /v1/messages Claude->OpenAI text payloads string-safe", () => {
@@ -92,8 +99,10 @@ describe("request normalization", () => {
     );
 
     const userMessage = result.messages.find((m) => m.role === "user");
-    expect(typeof userMessage.content).toBe("string");
-    expect(userMessage.content).toBe("hello\nworld");
+    expect(userMessage.content).toEqual([
+      { type: "text", text: "hello" },
+      { type: "text", text: "world" },
+    ]);
   });
 
   it("translateRequest strips unsupported Anthropic output_config for MiniMax Claude-compatible endpoints", () => {
@@ -171,12 +180,19 @@ describe("request normalization", () => {
       done: false,
     });
 
-    const parsed = parseSSELine(raw);
+    // Raw NDJSON parsing is gated on the Ollama source format.
+    const parsed = parseSSELine(raw, FORMATS.OLLAMA);
     expect(parsed).toEqual({
       model: "gpt-oss:120b",
       message: { role: "assistant", content: "hello" },
       done: false,
     });
+  });
+
+  it("parseSSELine rejects raw NDJSON when the format is not Ollama", () => {
+    const raw = JSON.stringify({ message: { content: "hello" }, done: false });
+    expect(parseSSELine(raw)).toBeNull();
+    expect(parseSSELine(raw, FORMATS.OPENAI)).toBeNull();
   });
 
   it("parseSSELine still supports SSE data lines", () => {

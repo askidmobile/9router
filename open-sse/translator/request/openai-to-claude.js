@@ -1,6 +1,7 @@
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
 import { CLAUDE_SYSTEM_PROMPT } from "../../config/appConstants.js";
+import { DEFAULT_THINKING_CLAUDE_SIGNATURE } from "../../config/defaultThinkingSignature.js";
 import { adjustMaxTokens } from "../formats/maxTokens.js";
 import { safeParseJSON } from "../concerns/json.js";
 import { parseDataUri } from "../concerns/image.js";
@@ -253,6 +254,17 @@ function getContentBlocksFromMessage(msg, toolNameMap = new Map()) {
       }
     }
   } else if (msg.role === ROLE.ASSISTANT) {
+    // OpenAI-history clients (GLM, DeepSeek, Qwen…) carry prior reasoning in
+    // `reasoning_content`. Map it to a Claude thinking block so the context is
+    // not silently dropped. The default signature keeps prepareClaudeRequest's
+    // foreign-signature sanitizer from stripping the block.
+    if (typeof msg.reasoning_content === "string" && msg.reasoning_content) {
+      blocks.push({
+        type: CLAUDE_BLOCK.THINKING,
+        thinking: msg.reasoning_content,
+        signature: DEFAULT_THINKING_CLAUDE_SIGNATURE,
+      });
+    }
     if (Array.isArray(msg.content)) {
       for (const part of msg.content) {
         if (part.type === OPENAI_BLOCK.TEXT && part.text) {
