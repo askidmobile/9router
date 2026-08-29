@@ -65,15 +65,16 @@ describe("GLM usage parsing", () => {
     });
 
     expect(usage.plan).toBe("Lite");
-    expect(usage.quotas["5-Hour Limit"]).toBeDefined();
-    expect(usage.quotas["5-Hour Limit"].used).toBe(100);
-    expect(usage.quotas["Monthly Limit"]).toBeDefined();
-    expect(usage.quotas["Monthly Limit"].used).toBe(20);
+    // upstream glm.js parser keys quotas by unit: 3 → "Session (5h)", 6 → "Weekly (7d)"
+    expect(usage.quotas["Session (5h)"]).toBeDefined();
+    expect(usage.quotas["Session (5h)"].used).toBe(100);
+    expect(usage.quotas["Weekly (7d)"]).toBeDefined();
+    expect(usage.quotas["Weekly (7d)"].used).toBe(20);
 
     const parsed = parseQuotaData("glm", usage);
     expect(parsed.length).toBe(2);
-    expect(parsed[0].name).toBe("5-Hour Limit");
-    expect(parsed[1].name).toBe("Monthly Limit");
+    expect(parsed[0].name).toBe("Session (5h)");
+    expect(parsed[1].name).toBe("Weekly (7d)");
   });
 });
 

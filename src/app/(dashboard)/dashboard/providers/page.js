@@ -116,9 +116,11 @@ export default function ProvidersPage() {
     return () => unregisterSearch();
   }, [registerSearch, unregisterSearch]);
 
-  const matchSearch = (name) =>
-    !searchQuery.trim() ||
-    name.toLowerCase().includes(searchQuery.trim().toLowerCase());
+  const matchSearch = (name) => {
+    if (!searchQuery.trim()) return true;
+    if (!name) return false;
+    return name.toLowerCase().includes(searchQuery.trim().toLowerCase());
+  };
 
   const sortByPriority = (entries, authType) =>
     [...entries].sort(([ka, a], [kb, b]) => {
@@ -169,7 +171,7 @@ export default function ProvidersPage() {
 
   const getProviderStats = (providerId, authType) => {
     const authTypes = Array.isArray(authType) ? authType : [authType];
-    // Search providers with credentialFallback (ollama-search → ollama, zai-search
+    // Search providers with credentialFallback (ollama-search → ollama, glm
     // → zai) reuse the chat provider's API key at request time. With no own
     // connection, mirror the fallback provider's stats so the card reflects
     // reality ("2 connected" via ollama) instead of an empty ghost card.

@@ -39,7 +39,7 @@ export function getProviderIconSrc(providerId) {
 }
 
 // Providers that ship an .svg logo instead of .png.
-const SVG_PROVIDER_IDS = new Set(["zai", "zai-search"]);
+const SVG_PROVIDER_IDS = new Set(["zai"]);
 
 /** Call from img onError so later mounts skip the request. */
 export function markProviderIconMissing(providerId) {

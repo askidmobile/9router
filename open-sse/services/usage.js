@@ -15,11 +15,12 @@ import { getGrokCliUsage } from "./usage/grok-cli.js";
 import { getKimiUsage } from "./usage/kimi.js";
 import { getDeepseekUsage } from "./usage/deepseek.js";
 import { getCloudflareUsage } from "./usage/cloudflare.js";
+import { getZedUsage } from "./usage/zed.js";
 import { resolveQoderCredentials } from "./qoderModels.js";
+import { getGlmUsage } from "./usage/glm.js";
 import {
   getIflowUsage,
   getOllamaUsage,
-  getGlmUsage,
   getVercelAiGatewayUsage,
   getQoderUsage,
   getOpencodeGoUsage,
@@ -64,6 +65,7 @@ const USAGE_HANDLERS = {
   commandcode: (c) => getCommandCodeUsage(c.apiKey, c.proxyOptions),
   cmc: (c) => getCommandCodeUsage(c.apiKey, c.proxyOptions),
   "cloudflare-ai": (c) => getCloudflareUsage(c.apiKey, c.providerSpecificData, c.proxyOptions),
+  zed: (c) => getZedUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),
 };
 
 export async function getUsageForProvider(connection, proxyOptions = null, options = {}) {

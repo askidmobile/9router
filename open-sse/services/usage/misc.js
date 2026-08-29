@@ -1,15 +1,9 @@
 /**
- * Misc usage handlers (iFlow, Ollama, GLM, Vercel AI Gateway, Qoder)
+ * Misc usage handlers (iFlow, Ollama, GLM re-export, Vercel AI Gateway, Qoder)
  */
 
 import { proxyAwareFetch } from "../../utils/proxyFetch.js";
 import { U } from "./shared.js";
-
-// GLM quota endpoints (region-aware) — url from registry transport.usage
-const GLM_QUOTA_URLS = {
-  international: U("glm").url,
-  china: U("glm-cn").url,
-};
 
 // Vercel AI Gateway credits endpoint
 // Returns { balance: "95.50", total_used: "4.50" } (USD as decimal strings).
@@ -189,65 +183,7 @@ export async function getOllamaUsage(apiKey, providerSpecificData, proxyOptions 
   }
 }
 
-/**
- * GLM Coding Plan usage (international + China regions)
- */
-export async function getGlmUsage(apiKey, provider, proxyOptions = null) {
-  if (!apiKey) {
-    return { message: "GLM API key not available." };
-  }
-
-  const region = provider === "glm-cn" ? "china" : "international";
-  const quotaUrl = GLM_QUOTA_URLS[region] || "https://api.z.ai/api/monitor/usage/quota/limit";
-
-  try {
-    const response = await proxyAwareFetch(quotaUrl, {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        Accept: "application/json",
-      },
-    }, proxyOptions);
-
-    if (!response.ok) {
-      if (response.status === 401) {
-        return { message: "GLM API key invalid or expired." };
-      }
-      return { message: `GLM quota API error (${response.status}).` };
-    }
-
-    const json = await response.json();
-    const data = json?.data && typeof json.data === "object" ? json.data : {};
-    const limits = Array.isArray(data.limits) ? data.limits : [];
-    const quotas = {};
-
-    for (const limit of limits) {
-      if (!limit) continue;
-      const usedPercent = Number(limit.percentage) || 0;
-      const resetMs = Number(limit.nextResetTime) || 0;
-      const remaining = Math.max(0, 100 - usedPercent);
-      const unit = Number(limit.unit);
-      const name = unit === 3 ? "5-Hour Limit" : unit === 6 ? "Monthly Limit" : `Limit (${limit.type || "Quota"})`;
-
-      quotas[name] = {
-        used: usedPercent,
-        total: 100,
-        remaining,
-        remainingPercentage: remaining,
-        resetAt: resetMs > 0 ? new Date(resetMs).toISOString() : null,
-        unlimited: false,
-      };
-    }
-
-    const levelRaw = typeof data.level === "string" ? data.level : "";
-    const plan = levelRaw
-      ? levelRaw.charAt(0).toUpperCase() + levelRaw.slice(1).toLowerCase()
-      : "GLM Coding";
-
-    return { plan, quotas };
-  } catch (error) {
-    return { message: `GLM error: ${error.message}` };
-  }
-}
+export { getGlmUsage } from "./glm.js";
 
 /**
  * OpenCode Go usage (Rolling, Weekly, Monthly limits)

@@ -50,7 +50,8 @@ export function extractThinking(body) {
   if (!body || typeof body !== "object") return null;
 
   // OpenAI reasoning_effort is the explicit cross-provider control and wins
-  // when clients also send derived/native thinking fields.
+  // when clients also send derived/native thinking fields. Check effort first
+  // (zai sends both thinking object and reasoning.effort).
   const effort = body.reasoning_effort
     ?? (typeof body.reasoning === "object" ? body.reasoning?.effort : null)
     ?? body.output_config?.effort;
@@ -293,6 +294,18 @@ function applyFormat(fmt, body, cfg, caps, supportedLevels) {
       // Z.ai ignores thinking.disabled → must use enable_thinking:false to turn off.
       if (none && canDisable) { body.enable_thinking = false; delete body.thinking; break; }
       body.thinking = { type: "enabled" };
+      // reasoning_effort is only read by z.ai from GLM-5.2 onward — older GLM ignores it
+      // (see thinkingEffortSupported in capabilities.js). Skip on unsupported models so we
+      // don't send a field the API doesn't recognize.
+      if (caps.thinkingEffortSupported) {
+        const zaiLvl = toLevel(eff);
+        // GLM-5.3 only accepts exactly low|high|max (anything else errors); GLM-5.2 accepts
+        // a wider set but z.ai maps low/medium->high and xhigh->max server-side anyway, so
+        // this 3-value mapping matches both.
+        body.reasoning_effort = (zaiLvl === "low" || zaiLvl === "minimal") ? "low"
+          : (zaiLvl === "high" || zaiLvl === "medium") ? "high"
+          : "max";
+      }
       break;
     }
     case "qwen": {

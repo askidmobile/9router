@@ -16,9 +16,8 @@ export default {
   authType: "apikey",
   authModes: ["apikey"],
   serviceKinds: ["webSearch"],
-  // Credential fallback: this search provider reuses the API key registered
-  // under the `ollama` chat provider (one key, two services) — same model as
-  // OmniRoute's SEARCH_CREDENTIAL_FALLBACKS.
+  // Credential fallback: reuses the API key registered under the `ollama`
+  // chat provider — one key, chat + search.
   credentialFallback: "ollama",
   searchConfig: {
     baseUrl: "https://ollama.com/api/web_search",
