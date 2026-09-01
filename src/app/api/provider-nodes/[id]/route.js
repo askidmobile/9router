@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { deleteProviderConnectionsByProvider, deleteProviderNode, getProviderConnections, getProviderNodeById, updateProviderConnection, updateProviderNode } from "@/models";
 import { resetComboRotation } from "open-sse/services/combo.js";
+import { validateProviderNodePrefix } from "@/lib/providerNodePrefix";
 
 // PUT /api/provider-nodes/[id] - Update provider node
 export async function PUT(request, { params }) {
@@ -20,6 +21,11 @@ export async function PUT(request, { params }) {
 
     if (!prefix?.trim()) {
       return NextResponse.json({ error: "Prefix is required" }, { status: 400 });
+    }
+
+    const prefixError = await validateProviderNodePrefix(prefix, id);
+    if (prefixError) {
+      return NextResponse.json({ error: prefixError }, { status: 400 });
     }
 
     // Only validate apiType for OpenAI Compatible nodes

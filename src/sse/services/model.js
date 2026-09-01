@@ -17,6 +17,17 @@ for (const entry of REGISTRY) {
   for (const alias of entry.aliases || []) RESERVED_PROVIDER_PREFIXES.add(alias);
 }
 
+/**
+ * Provider-node prefixes are user-defined and must never shadow a built-in
+ * provider id/alias: getModelInfo() resolves those straight to the registry,
+ * so a colliding node is unroutable — every `<prefix>/model` request lands on
+ * the built-in provider instead. Exported so the dashboard can refuse such a
+ * prefix up front rather than creating a dead provider.
+ */
+export function isReservedProviderPrefix(prefix) {
+  return RESERVED_PROVIDER_PREFIXES.has(String(prefix || "").trim());
+}
+
 export function parseModel(modelStr) {
   const parsed = parseModelCore(modelStr);
   if (parsed?.providerAlias && LOCAL_PROVIDER_ALIASES[parsed.providerAlias]) {

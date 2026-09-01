@@ -178,3 +178,25 @@ describe("getProviderCustomModelRows", () => {
     expect(rows.find((r) => r.id === "glm-5.3")).toMatchObject({ source: "legacyAlias", alias: "other" });
   });
 });
+
+describe("validateProviderNodePrefix", () => {
+  it("rejects a prefix owned by a built-in provider", async () => {
+    const { validateProviderNodePrefix } = await import("@/lib/providerNodePrefix.js");
+    // "zai" is the built-in Z.AI Coding id+alias: a node using it is unroutable,
+    // every zai/<model> request resolves to the registry provider instead.
+    expect(await validateProviderNodePrefix("zai")).toMatch(/built-in provider/);
+    expect(await validateProviderNodePrefix("ollama")).toMatch(/built-in provider/);
+    expect(await validateProviderNodePrefix("zaic")).toBeNull();
+  });
+
+  it("rejects a prefix already used by another node, but not by itself", async () => {
+    const { validateProviderNodePrefix } = await import("@/lib/providerNodePrefix.js");
+    const node = await db.createProviderNode({
+      id: "openai-compatible-chat-prefix", type: "openai-compatible",
+      name: "Taken", prefix: "mine", apiType: "chat", baseUrl: "https://example.test/v1",
+    });
+    expect(await validateProviderNodePrefix("mine")).toMatch(/already used by "Taken"/);
+    expect(await validateProviderNodePrefix("mine", node.id)).toBeNull();
+    await db.deleteProviderNode(node.id);
+  });
+});

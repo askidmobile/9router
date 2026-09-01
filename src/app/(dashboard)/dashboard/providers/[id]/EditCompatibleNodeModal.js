@@ -12,6 +12,7 @@ export default function EditCompatibleNodeModal({ isOpen, node, onSave, onClose,
     baseUrl: "https://api.openai.com/v1",
   });
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const [checkKey, setCheckKey] = useState("");
   const [checkModelId, setCheckModelId] = useState("");
   const [validating, setValidating] = useState(false);
@@ -36,6 +37,7 @@ export default function EditCompatibleNodeModal({ isOpen, node, onSave, onClose,
   const handleSubmit = async () => {
     if (!formData.name.trim() || !formData.prefix.trim() || !formData.baseUrl.trim()) return;
     setSaving(true);
+    setSaveError("");
     try {
       const payload = {
         name: formData.name,
@@ -46,6 +48,8 @@ export default function EditCompatibleNodeModal({ isOpen, node, onSave, onClose,
         payload.apiType = formData.apiType;
       }
       await onSave(payload);
+    } catch (error) {
+      setSaveError(error.message || "Failed to save");
     } finally {
       setSaving(false);
     }
@@ -133,6 +137,7 @@ export default function EditCompatibleNodeModal({ isOpen, node, onSave, onClose,
             {validationResult === "success" ? "Valid" : "Invalid"}
           </Badge>
         )}
+        {saveError && <p className="text-sm text-red-500">{saveError}</p>}
         <div className="flex gap-2">
           <Button onClick={handleSubmit} fullWidth disabled={!formData.name.trim() || !formData.prefix.trim() || !formData.baseUrl.trim() || saving}>
             {saving ? "Saving..." : "Save"}

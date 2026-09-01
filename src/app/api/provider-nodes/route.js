@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createProviderNode, getProviderNodes } from "@/models";
 import { OPENAI_COMPATIBLE_PREFIX, ANTHROPIC_COMPATIBLE_PREFIX, CUSTOM_EMBEDDING_PREFIX } from "@/shared/constants/providers";
 import { generateId } from "@/shared/utils";
+import { validateProviderNodePrefix } from "@/lib/providerNodePrefix";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +41,11 @@ export async function POST(request) {
 
     if (!prefix?.trim()) {
       return NextResponse.json({ error: "Prefix is required" }, { status: 400 });
+    }
+
+    const prefixError = await validateProviderNodePrefix(prefix);
+    if (prefixError) {
+      return NextResponse.json({ error: prefixError }, { status: 400 });
     }
 
     // Determine type

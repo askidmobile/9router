@@ -400,13 +400,17 @@ export default function ProviderDetailPage() {
         body: JSON.stringify(formData),
       });
       const data = await res.json();
-      if (res.ok) {
-        setProviderNode(data.node);
-        await fetchConnections();
-        setShowEditNodeModal(false);
+      if (!res.ok) {
+        // Let the modal show it (a rejected prefix, for one) instead of the
+        // Save button quietly doing nothing.
+        throw new Error(data.error || "Failed to update provider node");
       }
+      setProviderNode(data.node);
+      await fetchConnections();
+      setShowEditNodeModal(false);
     } catch (error) {
       console.log("Error updating provider node:", error);
+      throw error;
     }
   };
 

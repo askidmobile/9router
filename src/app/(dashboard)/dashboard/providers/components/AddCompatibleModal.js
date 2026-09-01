@@ -45,6 +45,7 @@ function AddCompatibleModal({ variant, isOpen, onClose, onCreated }) {
 
   const [formData, setFormData] = useState(initialFormData);
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
   const [checkKey, setCheckKey] = useState("");
   const [checkModelId, setCheckModelId] = useState("");
   const [validating, setValidating] = useState(false);
@@ -64,6 +65,7 @@ function AddCompatibleModal({ variant, isOpen, onClose, onCreated }) {
   const handleSubmit = async () => {
     if (!formData.name.trim() || !formData.prefix.trim() || !formData.baseUrl.trim()) return;
     setSubmitting(true);
+    setSubmitError("");
     try {
       const res = await fetch("/api/provider-nodes", {
         method: "POST",
@@ -82,9 +84,14 @@ function AddCompatibleModal({ variant, isOpen, onClose, onCreated }) {
         setFormData(initialFormData());
         setCheckKey("");
         setValidationResult(null);
+      } else {
+        // Rejections (a prefix taken by a built-in provider, for one) used to be
+        // swallowed here, so Create just did nothing.
+        setSubmitError(data.error || `Failed to create ${config.errorLabel} node`);
       }
     } catch (error) {
       console.log(`Error creating ${config.errorLabel} node:`, error);
+      setSubmitError(error.message || "Network error");
     } finally {
       setSubmitting(false);
     }
@@ -189,6 +196,7 @@ function AddCompatibleModal({ variant, isOpen, onClose, onCreated }) {
           </Button>
           {renderValidationResult()}
         </div>
+        {submitError && <p className="text-sm text-red-500">{submitError}</p>}
         <div className="flex flex-col gap-2 sm:flex-row">
           <Button
             onClick={handleSubmit}
