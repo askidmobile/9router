@@ -12,7 +12,7 @@ import { usePricing } from "@/shared/hooks/usePricing";
 import { buildEditModel } from "@/shared/utils/editModel";
 import { CapacityBadges } from "@/shared/components";
 import { formatModelMeta } from "@/shared/utils/modelMeta";
-function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias, onTest, testStatus, isTesting, onEdit, hasOverride, caps }) {
+function CompatibleModelRow({ modelId, displayName, fullModel, copied, onCopy, onDeleteAlias, onTest, testStatus, isTesting, onEdit, hasOverride, caps }) {
   const { getPricing } = usePricing();
   const meta = formatModelMeta(caps, getPricing(fullModel.slice(0, fullModel.indexOf("/")), modelId));
   const borderColor = testStatus === "ok"
@@ -33,7 +33,7 @@ function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias,
         {/* Left: 3 info rows */}
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           {/* Row 1 — display name */}
-          <span className="truncate text-sm font-medium text-text-main">{modelId}</span>
+          <span className="truncate text-sm font-medium text-text-main">{displayName || modelId}</span>
           {/* Row 2 — routed id + copy on hover */}
           <div className="flex min-w-0 items-center gap-1.5">
             <code className="max-w-[72vw] truncate rounded bg-sidebar px-1.5 py-0.5 font-mono text-xs text-text-muted sm:max-w-[360px]">{fullModel}</code>
@@ -209,11 +209,12 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
 
       {allModels.length > 0 && (
         <div className="flex flex-wrap gap-3">
-          {allModels.map(({ id, alias, source }) => (
+          {allModels.map(({ id, name, alias, source }) => (
             <div key={`${source}-${providerStorageAlias}/${id}`} className="w-full sm:w-[calc(50%-6px)] xl:w-[calc(33.333%-8px)]">
             <CompatibleModelRow
               key={`${source}-${providerStorageAlias}/${id}`}
               modelId={id}
+              displayName={alias || name}
               fullModel={`${providerDisplayAlias}/${id}`}
               copied={copied}
               onCopy={onCopy}

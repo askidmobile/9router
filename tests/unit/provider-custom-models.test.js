@@ -45,6 +45,9 @@ describe("provider custom model rows", () => {
       {
         id: "custom-a",
         name: "Custom A",
+        // A registered custom model that also has an alias carries it, so the
+        // provider pages can show and edit the alias instead of dropping it.
+        alias: "custom-a",
         fullModel: "ollama/custom-a",
         source: "custom",
         type: "llm",

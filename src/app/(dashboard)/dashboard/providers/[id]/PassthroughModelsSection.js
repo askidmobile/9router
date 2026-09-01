@@ -5,7 +5,7 @@ import PropTypes from "prop-types";
 import { Button } from "@/shared/components";
 import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
 
-function PassthroughModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias, onTest, testStatus, isTesting }) {
+function PassthroughModelRow({ modelId, displayName, fullModel, copied, onCopy, onDeleteAlias, onTest, testStatus, isTesting }) {
   const borderColor = testStatus === "ok"
     ? "border-green-500/40"
     : testStatus === "error"
@@ -28,7 +28,7 @@ function PassthroughModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias
       </span>
 
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate">{modelId}</p>
+        <p className="text-sm font-medium truncate">{displayName || modelId}</p>
 
         <div className="flex items-center gap-1 mt-1">
         <code className="text-xs text-text-muted font-mono bg-sidebar px-1.5 py-0.5 rounded">{fullModel}</code>
@@ -78,6 +78,7 @@ function PassthroughModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias
 
 PassthroughModelRow.propTypes = {
   modelId: PropTypes.string.isRequired,
+  displayName: PropTypes.string,
   fullModel: PropTypes.string.isRequired,
   copied: PropTypes.string,
   onCopy: PropTypes.func.isRequired,
@@ -146,10 +147,11 @@ export default function PassthroughModelsSection({ providerAlias, modelAliases, 
       {/* Models list */}
       {allModels.length > 0 && (
         <div className="flex flex-col gap-3">
-          {allModels.map(({ id, fullModel, alias, source }) => (
+          {allModels.map(({ id, name, fullModel, alias, source }) => (
             <PassthroughModelRow
               key={`${source}-${fullModel}`}
               modelId={id}
+              displayName={alias || name}
               fullModel={fullModel}
               copied={copied}
               onCopy={onCopy}

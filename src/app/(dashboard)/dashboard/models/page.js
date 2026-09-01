@@ -88,10 +88,32 @@ export default function ModelsPage() {
   }, [fetchData]);
 
   const getProviderInfo = useCallback((alias) => {
-    // 1. Check providerNodes by id or prefix
-    const node = providerNodes.find(
-      (n) => n.id === alias || n.prefix === alias || n.data?.prefix === alias
-    );
+    // 1. Provider node matched by id — exact, never ambiguous.
+    const nodeById = providerNodes.find((n) => n.id === alias);
+    if (nodeById?.name) {
+      return {
+        providerId: nodeById.id,
+        name: nodeById.name,
+        iconId: nodeById.id?.startsWith("anthropic") ? "anthropic" : "openai",
+      };
+    }
+
+    // 2. Built-in provider — resolved before any prefix match. Node prefixes are
+    // user-defined and must not shadow a registry alias (a node with prefix
+    // "zai" would otherwise relabel the built-in Z.AI Coding group as its own,
+    // showing the same provider name twice). Same rule the router applies via
+    // RESERVED_PROVIDER_PREFIXES.
+    const builtIn = getProviderByAlias(alias);
+    if (builtIn) {
+      return {
+        providerId: builtIn.id || alias,
+        name: builtIn.name || alias,
+        iconId: builtIn.id || alias,
+      };
+    }
+
+    // 3. Provider node matched by its routing prefix (legacy rows keyed by prefix).
+    const node = providerNodes.find((n) => n.prefix === alias || n.data?.prefix === alias);
     if (node?.name) {
       return {
         providerId: node.id,
@@ -100,7 +122,7 @@ export default function ModelsPage() {
       };
     }
 
-    // 2. Check connections by provider, id or prefix
+    // 4. Check connections by provider, id or prefix
     const conn = connections.find(
       (c) => c.provider === alias || c.id === alias || c.providerSpecificData?.prefix === alias
     );
@@ -119,17 +141,7 @@ export default function ModelsPage() {
       };
     }
 
-    // 3. Static registry
-    const provider = getProviderByAlias(alias);
-    if (provider) {
-      return {
-        providerId: provider.id || alias,
-        name: provider.name || alias,
-        iconId: provider.id || alias,
-      };
-    }
-
-    // 4. Clean fallback for raw compatible IDs if no connection/node exists
+    // 5. Clean fallback for raw compatible IDs if no connection/node exists
     if (alias.startsWith("openai-compatible")) {
       return {
         providerId: alias,

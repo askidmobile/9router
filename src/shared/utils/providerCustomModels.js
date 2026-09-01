@@ -14,6 +14,14 @@ export function getProviderCustomModelRows({
   const seenFullModels = new Set();
   const rows = [];
 
+  // A registered custom model can also carry an alias. The legacy-alias pass
+  // below skips it as already seen, so look the alias up here or the provider
+  // pages would show (and edit) the model as if it had none.
+  const aliasByFullModel = {};
+  for (const [aliasName, target] of Object.entries(modelAliases || {})) {
+    if (typeof target === "string") aliasByFullModel[target] = aliasName;
+  }
+
   for (const model of customModels) {
     if (!model?.id || model.providerAlias !== providerAlias) continue;
     const rowType = modelType(model);
@@ -26,6 +34,7 @@ export function getProviderCustomModelRows({
     rows.push({
       id: model.id,
       name: model.name || model.id,
+      alias: aliasByFullModel[fullModel],
       fullModel,
       source: "custom",
       type: rowType,

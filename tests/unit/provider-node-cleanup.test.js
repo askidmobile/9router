@@ -157,3 +157,24 @@ describe("buildEditModel", () => {
     expect(model.override).toBeNull();
   });
 });
+
+describe("getProviderCustomModelRows", () => {
+  it("carries the alias of a registered custom model", async () => {
+    const { getProviderCustomModelRows } = await import("@/shared/utils/providerCustomModels.js");
+    const rows = getProviderCustomModelRows({
+      customModels: [{ providerAlias: "node-1", id: "glm-5.3-flash", name: "GLM-5.3 Flash" }],
+      modelAliases: { flash: "node-1/glm-5.3-flash", other: "node-1/glm-5.3" },
+      providerAlias: "node-1",
+    });
+
+    // The custom row must carry both labels: the provider pages show them and
+    // EditModelModal saves the alias back.
+    const custom = rows.find((r) => r.id === "glm-5.3-flash");
+    expect(custom.source).toBe("custom");
+    expect(custom.name).toBe("GLM-5.3 Flash");
+    expect(custom.alias).toBe("flash");
+
+    // An alias with no registered model still gets its own row.
+    expect(rows.find((r) => r.id === "glm-5.3")).toMatchObject({ source: "legacyAlias", alias: "other" });
+  });
+});
