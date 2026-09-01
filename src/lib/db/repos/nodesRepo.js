@@ -75,11 +75,25 @@ export async function updateProviderNode(id, data) {
   db.transaction(() => {
     const row = db.get(`SELECT * FROM providerNodes WHERE id = ?`, [id]);
     if (!row) return;
-    const merged = { ...rowToNode(row), ...data, updatedAt: new Date().toISOString() };
+    const previous = rowToNode(row);
+    const merged = { ...previous, ...data, updatedAt: new Date().toISOString() };
     upsert(db, merged);
+    // Combo members address the node by prefix, so a rename leaves them pointing
+    // at a prefix nobody owns — or, worse, at a built-in provider that does.
+    // Set after upsert so the field is not persisted into the node row.
+    merged.renamedCombos = previous.prefix && merged.prefix && previous.prefix !== merged.prefix
+      ? retargetComboMembers(db, previous.prefix, merged.prefix)
+      : [];
     result = merged;
   });
   return result;
+}
+
+// Repoint `<from>/model` combo members at `<to>/model` after a prefix rename.
+function retargetComboMembers(db, from, to) {
+  return rewriteComboModels(db, (models) => models.map((m) => (
+    typeof m === "string" && m.startsWith(`${from}/`) ? `${to}/${m.slice(from.length + 1)}` : m
+  )));
 }
 
 // Everything a user-created node owns lives outside the providerNodes row:
@@ -107,14 +121,20 @@ function purgeNodeData(db, nodeId, prefix) {
   // Combo members address the node by its routing prefix ("oc-zen/glm-4.7"),
   // older ones by the raw id.
   const owners = [nodeId, prefix].filter(Boolean);
-  const isMember = (m) => typeof m === "string" && owners.some((o) => m === o || m.startsWith(`${o}/`));
+  const isMember = (m) => owners.some((o) => m === o || m.startsWith(`${o}/`));
+  return rewriteComboModels(db, (models) => models.filter((m) => !(typeof m === "string" && isMember(m))));
+}
+
+// Apply `transform` to every combo's model list; rows that come back unchanged
+// are left alone. Returns the names of the combos that were rewritten.
+function rewriteComboModels(db, transform) {
   const touched = [];
   const now = new Date().toISOString();
   for (const row of db.all(`SELECT id, name, models FROM combos`)) {
     const models = parseJson(row.models, []) || [];
-    const kept = models.filter((m) => !isMember(m));
-    if (kept.length === models.length) continue;
-    db.run(`UPDATE combos SET models = ?, updatedAt = ? WHERE id = ?`, [stringifyJson(kept), now, row.id]);
+    const next = transform(models);
+    if (stringifyJson(next) === stringifyJson(models)) continue;
+    db.run(`UPDATE combos SET models = ?, updatedAt = ? WHERE id = ?`, [stringifyJson(next), now, row.id]);
     touched.push(row.name);
   }
   return touched;

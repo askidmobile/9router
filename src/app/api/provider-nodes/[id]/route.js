@@ -66,6 +66,8 @@ export async function PUT(request, { params }) {
     }
 
     const updated = await updateProviderNode(id, updates);
+    // Prefix rename repoints combo members; drop their stale rotation state.
+    for (const comboName of updated?.renamedCombos || []) resetComboRotation(comboName);
 
     const connections = await getProviderConnections({ provider: id });
     await Promise.all(connections.map((connection) => (

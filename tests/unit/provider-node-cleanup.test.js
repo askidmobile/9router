@@ -200,3 +200,29 @@ describe("validateProviderNodePrefix", () => {
     await db.deleteProviderNode(node.id);
   });
 });
+
+describe("updateProviderNode — prefix rename", () => {
+  it("repoints combo members at the new prefix", async () => {
+    const node = await db.createProviderNode({
+      id: "openai-compatible-chat-rename", type: "openai-compatible",
+      name: "Z.ai", prefix: "zai-old", apiType: "chat", baseUrl: "https://example.test/v1",
+    });
+    const combo = await db.createCombo({
+      name: "rename-combo",
+      models: ["zai-old/glm-5.3", "ollama/glm-5.3", "openrouter/z-ai/glm-5.3"],
+    });
+
+    const updated = await db.updateProviderNode(node.id, { prefix: "zai-my" });
+    expect(updated.renamedCombos).toEqual(["rename-combo"]);
+
+    // Only this node's members move; a member merely containing the old prefix
+    // as a substring ("openrouter/z-ai/...") is untouched.
+    expect((await db.getComboById(combo.id)).models).toEqual([
+      "zai-my/glm-5.3", "ollama/glm-5.3", "openrouter/z-ai/glm-5.3",
+    ]);
+    // The transient field must not leak into the stored node row.
+    expect(await db.getProviderNodeById(node.id)).not.toHaveProperty("renamedCombos");
+
+    await db.deleteProviderNode(node.id);
+  });
+});
