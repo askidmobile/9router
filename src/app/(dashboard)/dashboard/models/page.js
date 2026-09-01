@@ -6,11 +6,11 @@ import { Card, Button, CardSkeleton, ConfirmModal, CapacityBadges, SegmentedCont
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import { PROVIDER_MODELS, getModelKind } from "@/shared/constants/models";
 import { getProviderAlias, getProviderByAlias } from "@/shared/constants/providers";
-import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
 import { useModelCaps, invalidateModelCapsCache } from "@/shared/hooks/useModelCaps";
 import { invalidatePricingCache } from "@/shared/hooks/usePricing";
 import { resolveModelsDevProviderId } from "@/lib/modelsDev/providerMap.js";
 import { formatModelMeta } from "@/shared/utils/modelMeta";
+import { buildEditModel } from "@/shared/utils/editModel";
 import EditModelModal from "./EditModelModal";
 
 const inputClass =
@@ -294,21 +294,19 @@ export default function ModelsPage() {
   };
 
   const openEdit = (row) => {
-    const staticCaps = getCapabilitiesForModel(row.isCustom ? row.providerAlias : row.providerId, row.id) || {};
-    const effectiveCaps = getCaps(`${row.providerAlias}/${row.id}`) || {};
-    const aliasKey = row.isCustom ? `${row.providerAlias}/${row.id}` : `${row.providerId}/${row.id}`;
-    const override =
-      capsOverrides[`${row.providerAlias}|${row.id}`] ||
-      (row.providerId ? capsOverrides[`${row.providerId}|${row.id}`] : null) ||
-      null;
     setEditing({
       ...row,
-      aliasKey,
-      alias: getAliasFor(row),
-      staticCaps,
-      caps: { ...staticCaps, ...effectiveCaps },
-      override,
-      pricing: getPricingFor(row),
+      ...buildEditModel({
+        id: row.id,
+        providerAlias: row.providerAlias,
+        // Custom models are stored (and aliased) under the provider alias,
+        // never the registry id.
+        providerId: row.isCustom ? undefined : row.providerId,
+        alias: getAliasFor(row),
+        overrides: capsOverrides,
+        getCaps,
+        getPricing: (provider, model) => pricing[provider]?.[model] || null,
+      }),
     });
   };
 

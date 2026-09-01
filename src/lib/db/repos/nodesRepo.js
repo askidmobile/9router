@@ -82,6 +82,44 @@ export async function updateProviderNode(id, data) {
   return result;
 }
 
+// Everything a user-created node owns lives outside the providerNodes row:
+// custom models, aliases, disabled list, caps/pricing overrides (all keyed by
+// the node id) and combo members (keyed by the display prefix). Dropping only
+// the row leaves the provider alive in the Models page, the combos and
+// /v1/models — so purge it all here, where every caller passes through.
+// Returns the names of combos whose model list changed.
+function purgeNodeData(db, nodeId, prefix) {
+  const ownsKey = (key) => key === nodeId || key.startsWith(`${nodeId}|`);
+  for (const scope of ["customModels", "modelCaps", "disabledModels", "pricing"]) {
+    for (const row of db.all(`SELECT key FROM kv WHERE scope = ?`, [scope])) {
+      if (ownsKey(row.key)) db.run(`DELETE FROM kv WHERE scope = ? AND key = ?`, [scope, row.key]);
+    }
+  }
+
+  // modelAliases key on the alias name — the node id sits in the value.
+  for (const row of db.all(`SELECT key, value FROM kv WHERE scope = 'modelAliases'`)) {
+    const target = parseJson(row.value, "");
+    if (typeof target === "string" && target.startsWith(`${nodeId}/`)) {
+      db.run(`DELETE FROM kv WHERE scope = 'modelAliases' AND key = ?`, [row.key]);
+    }
+  }
+
+  // Combo members address the node by its routing prefix ("oc-zen/glm-4.7"),
+  // older ones by the raw id.
+  const owners = [nodeId, prefix].filter(Boolean);
+  const isMember = (m) => typeof m === "string" && owners.some((o) => m === o || m.startsWith(`${o}/`));
+  const touched = [];
+  const now = new Date().toISOString();
+  for (const row of db.all(`SELECT id, name, models FROM combos`)) {
+    const models = parseJson(row.models, []) || [];
+    const kept = models.filter((m) => !isMember(m));
+    if (kept.length === models.length) continue;
+    db.run(`UPDATE combos SET models = ?, updatedAt = ? WHERE id = ?`, [stringifyJson(kept), now, row.id]);
+    touched.push(row.name);
+  }
+  return touched;
+}
+
 export async function deleteProviderNode(id) {
   const db = await getAdapter();
   let removed = null;
@@ -90,6 +128,7 @@ export async function deleteProviderNode(id) {
     if (!row) return;
     removed = rowToNode(row);
     db.run(`DELETE FROM providerNodes WHERE id = ?`, [id]);
+    removed.purgedCombos = purgeNodeData(db, id, removed.prefix);
   });
   return removed;
 }

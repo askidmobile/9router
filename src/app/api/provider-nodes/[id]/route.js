@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { deleteProviderConnectionsByProvider, deleteProviderNode, getProviderConnections, getProviderNodeById, updateProviderConnection, updateProviderNode } from "@/models";
+import { resetComboRotation } from "open-sse/services/combo.js";
 
 // PUT /api/provider-nodes/[id] - Update provider node
 export async function PUT(request, { params }) {
@@ -91,7 +92,9 @@ export async function DELETE(request, { params }) {
     }
 
     await deleteProviderConnectionsByProvider(id);
-    await deleteProviderNode(id);
+    // Cascades to this node's models, aliases, overrides and combo members.
+    const removed = await deleteProviderNode(id);
+    for (const comboName of removed?.purgedCombos || []) resetComboRotation(comboName);
 
     return NextResponse.json({ success: true });
   } catch (error) {

@@ -9,6 +9,7 @@ import EditModelModal from "@/app/(dashboard)/dashboard/models/EditModelModal";
 import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { usePricing } from "@/shared/hooks/usePricing";
+import { buildEditModel } from "@/shared/utils/editModel";
 import { CapacityBadges } from "@/shared/components";
 import { formatModelMeta } from "@/shared/utils/modelMeta";
 function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias, onTest, testStatus, isTesting, onEdit, hasOverride, caps }) {
@@ -118,7 +119,7 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
   const [testingModelId, setTestingModelId] = useState(null);
   const [modelTestResults, setModelTestResults] = useState({});
   const [editing, setEditing] = useState(null);
-  const { overrides: capsOverrides } = useModelCaps();
+  const { getCaps, overrides: capsOverrides } = useModelCaps();
   const { getPricing } = usePricing();
 
   const handleTestModel = async (modelId) => {
@@ -225,18 +226,14 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
                 const base = getCapabilitiesForModel(providerStorageAlias, id) || {};
                 return { ...base, ...(capsOverrides[`${providerStorageAlias}|${id}`] || {}) };
               })()}
-              onEdit={() => {
-                const staticCaps = getCapabilitiesForModel(providerStorageAlias, id) || {};
-                const override = capsOverrides[`${providerStorageAlias}|${id}`] || null;
-                setEditing({
-                  id,
-                  providerAlias: providerStorageAlias,
-                  staticCaps,
-                  override,
-                  pricing: getPricing(providerStorageAlias, id) || {},
-                  alias,
-                });
-              }}
+              onEdit={() => setEditing(buildEditModel({
+                id,
+                providerAlias: providerStorageAlias,
+                alias,
+                overrides: capsOverrides,
+                getCaps,
+                getPricing,
+              }))}
             />
             </div>
           ))}

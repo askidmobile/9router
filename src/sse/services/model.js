@@ -1,5 +1,6 @@
 // Re-export from open-sse with localDb integration
-import { getModelAliases, getComboByName, getProviderNodes } from "@/lib/localDb";
+import { getModelAliases, getComboByName, getProviderNodes, getProviderConnections } from "@/lib/localDb";
+import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { parseModel as parseModelCore, resolveModelAliasFromMap, getModelInfoCore } from "open-sse/services/model.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
 
@@ -88,7 +89,45 @@ export async function getComboModels(modelStr) {
 
   const combo = await getComboByName(modelStr);
   if (combo && combo.models && combo.models.length > 0) {
-    return combo.models;
+    const isUsable = await buildComboMemberFilter();
+    return isUsable ? combo.models.filter(isUsable) : combo.models;
   }
   return null;
+}
+
+/**
+ * Members the user switched off must not be routed to: a model disabled in the
+ * dashboard, or a provider whose every connection is disabled. Combo members
+ * name compatible nodes by their display prefix while the disabled list and
+ * connections key on the node id, so both spellings are matched.
+ * @returns {Promise<((member: string) => boolean)|null>} null when nothing is off
+ */
+async function buildComboMemberFilter() {
+  const [disabled, connections] = await Promise.all([getDisabledModels(), getProviderConnections()]);
+
+  // "Off" = has connections and none of them active. A provider with no
+  // connection at all may still be a no-auth free provider — leave it alone.
+  const offProviders = new Set();
+  for (const c of connections) {
+    if (c.isActive === false) offProviders.add(c.provider);
+  }
+  for (const c of connections) {
+    if (c.isActive !== false) offProviders.delete(c.provider);
+  }
+  if (offProviders.size === 0 && Object.keys(disabled).length === 0) return null;
+
+  const nodeIdsByPrefix = new Map();
+  for (const node of await getProviderNodes()) {
+    if (!node.prefix) continue;
+    if (!nodeIdsByPrefix.has(node.prefix)) nodeIdsByPrefix.set(node.prefix, []);
+    nodeIdsByPrefix.get(node.prefix).push(node.id);
+  }
+
+  return (member) => {
+    if (typeof member !== "string" || !member.includes("/")) return true; // nested combo name
+    const { provider, providerAlias, model } = parseModel(member);
+    const keys = [providerAlias, provider, ...(nodeIdsByPrefix.get(providerAlias) || [])].filter(Boolean);
+    if (keys.some((k) => offProviders.has(k))) return false;
+    return !keys.some((k) => Array.isArray(disabled[k]) && disabled[k].includes(model));
+  };
 }

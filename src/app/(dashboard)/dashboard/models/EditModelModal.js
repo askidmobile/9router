@@ -93,6 +93,11 @@ export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
           const data = await res.json();
           throw new Error(data.error || "Failed to save alias");
         }
+        // The store is keyed by alias name, so a rename would otherwise leave
+        // the old name still routing to this model.
+        if (model.alias) {
+          await fetch(`/api/models/alias?alias=${encodeURIComponent(model.alias)}`, { method: "DELETE" });
+        }
       } else if (!nextAlias && model.alias) {
         await fetch(`/api/models/alias?alias=${encodeURIComponent(model.alias)}`, { method: "DELETE" });
       }

@@ -11,6 +11,8 @@ import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
 import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
+import { usePricing } from "@/shared/hooks/usePricing";
+import { buildEditModel } from "@/shared/utils/editModel";
 import EditModelModal from "@/app/(dashboard)/dashboard/models/EditModelModal";
 import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
 import { translate } from "@/i18n/runtime";
@@ -46,6 +48,7 @@ export default function ProviderDetailPage() {
   const router = useRouter();
   const providerId = params.id;
   const { getCaps, overrides: capsOverrides } = useModelCaps();
+  const { getPricing } = usePricing();
   const [editingModel, setEditingModel] = useState(null);
   // Effective caps for display: static base + user override. Tries both the
   // storage alias and the registry id as override key (models.dev import keys
@@ -1141,12 +1144,14 @@ export default function ProviderDetailPage() {
             isTesting={testingModelIds.has(model.id)}
             isCustom
             isFree={false}
-            onEdit={() => setEditingModel({
+            onEdit={() => setEditingModel(buildEditModel({
               id: model.id,
               providerAlias: providerStorageAlias,
-              staticCaps: getCaps(`${providerId}/${model.id}`) || {},
-              override: capsOverrides[`${providerStorageAlias}|${model.id}`] || null,
-            })}
+              alias: model.alias,
+              overrides: capsOverrides,
+              getCaps,
+              getPricing,
+            }))}
             hasOverride={!!capsOverrides[`${providerStorageAlias}|${model.id}`]}
             caps={effectiveCaps(model.id)}
             thinkingSuffix={resolveThinkingSuffix(model.id)}
@@ -1174,13 +1179,15 @@ export default function ProviderDetailPage() {
               isTesting={testingModelIds.has(model.id)}
               isFree={model.isFree}
               onDisable={() => handleDisableModel(model.id)}
-              onEdit={() => setEditingModel({
+              onEdit={() => setEditingModel(buildEditModel({
                 id: model.id,
                 providerAlias: providerStorageAlias,
-                staticCaps: getCaps(`${providerId}/${model.id}`) || {},
-                override: capsOverrides[`${providerStorageAlias}|${model.id}`]
-                  || capsOverrides[`${providerId}|${model.id}`] || null,
-              })}
+                providerId,
+                alias: existingAlias,
+                overrides: capsOverrides,
+                getCaps,
+                getPricing,
+              }))}
               hasOverride={!!(capsOverrides[`${providerStorageAlias}|${model.id}`] || capsOverrides[`${providerId}|${model.id}`])}
               caps={effectiveCaps(model.id)}
               thinkingSuffix={resolveThinkingSuffix(model.id)}

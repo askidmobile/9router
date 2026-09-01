@@ -9,7 +9,7 @@ import { Card, Button, Modal, Input, CardSkeleton, ModelSelectModal, ConfirmModa
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { getConservativeComboCapabilities } from "open-sse/providers/capabilities.js";
-import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
+import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, getProviderAlias } from "@/shared/constants/providers";
 
 // Validate combo name: only a-z, A-Z, 0-9, -, _
 const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
@@ -68,6 +68,7 @@ export default function CombosPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingCombo, setEditingCombo] = useState(null);
   const [activeProviders, setActiveProviders] = useState([]);
+  const [disabledMap, setDisabledMap] = useState({});
   const { getCaps, overrides } = useModelCaps();
   // Map compatible-node prefixes (combo member prefix) → their UUID providerId,
   // so override keys stored under the providerId resolve when a combo lists
@@ -87,6 +88,34 @@ export default function CombosPage() {
     const ids = prefixToProviderIds.get(provider) || [];
     return ids.map((id) => `${id}|${model}`);
   }, [prefixToProviderIds]);
+
+  // Providers whose every connection is switched off. A provider with no
+  // connection at all may still be a no-auth free provider — not "off".
+  const offProviderKeys = useMemo(() => {
+    const seen = new Map();
+    for (const c of activeProviders) {
+      const keys = [c.provider, getProviderAlias(c.provider), c?.providerSpecificData?.prefix].filter(Boolean);
+      for (const k of keys) {
+        const state = seen.get(k) || { active: false };
+        if (c.isActive !== false) state.active = true;
+        seen.set(k, state);
+      }
+    }
+    return new Set([...seen].filter(([, v]) => !v.active).map(([k]) => k));
+  }, [activeProviders]);
+
+  // Mirrors the router's combo filter (getComboModels): a member is skipped when
+  // its model is disabled or its provider is off. Shown, not deleted — flipping
+  // the switch back brings the member straight back.
+  const isMemberOff = useCallback((member) => {
+    if (typeof member !== "string" || !member.includes("/")) return false;
+    const slash = member.indexOf("/");
+    const prefix = member.slice(0, slash);
+    const model = member.slice(slash + 1);
+    if (offProviderKeys.has(prefix)) return true;
+    return [prefix, ...(prefixToProviderIds.get(prefix) || [])]
+      .some((k) => (disabledMap[k] || []).includes(model));
+  }, [offProviderKeys, prefixToProviderIds, disabledMap]);
   // Per-model caps from the /api/models cache (already merged with overrides
   // + live catalogs server-side) — preferred over the static pattern table.
   const modelCaps = useMemo(() => {
@@ -131,14 +160,16 @@ export default function CombosPage() {
 
   const fetchData = async () => {
     try {
-      const [combosRes, providersRes, settingsRes] = await Promise.all([
+      const [combosRes, providersRes, settingsRes, disabledRes] = await Promise.all([
         fetch("/api/combos"),
         fetch("/api/providers"),
         fetch("/api/settings"),
+        fetch("/api/models/disabled"),
       ]);
       const combosData = await combosRes.json();
       const providersData = await providersRes.json();
       const settingsData = settingsRes.ok ? await settingsRes.json() : {};
+      setDisabledMap(disabledRes.ok ? (await disabledRes.json()).disabled || {} : {});
       
       // Only LLM combos here - webSearch/webFetch combos belong to media-providers/web
       if (combosRes.ok) setCombos((combosData.combos || []).filter(c => !c.kind || c.kind === "llm"));
@@ -309,6 +340,7 @@ export default function CombosPage() {
               availability={availability}
               now={now}
               activeProviders={activeProviders}
+              isMemberOff={isMemberOff}
               copied={copied}
               onCopy={copy}
               onEdit={() => setEditingCombo(combo)}
@@ -369,7 +401,7 @@ const STRATEGY_OPTIONS = [
   { value: "fusion", label: "Fusion — panel + judge" },
 ];
 
-function ComboCard({ combo, getCaps, capsOverrides = {}, allCombos = [], aliasCandidates = null, modelCaps = null, availability = [], now = 0, activeProviders = [], copied, onCopy, onEdit, onDelete, strategy = {}, onSetStrategy }) {
+function ComboCard({ combo, getCaps, capsOverrides = {}, allCombos = [], aliasCandidates = null, modelCaps = null, availability = [], now = 0, activeProviders = [], isMemberOff = null, copied, onCopy, onEdit, onDelete, strategy = {}, onSetStrategy }) {
   const [showJudgeSelect, setShowJudgeSelect] = useState(false);
   const current = strategy.fallbackStrategy || "fallback";
   const judge = strategy.judgeModel || "";
@@ -431,10 +463,19 @@ function ComboCard({ combo, getCaps, capsOverrides = {}, allCombos = [], aliasCa
               ) : (
                 combo.models.slice(0, 3).map((model, index) => {
                   const lockUntil = cooldownUntil(model);
+                  const off = isMemberOff?.(model) === true;
                   return (
-                  <code key={index} className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-xs ${lockUntil ? "text-orange-600 dark:text-orange-400 bg-orange-500/10" : "text-text-muted bg-black/5 dark:bg-white/5"}`}>
+                  <code key={index} className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-xs ${off ? "text-text-muted/60 bg-black/5 line-through dark:bg-white/5" : lockUntil ? "text-orange-600 dark:text-orange-400 bg-orange-500/10" : "text-text-muted bg-black/5 dark:bg-white/5"}`}>
                     <span>{model}</span>
-                    {lockUntil > 0 && (
+                    {off && (
+                      <Tooltip text="Disabled — the model or its provider is switched off, so the combo skips it. Re-enable it in Models / Providers.">
+                        <span className="inline-flex items-center gap-0.5 font-normal no-underline">
+                          <span className="material-symbols-outlined text-[12px] align-middle">block</span>
+                          off
+                        </span>
+                      </Tooltip>
+                    )}
+                    {!off && lockUntil > 0 && (
                       <Tooltip text={`Rate-limited — cooling down for ${fmtRemaining(lockUntil - now)}`}>
                         <span className="inline-flex items-center gap-0.5 font-normal">
                           <span className="material-symbols-outlined text-[12px] align-middle">timer</span>
