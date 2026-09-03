@@ -91,3 +91,6 @@ graphify-out/*
 wiki/
 .wiki-compiler.json
 wiki-log.md
+
+# Kiro local workspace state
+.kiro/

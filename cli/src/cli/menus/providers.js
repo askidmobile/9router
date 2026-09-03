@@ -104,6 +104,8 @@ const PROVIDER_MODELS = {
     { id: "claude-3-5-sonnet-20241022" },
   ],
   gemini: [
+    { id: "gemini-3.8-flash" },
+    { id: "gemini-3.7-flash" },
     { id: "gemini-3.6-flash" },
     { id: "gemini-3.5-flash-lite" },
     { id: "gemini-3-pro-preview" },

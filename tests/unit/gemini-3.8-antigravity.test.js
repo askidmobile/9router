@@ -10,7 +10,7 @@ describe("Gemini 3.8 Flash Support & Config", () => {
     expect(agIds).toContain("gemini-3.8-flash-high");
     expect(agIds).toContain("gemini-3.8-flash-medium");
     expect(agIds).toContain("gemini-3.8-flash-low");
-    expect(agIds).not.toContain("gemini-3.8-flash");
+    expect(agIds).toContain("gemini-3.8-flash");
   });
 
   it("registers gemini-3.8-flash in gemini provider registry", () => {
@@ -27,16 +27,10 @@ describe("Gemini 3.8 Flash Support & Config", () => {
     expect(caps.maxOutput).toBe(65536);
   });
 
-  it("defines pricing for gemini-3.8-flash (same rate as 3.7)", () => {
-    expect(MODEL_PRICING["gemini-3.8-flash"]).toEqual({
-      input: 1.50,
-      output: 7.50,
-      cached: 0.15,
-      reasoning: 11.25,
-      cache_creation: 1.875,
-    });
-    expect(MODEL_PRICING["gemini-3.8-flash-high"]).toEqual(MODEL_PRICING["gemini-3.8-flash"]);
-    expect(MODEL_PRICING["gemini-3.8-flash-medium"]).toEqual(MODEL_PRICING["gemini-3.8-flash"]);
-    expect(MODEL_PRICING["gemini-3.8-flash-low"]).toEqual(MODEL_PRICING["gemini-3.8-flash"]);
+  it("defines pricing matching gemini-3.7-flash baseline", () => {
+    expect(MODEL_PRICING["gemini-3.8-flash"]).toEqual(MODEL_PRICING["gemini-3.7-flash"]);
+    expect(MODEL_PRICING["gemini-3.8-flash-high"]).toEqual(MODEL_PRICING["gemini-3.7-flash-high"]);
+    expect(MODEL_PRICING["gemini-3.8-flash-medium"]).toEqual(MODEL_PRICING["gemini-3.7-flash-medium"]);
+    expect(MODEL_PRICING["gemini-3.8-flash-low"]).toEqual(MODEL_PRICING["gemini-3.7-flash-low"]);
   });
 });

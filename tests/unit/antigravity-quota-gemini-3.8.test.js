@@ -9,15 +9,15 @@ const proxyAwareFetch = vi.fn(async (url) => ({
         models: {
           "gemini-3.8-flash-high": {
             displayName: "Gemini 3.8 Flash (High)",
-            quotaInfo: { remainingFraction: 0.85, resetTime: "2026-09-02T12:00:00Z" },
+            quotaInfo: { remainingFraction: 0.85, resetTime: "2026-08-25T12:00:00Z" },
           },
           "gemini-3.8-flash-medium": {
             displayName: "Gemini 3.8 Flash (Medium)",
-            quotaInfo: { remainingFraction: 0.6, resetTime: "2026-09-02T12:00:00Z" },
+            quotaInfo: { remainingFraction: 0.6, resetTime: "2026-08-25T12:00:00Z" },
           },
           "gemini-3.8-flash-low": {
             displayName: "Gemini 3.8 Flash (Low)",
-            quotaInfo: { remainingFraction: 0.35, resetTime: "2026-09-02T12:00:00Z" },
+            quotaInfo: { remainingFraction: 0.35, resetTime: "2026-08-25T12:00:00Z" },
           },
           "internal-model": {
             displayName: "Internal",
@@ -59,3 +59,4 @@ describe("Antigravity quota tracker: Gemini 3.8 Flash usage bars", () => {
     });
   });
 });
+

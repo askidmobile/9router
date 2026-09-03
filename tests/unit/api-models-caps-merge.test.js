@@ -3,6 +3,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const mocks = vi.hoisted(() => ({
   jsonResponse: vi.fn((body, init) => ({ status: init?.status || 200, body })),
   getModelAliases: vi.fn(),
+  setModelAlias: vi.fn(),
+  getCustomModels: vi.fn(),
   getDisabledModels: vi.fn(),
   getCapsOverrides: vi.fn(),
 }));
@@ -13,7 +15,8 @@ vi.mock("next/server", () => ({
 
 vi.mock("@/models", () => ({
   getModelAliases: mocks.getModelAliases,
-  setModelAlias: vi.fn(),
+  setModelAlias: mocks.setModelAlias,
+  getCustomModels: mocks.getCustomModels,
 }));
 
 vi.mock("@/lib/disabledModelsDb", () => ({
@@ -30,6 +33,7 @@ describe("GET /api/models — caps overrides merge", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getModelAliases.mockResolvedValue({});
+    mocks.getCustomModels.mockResolvedValue([]);
     mocks.getDisabledModels.mockResolvedValue({});
     mocks.getCapsOverrides.mockResolvedValue({});
   });

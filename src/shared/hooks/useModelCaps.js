@@ -90,22 +90,27 @@ export function useModelCaps() {
   useEffect(() => {
     let alive = true;
     const apply = (maps) => {
-      setByFull(maps.byFull);
-      setById(maps.byId);
-      setOverrides(maps.overrides);
+      if (alive) {
+        setByFull(maps.byFull);
+        setById(maps.byId);
+        setOverrides(maps.overrides);
+      }
     };
     if (cache) {
       apply(cache);
     } else {
-      loadModelCaps().then((maps) => { if (alive) apply(maps); });
+      loadModelCaps().then(apply);
     }
     const onChanged = () => {
-      loadModelCaps().then((maps) => { if (alive) apply(maps); });
+      cache = null;
+      loadModelCaps().then(apply);
     };
     window.addEventListener(CAPS_CHANGED_EVENT, onChanged);
+    window.addEventListener("customModelChanged", onChanged);
     return () => {
       alive = false;
       window.removeEventListener(CAPS_CHANGED_EVENT, onChanged);
+      window.removeEventListener("customModelChanged", onChanged);
     };
   }, []);
 
