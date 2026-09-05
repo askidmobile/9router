@@ -13,6 +13,7 @@ import { EmbeddingExampleCard } from "./components/EmbeddingExampleCard";
 import { TtsExampleCard } from "./components/TtsExampleCard";
 import { GenericExampleCard } from "./components/GenericExampleCard";
 import { SttExampleCard } from "./components/SttExampleCard";
+import { getTtsModels } from "@/shared/utils/ttsModels";
 
 // MediaProviderDetailPage
 export default function MediaProviderDetailPage() {
@@ -162,8 +163,8 @@ export default function MediaProviderDetailPage() {
         <ConnectionsCard providerId={id} isOAuth={false} />
       )}
 
-      {/* Models - hidden for tts/webSearch/webFetch (provider IS the model); custom uses prefix as alias */}
-      {kind !== "tts" && kind !== "webSearch" && kind !== "webFetch" && (
+      {/* Model cards also cover TTS providers with distinct models; voice-only providers have no model catalog. */}
+      {kind !== "webSearch" && kind !== "webFetch" && (kind !== "tts" || getTtsModels(id).length > 0) && (
         <ModelsCard
           providerId={id}
           kindFilter={kind}

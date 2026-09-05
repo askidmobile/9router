@@ -45,6 +45,9 @@ export {
   getMitmAlias, setMitmAliasAll,
 } from "./repos/aliasRepo.js";
 
+// Model display names
+export { getModelNameOverrides, setModelNameOverride } from "./repos/modelNamesRepo.js";
+
 // Model capability overrides
 export {
   getCapsOverrides, getCapsOverride, setCapsOverride, deleteCapsOverride, setCapsOverridesBulk,
@@ -89,6 +92,7 @@ export async function exportDb() {
     mitmAlias: {},
     pricing: {},
     modelCaps: {},
+    modelNames: {},
   };
 
   for (const r of db.all(`SELECT key, value FROM kv WHERE scope = 'modelAliases'`)) out.modelAliases[r.key] = parseJson(r.value);
@@ -96,6 +100,7 @@ export async function exportDb() {
   for (const r of db.all(`SELECT key, value FROM kv WHERE scope = 'mitmAlias'`)) out.mitmAlias[r.key] = parseJson(r.value);
   for (const r of db.all(`SELECT key, value FROM kv WHERE scope = 'pricing'`)) out.pricing[r.key] = parseJson(r.value);
   for (const r of db.all(`SELECT key, value FROM kv WHERE scope = 'modelCaps'`)) out.modelCaps[r.key] = parseJson(r.value);
+  for (const r of db.all(`SELECT key, value FROM kv WHERE scope = 'modelNames'`)) out.modelNames[r.key] = parseJson(r.value);
 
   return out;
 }
@@ -114,7 +119,7 @@ export async function importDb(payload) {
     db.run(`DELETE FROM proxyPools`);
     db.run(`DELETE FROM apiKeys`);
     db.run(`DELETE FROM combos`);
-    db.run(`DELETE FROM kv WHERE scope IN ('modelAliases', 'customModels', 'mitmAlias', 'pricing', 'modelCaps')`);
+    db.run(`DELETE FROM kv WHERE scope IN ('modelAliases', 'customModels', 'mitmAlias', 'pricing', 'modelCaps', 'modelNames')`);
 
     // Settings
     if (payload.settings) {
@@ -169,6 +174,11 @@ export async function importDb(payload) {
     }
     for (const [key, caps] of Object.entries(payload.modelCaps || {})) {
       db.run(`INSERT OR REPLACE INTO kv(scope, key, value) VALUES('modelCaps', ?, ?)`, [key, stringifyJson(caps || {})]);
+    }
+    for (const [key, name] of Object.entries(payload.modelNames || {})) {
+      if (typeof name === "string" && name.trim()) {
+        db.run(`INSERT OR REPLACE INTO kv(scope, key, value) VALUES('modelNames', ?, ?)`, [key, stringifyJson(name.trim())]);
+      }
     }
   });
 

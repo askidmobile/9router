@@ -5,6 +5,7 @@ import PropTypes from "prop-types";
 import { Modal, Button } from "@/shared/components";
 import { invalidateModelCapsCache } from "@/shared/hooks/useModelCaps";
 import { invalidatePricingCache } from "@/shared/hooks/usePricing";
+import { saveModelName } from "@/shared/hooks/useModelNames";
 
 const BOOL_CAPS = [
   ["vision", "Vision (image input)"],
@@ -26,6 +27,7 @@ const inputClass =
   "w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary";
 
 export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
+  const [name, setName] = useState("");
   const [alias, setAlias] = useState("");
   const [contextWindow, setContextWindow] = useState("");
   const [maxOutput, setMaxOutput] = useState("");
@@ -63,6 +65,7 @@ export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
 
   useEffect(() => {
     if (!isOpen || !model) return;
+    setName(model.name || model.id);
     setAlias(model.alias || "");
     setContextWindow(model.caps?.contextWindow ? String(model.caps.contextWindow) : "");
     setMaxOutput(model.caps?.maxOutput ? String(model.caps.maxOutput) : "");
@@ -81,6 +84,11 @@ export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
     setSaving(true);
     setError("");
     try {
+      // Any model can carry a display-name override without altering routing.
+      if (name.trim() !== (model.name || model.id)) {
+        await saveModelName({ ...model, name });
+      }
+
       // 1. Alias
       const nextAlias = alias.trim();
       if (nextAlias && nextAlias !== (model.alias || "")) {
@@ -112,8 +120,11 @@ export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
       if (ctx && ctx !== model.staticCaps?.contextWindow) override.contextWindow = ctx;
       const out = maxOutput.trim() ? parseInt(maxOutput, 10) : null;
       if (out && out !== model.staticCaps?.maxOutput) override.maxOutput = out;
+      const capsChanged = BOOL_CAPS.some(([key]) => !!flags[key] !== !!model.caps?.[key])
+        || ctx !== (model.caps?.contextWindow || null)
+        || out !== (model.caps?.maxOutput || null);
 
-      if (Object.keys(override).length > 0) {
+      if (capsChanged && Object.keys(override).length > 0) {
         const res = await fetch("/api/models/caps", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -123,7 +134,7 @@ export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
           const data = await res.json();
           throw new Error(data.error || "Failed to save capabilities");
         }
-      } else if (model.override) {
+      } else if (capsChanged && model.override) {
         await fetch(
           `/api/models/caps?provider=${encodeURIComponent(model.providerAlias)}&model=${encodeURIComponent(model.id)}`,
           { method: "DELETE" }
@@ -235,6 +246,26 @@ export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
     >
       <div className="flex flex-col gap-5">
         {error && <p className="text-sm text-red-500">{error}</p>}
+
+        {model && (
+          <div>
+            <label htmlFor="edit-model-name" className="text-sm font-medium text-text-main mb-1 block">
+              Display name
+            </label>
+            <input
+              id="edit-model-name"
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              maxLength={256}
+              placeholder={model.defaultName || model.id}
+              className={inputClass}
+            />
+            <p className="text-xs text-text-muted mt-1">
+              Leave empty to restore the original name. Model ID and routing alias stay the same.
+            </p>
+          </div>
+        )}
 
         <div>
           <label htmlFor="edit-model-alias" className="text-sm font-medium text-text-main mb-1 block">
@@ -362,6 +393,9 @@ EditModelModal.propTypes = {
   onSaved: PropTypes.func,
   model: PropTypes.shape({
     id: PropTypes.string,
+    name: PropTypes.string,
+    defaultName: PropTypes.string,
+    isCustom: PropTypes.bool,
     providerAlias: PropTypes.string,
     aliasKey: PropTypes.string,
     alias: PropTypes.string,

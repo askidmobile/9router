@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { getModelAliases, setModelAlias, getCustomModels } from "@/models";
 import { getDisabledModels } from "@/lib/disabledModelsDb";
-import { getCapsOverrides } from "@/lib/db/index.js";
+import { getCapsOverrides, getModelNameOverrides } from "@/lib/db/index.js";
+import { resolveModelName } from "@/shared/utils/modelNames";
 import { AI_MODELS } from "@/shared/constants/config";
-import { getProviderAlias } from "@/shared/constants/providers";
+import { getProviderAlias, getProviderByAlias } from "@/shared/constants/providers";
 import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
 
 // GET /api/models - Get models with aliases
@@ -12,6 +13,7 @@ export async function GET() {
     const modelAliases = await getModelAliases();
     const disabled = await getDisabledModels();
     const capsOverrides = await getCapsOverrides();
+    const modelNames = await getModelNameOverrides();
 
     const models = AI_MODELS
       .filter((m) => {
@@ -28,6 +30,7 @@ export async function GET() {
         const c = { ...getCapabilitiesForModel(m.provider, m.model), ...(override || {}) };
         return {
           ...m,
+          name: resolveModelName(modelNames, m.provider, m.model, m.name),
           fullModel,
           routedModel,
           alias: modelAliases[fullModel] || m.model,
@@ -38,6 +41,7 @@ export async function GET() {
             tools: c.tools,
             pdf: c.pdf,
             imageOutput: c.imageOutput,
+            audioInput: c.audioInput,
             contextWindow: c.contextWindow,
             maxOutput: c.maxOutput,
           },
@@ -45,7 +49,8 @@ export async function GET() {
         };
       });
 
-    // Custom models ride along; their stored caps override the name heuristic
+    // Custom models use the same precedence as the editor: defaults, stored
+    // capabilities, then the user's current overrides.
     const seenFull = new Set(models.map((m) => m.fullModel));
     const customModels = (await getCustomModels()).filter((m) => {
       if (!m?.id || (m.kind || m.type || "llm") !== "llm") return false;
@@ -53,22 +58,34 @@ export async function GET() {
     });
     for (const m of customModels) {
       const fullModel = `${m.providerAlias}/${m.id}`;
-      const c = getCapabilitiesForModel(m.providerAlias, m.id);
+      const providerId = getProviderByAlias(m.providerAlias)?.id || m.providerAlias;
+      const override = capsOverrides[`${m.providerAlias}|${m.id}`] || capsOverrides[`${providerId}|${m.id}`];
+      const c = {
+        ...getCapabilitiesForModel(providerId, m.id),
+        ...(m.caps || {}),
+        ...(override || {}),
+      };
       models.push({
         provider: m.providerAlias,
         model: m.id,
-        name: m.name || m.id,
+        name: resolveModelName(modelNames, m.providerAlias, m.id, m.name),
         fullModel,
         routedModel: fullModel,
         alias: modelAliases[fullModel] || m.id,
         caps: {
+          ...(m.caps || {}),
+          ...(override || {}),
           vision: c.vision,
           search: c.search,
           reasoning: c.reasoning,
+          tools: c.tools,
+          pdf: c.pdf,
+          imageOutput: c.imageOutput,
+          audioInput: c.audioInput,
           contextWindow: c.contextWindow,
           maxOutput: c.maxOutput,
-          ...(m.caps || {}),
         },
+        ...(override ? { capsOverridden: true } : {}),
       });
     }
 

@@ -10,6 +10,8 @@ import { translate } from "@/i18n/runtime";
 import { getTtsVoicesForModel } from "open-sse/config/ttsModels.js";
 import { GOOGLE_TTS_LANGUAGES } from "open-sse/config/googleTtsLanguages.js";
 import { Row } from "./exampleShared";
+import { useModelNames } from "@/shared/hooks/useModelNames";
+import { getTtsModels } from "@/shared/utils/ttsModels";
 
 const DEFAULT_TTS_RESPONSE_EXAMPLE = `// Audio will appear here after running.
 // Example JSON response (response_format=json):
@@ -19,7 +21,9 @@ const DEFAULT_TTS_RESPONSE_EXAMPLE = `// Audio will appear here after running.
 }`;
 
 export function TtsExampleCard({ providerId }) {
+  const { getName } = useModelNames();
   const providerAlias = getProviderAlias(providerId);
+  const ttsModels = getTtsModels(providerId);
   const config = TTS_PROVIDER_CONFIG[providerId] || TTS_PROVIDER_CONFIG["edge-tts"];
 
   // Voice state
@@ -281,20 +285,17 @@ export function TtsExampleCard({ providerId }) {
             </span>
           </Row>
 
-          {/* Model selector — prefer PROVIDER_MODELS[kind=tts], else providerModels via modelKey */}
-          {config.hasModelSelector && (config.modelKey || getModelsByProviderId(providerId).some(m => getModelKind(m) === "tts")) && (
+          {/* Use the same model catalog and display names as the cards above. */}
+          {config.hasModelSelector && ttsModels.length > 0 && (
             <Row label="Model">
               <select
                 value={selectedModel}
                 onChange={(e) => setSelectedModel(e.target.value)}
                 className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
               >
-                {(() => {
-                  const ttsModels = getModelsByProviderId(providerId).filter(m => getModelKind(m) === "tts");
-                  return (ttsModels.length ? ttsModels : getModelsByProviderId(config.modelKey) || []).map((m) => (
-                    <option key={m.id} value={m.id}>{m.name || m.id}</option>
-                  ));
-                })()}
+                {ttsModels.map((m) => (
+                  <option key={m.id} value={m.id}>{getName(providerAlias, m.id, m.name)}</option>
+                ))}
               </select>
             </Row>
           )}

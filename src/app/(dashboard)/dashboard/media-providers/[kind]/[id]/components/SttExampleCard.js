@@ -7,8 +7,10 @@ import { getModelKind } from "@/shared/constants/models";
 import { getModelsByProviderId } from "@/shared/constants/models";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { Row } from "./exampleShared";
+import { useModelNames } from "@/shared/hooks/useModelNames";
 
 export function SttExampleCard({ providerId }) {
+  const { getName } = useModelNames();
   const providerAlias = getProviderAlias(providerId);
   const builtinSttModels = getModelsByProviderId(providerId).filter((m) => getModelKind(m) === "stt");
   const [customSttModels, setCustomSttModels] = useState([]);
@@ -118,7 +120,7 @@ export function SttExampleCard({ providerId }) {
               className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
             >
               {sttModels.map((m) => (
-                <option key={m.id} value={m.id}>{m.name || m.id}</option>
+                <option key={m.id} value={m.id}>{getName(providerAlias, m.id, m.name)}</option>
               ))}
             </select>
           </Row>

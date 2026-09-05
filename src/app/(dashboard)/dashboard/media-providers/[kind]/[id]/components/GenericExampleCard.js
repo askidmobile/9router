@@ -6,6 +6,7 @@ import { MEDIA_PROVIDER_KINDS, getProviderAlias, resolveProviderId } from "@/sha
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { Row, KIND_EXAMPLE_CONFIG } from "./exampleShared";
+import { useModelNames } from "@/shared/hooks/useModelNames";
 
 const CLOUDFLARE_TEST_IMAGE_URL = "https://pub-1fb693cb11cc46b2b2f656f51e015a2c.r2.dev/dog.png";
 const CLOUDFLARE_TEST_MASK_URL = "https://pub-1fb693cb11cc46b2b2f656f51e015a2c.r2.dev/dog-mask.png";
@@ -29,6 +30,7 @@ function toImagePreviewSrc(value) {
 }
 
 export function GenericExampleCard({ providerId, kind }) {
+  const { getName } = useModelNames();
   const providerAlias = getProviderAlias(providerId);
   const resolvedId = resolveProviderId(providerAlias);
   const safeProviderAlias = resolvedId === providerId ? providerAlias : providerId;
@@ -236,7 +238,7 @@ export function GenericExampleCard({ providerId, kind }) {
               className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
             >
               {kindModels.map((m) => (
-                <option key={m.id} value={m.id}>{m.name || m.id}</option>
+                <option key={m.id} value={m.id}>{getName(providerAlias, m.id, m.name)}</option>
               ))}
             </select>
           </Row>

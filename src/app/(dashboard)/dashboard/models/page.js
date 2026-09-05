@@ -11,6 +11,7 @@ import { invalidatePricingCache } from "@/shared/hooks/usePricing";
 import { resolveModelsDevProviderId } from "@/lib/modelsDev/providerMap.js";
 import { formatModelMeta } from "@/shared/utils/modelMeta";
 import { buildEditModel } from "@/shared/utils/editModel";
+import { useModelNames } from "@/shared/hooks/useModelNames";
 import EditModelModal from "./EditModelModal";
 
 const inputClass =
@@ -35,6 +36,7 @@ export default function ModelsPage() {
   const [mdAction, setMdAction] = useState({});
   const [refreshing, setRefreshing] = useState(false);
   const { getCaps } = useModelCaps();
+  const { getName, overrides: nameOverrides } = useModelNames();
 
   const fetchData = useCallback(async () => {
     try {
@@ -191,7 +193,8 @@ export default function ModelsPage() {
           providerId,
           providerAlias: alias,
           id: m.id,
-          name: m.name || m.id,
+          defaultName: m.name || m.id,
+          name: getName(alias, m.id, m.name),
           isCustom: false,
         });
       }
@@ -205,14 +208,15 @@ export default function ModelsPage() {
         providerId: group.providerId,
         providerAlias: c.providerAlias,
         id: c.id,
-        name: c.name || c.id,
+        defaultName: c.name || c.id,
+        name: getName(c.providerAlias, c.id, c.name),
         isCustom: true,
       });
     }
 
     for (const group of map.values()) group.models.sort((a, b) => a.id.localeCompare(b.id));
     return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
-  }, [customModels, getProviderInfo]);
+  }, [customModels, getProviderInfo, getName]);
 
   const catalogIds = useMemo(
     () => new Set((modelsDev?.providers || []).map((p) => p.id)),
@@ -310,6 +314,9 @@ export default function ModelsPage() {
       ...row,
       ...buildEditModel({
         id: row.id,
+        name: row.defaultName,
+        nameOverrides,
+        isCustom: row.isCustom,
         providerAlias: row.providerAlias,
         // Custom models are stored (and aliased) under the provider alias,
         // never the registry id.
@@ -537,7 +544,10 @@ export default function ModelsPage() {
                     <ModelRow
                       key={row.key}
                       row={row}
-                      caps={getCaps(`${row.providerAlias}/${row.id}`)}
+                      caps={{
+                        ...getCaps(`${row.providerAlias}/${row.id}`),
+                        ...(capsOverrides[`${row.providerAlias}|${row.id}`] || capsOverrides[`${row.providerId}|${row.id}`] || {}),
+                      }}
                       alias={getAliasFor(row)}
                       disabled={isDisabled(row)}
                       price={getPricingFor(row)}
@@ -584,7 +594,7 @@ function ModelRow({ row, caps, alias, disabled, price, onEdit, onToggleDisabled,
     >
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-medium text-text-main truncate">{alias || row.name}</span>
+          <span className="text-sm font-medium text-text-main truncate">{row.name}</span>
           {row.isCustom && (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-semibold uppercase">
               Custom
@@ -598,6 +608,9 @@ function ModelRow({ row, caps, alias, disabled, price, onEdit, onToggleDisabled,
           <CapacityBadges caps={caps} size={14} />
         </div>
         <p className="text-xs text-text-muted font-mono truncate">{row.id}</p>
+        {alias && (
+          <p className="text-xs text-text-muted truncate"><span>Alias</span>: <code>{alias}</code></p>
+        )}
         {meta && <p className="text-xs text-text-muted mt-0.5">{meta}</p>}
       </div>
       <div className="flex items-center gap-1 shrink-0">

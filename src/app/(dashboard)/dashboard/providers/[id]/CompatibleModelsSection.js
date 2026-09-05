@@ -10,9 +10,10 @@ import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { usePricing } from "@/shared/hooks/usePricing";
 import { buildEditModel } from "@/shared/utils/editModel";
+import { useModelNames } from "@/shared/hooks/useModelNames";
 import { CapacityBadges } from "@/shared/components";
 import { formatModelMeta } from "@/shared/utils/modelMeta";
-function CompatibleModelRow({ modelId, displayName, fullModel, copied, onCopy, onDeleteAlias, onTest, testStatus, isTesting, onEdit, hasOverride, caps }) {
+function CompatibleModelRow({ modelId, displayName, alias, fullModel, copied, onCopy, onDeleteAlias, onTest, testStatus, isTesting, onEdit, hasOverride, caps }) {
   const { getPricing } = usePricing();
   const meta = formatModelMeta(caps, getPricing(fullModel.slice(0, fullModel.indexOf("/")), modelId));
   const borderColor = testStatus === "ok"
@@ -52,6 +53,9 @@ function CompatibleModelRow({ modelId, displayName, fullModel, copied, onCopy, o
             </div>
           </div>
           {/* Row 3 — capabilities, ctx/out/prices, configured */}
+          {alias && (
+            <p className="truncate text-xs text-text-muted"><span>Alias</span>: <code>{alias}</code></p>
+          )}
           <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 pl-0.5">
             <CapacityBadges caps={caps} colorOverride="text-text-muted/70" size={12} />
             {meta && <span className="truncate text-[9px] text-text-muted/70">{meta}</span>}
@@ -120,6 +124,7 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
   const [modelTestResults, setModelTestResults] = useState({});
   const [editing, setEditing] = useState(null);
   const { getCaps, overrides: capsOverrides } = useModelCaps();
+  const { getName, overrides: nameOverrides } = useModelNames();
   const { getPricing } = usePricing();
 
   const handleTestModel = async (modelId) => {
@@ -214,7 +219,8 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
             <CompatibleModelRow
               key={`${source}-${providerStorageAlias}/${id}`}
               modelId={id}
-              displayName={alias || name}
+              displayName={getName(providerStorageAlias, id, name)}
+              alias={alias}
               fullModel={`${providerDisplayAlias}/${id}`}
               copied={copied}
               onCopy={onCopy}
@@ -229,6 +235,9 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
               })()}
               onEdit={() => setEditing(buildEditModel({
                 id,
+                name,
+                nameOverrides,
+                isCustom: source === "custom",
                 providerAlias: providerStorageAlias,
                 alias,
                 overrides: capsOverrides,

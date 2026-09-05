@@ -4,8 +4,10 @@ import { useState } from "react";
 import PropTypes from "prop-types";
 import { Button } from "@/shared/components";
 import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
+import { useModelNames } from "@/shared/hooks/useModelNames";
+import EditModelNameModal from "@/shared/components/EditModelNameModal";
 
-function PassthroughModelRow({ modelId, displayName, fullModel, copied, onCopy, onDeleteAlias, onTest, testStatus, isTesting }) {
+function PassthroughModelRow({ modelId, displayName, fullModel, copied, onCopy, onDeleteAlias, onTest, testStatus, isTesting, onEdit }) {
   const borderColor = testStatus === "ok"
     ? "border-green-500/40"
     : testStatus === "error"
@@ -65,6 +67,9 @@ function PassthroughModelRow({ modelId, displayName, fullModel, copied, onCopy, 
       </div>
 
       {/* Delete button */}
+      <button onClick={onEdit} className="p-1 hover:bg-sidebar rounded text-text-muted hover:text-primary" title="Edit model name">
+        <span className="material-symbols-outlined text-sm">edit</span>
+      </button>
       <button
         onClick={onDeleteAlias}
         className="p-1 hover:bg-red-50 rounded text-red-500"
@@ -86,9 +91,12 @@ PassthroughModelRow.propTypes = {
   onTest: PropTypes.func,
   testStatus: PropTypes.oneOf(["ok", "error"]),
   isTesting: PropTypes.bool,
+  onEdit: PropTypes.func,
 };
 
 export default function PassthroughModelsSection({ providerAlias, modelAliases, customModels, copied, onCopy, onDeleteAlias, onAddCustomModel, onDeleteCustomModel }) {
+  const { getName } = useModelNames();
+  const [editingName, setEditingName] = useState(null);
   const [newModel, setNewModel] = useState("");
   const [adding, setAdding] = useState(false);
 
@@ -151,7 +159,8 @@ export default function PassthroughModelsSection({ providerAlias, modelAliases, 
             <PassthroughModelRow
               key={`${source}-${fullModel}`}
               modelId={id}
-              displayName={alias || name}
+              displayName={getName(providerAlias, id, name)}
+              onEdit={() => setEditingName({ id, providerAlias, defaultName: name || id, name: getName(providerAlias, id, name) })}
               fullModel={fullModel}
               copied={copied}
               onCopy={onCopy}
@@ -160,6 +169,7 @@ export default function PassthroughModelsSection({ providerAlias, modelAliases, 
           ))}
         </div>
       )}
+      {editingName && <EditModelNameModal model={editingName} onClose={() => setEditingName(null)} />}
     </div>
   );
 }

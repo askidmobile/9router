@@ -6,6 +6,7 @@ import { getProviderAlias, isCustomEmbeddingProvider } from "@/shared/constants/
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { Row } from "./exampleShared";
+import { useModelNames } from "@/shared/hooks/useModelNames";
 
 const DEFAULT_RESPONSE_EXAMPLE = `{
   "object": "list",
@@ -19,6 +20,7 @@ const DEFAULT_RESPONSE_EXAMPLE = `{
 }`;
 
 export function EmbeddingExampleCard({ providerId, customAlias }) {
+  const { getName } = useModelNames();
   const isCustom = isCustomEmbeddingProvider(providerId);
   const providerAlias = isCustom ? (customAlias || providerId) : getProviderAlias(providerId);
   const embeddingModels = isCustom ? [] : getModelsByProviderId(providerId).filter((m) => getModelKind(m) === "embedding");
@@ -124,7 +126,7 @@ export function EmbeddingExampleCard({ providerId, customAlias }) {
               className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
             >
               {embeddingModels.map((m) => (
-                <option key={m.id} value={m.id}>{m.name || m.id}</option>
+                <option key={m.id} value={m.id}>{getName(providerAlias, m.id, m.name)}</option>
               ))}
             </select>
           )}

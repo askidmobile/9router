@@ -13,6 +13,7 @@ import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { usePricing } from "@/shared/hooks/usePricing";
 import { buildEditModel } from "@/shared/utils/editModel";
+import { useModelNames } from "@/shared/hooks/useModelNames";
 import EditModelModal from "@/app/(dashboard)/dashboard/models/EditModelModal";
 import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
 import { translate } from "@/i18n/runtime";
@@ -49,6 +50,7 @@ export default function ProviderDetailPage() {
   const providerId = params.id;
   const { getCaps, overrides: capsOverrides } = useModelCaps();
   const { getPricing } = usePricing();
+  const { getName, overrides: nameOverrides } = useModelNames();
   const [editingModel, setEditingModel] = useState(null);
   // Effective caps for display: static base + user override. Tries both the
   // storage alias and the registry id as override key (models.dev import keys
@@ -1102,7 +1104,7 @@ export default function ProviderDetailPage() {
           onDeleteCustomModel={(modelId) => handleDeleteCustomModel(modelId, "llm", providerStorageAlias)}
           connections={connections}
           isAnthropic={isAnthropicCompatible}
-          onModelsChanged={fetchCustomModels}
+          onModelsChanged={() => { fetchCustomModels(); fetchAliases(); }}
           importSupported={importSupported}
         />
       );
@@ -1130,7 +1132,7 @@ export default function ProviderDetailPage() {
         {customModelRows.map((model) => (
           <ModelRow
             key={`${model.source}-${model.fullModel}`}
-            model={{ id: model.id, name: model.name }}
+            model={{ id: model.id, name: getName(providerStorageAlias, model.id, model.name) }}
             fullModel={`${providerDisplayAlias}/${model.id}`}
             alias={model.alias}
             copied={copied}
@@ -1150,6 +1152,9 @@ export default function ProviderDetailPage() {
             isFree={false}
             onEdit={() => setEditingModel(buildEditModel({
               id: model.id,
+              name: model.name,
+              nameOverrides,
+              isCustom: model.source === "custom",
               providerAlias: providerStorageAlias,
               alias: model.alias,
               overrides: capsOverrides,
@@ -1171,7 +1176,7 @@ export default function ProviderDetailPage() {
           return (
             <ModelRow
               key={model.id}
-              model={model}
+              model={{ ...model, name: getName(providerStorageAlias, model.id, model.name) }}
               fullModel={`${providerDisplayAlias}/${model.id}`}
               alias={existingAlias}
               copied={copied}
@@ -1185,6 +1190,8 @@ export default function ProviderDetailPage() {
               onDisable={() => handleDisableModel(model.id)}
               onEdit={() => setEditingModel(buildEditModel({
                 id: model.id,
+                name: model.name,
+                nameOverrides,
                 providerAlias: providerStorageAlias,
                 providerId,
                 alias: existingAlias,
@@ -1258,15 +1265,25 @@ export default function ProviderDetailPage() {
             <p className="text-xs text-text-muted mb-2">Disabled models ({disabledDisplayModels.length}):</p>
             <div className="flex flex-wrap gap-2">
               {disabledDisplayModels.map((m) => (
-                <button
-                  key={m.id}
-                  onClick={() => handleEnableModel(m.id)}
-                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-dashed border-black/10 dark:border-white/10 text-xs text-text-muted hover:text-primary hover:border-primary/40 hover:bg-primary/5 transition-colors"
-                  title="Restore model"
-                >
-                  <span className="material-symbols-outlined text-[13px]">add</span>
-                  {m.id}
-                </button>
+                <div key={m.id} className="flex max-w-full items-center gap-1 px-2.5 py-1.5 rounded-lg border border-dashed border-black/10 dark:border-white/10 text-xs text-text-muted">
+                  <button onClick={() => handleEnableModel(m.id)} title="Restore model" className="flex min-w-0 items-center gap-1 hover:text-primary">
+                    <span className="material-symbols-outlined text-[13px]">add</span>
+                    <span className="truncate">{getName(providerStorageAlias, m.id, m.name)}</span>
+                  </button>
+                  <button title="Edit model" className="shrink-0 p-0.5 hover:text-primary" onClick={() => setEditingModel(buildEditModel({
+                    id: m.id,
+                    name: m.name,
+                    nameOverrides,
+                    providerAlias: providerStorageAlias,
+                    providerId,
+                    alias: Object.entries(modelAliases).find(([, target]) => target === `${providerId}/${m.id}` || target === `${providerStorageAlias}/${m.id}`)?.[0],
+                    overrides: capsOverrides,
+                    getCaps,
+                    getPricing,
+                  }))}>
+                    <span className="material-symbols-outlined text-[13px]">edit</span>
+                  </button>
+                </div>
               ))}
             </div>
           </div>
@@ -1838,7 +1855,7 @@ export default function ProviderDetailPage() {
         isOpen={!!editingModel}
         onClose={() => setEditingModel(null)}
         model={editingModel}
-        onSaved={() => {}}
+        onSaved={() => { fetchCustomModels(); fetchAliases(); }}
       />
 
       <ImportModelsModal

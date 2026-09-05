@@ -6,6 +6,7 @@ import Modal from "./Modal";
 import ProviderIcon from "./ProviderIcon";
 import CapacityBadges from "./CapacityBadges";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
+import { useModelNames } from "@/shared/hooks/useModelNames";
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
 import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, AI_PROVIDERS, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, getProviderAlias } from "@/shared/constants/providers";
 
@@ -44,6 +45,7 @@ export default function ModelSelectModal({
     });
   }, [activeProviders, kindFilter]);
   const { getCaps } = useModelCaps();
+  const { getName } = useModelNames();
   const [searchQuery, setSearchQuery] = useState("");
   const [combos, setCombos] = useState([]);
   const [providerNodes, setProviderNodes] = useState([]);
@@ -384,6 +386,10 @@ export default function ModelSelectModal({
     // Filter out disabled models per provider (disabled keyed by storage alias OR providerId)
     Object.entries(groups).forEach(([providerId, group]) => {
       const aliasKey = getProviderAlias(providerId);
+      group.models = group.models.map((model) => ({
+        ...model,
+        name: model.isPlaceholder ? model.name : getName(providerId, model.id, getName(group.alias, model.id, model.name)),
+      }));
       const disabledIds = new Set([
         ...(disabledModels[aliasKey] || []),
         ...(disabledModels[providerId] || []),
@@ -394,7 +400,7 @@ export default function ModelSelectModal({
     });
 
     return groups;
-  }, [filteredActiveProviders, modelAliases, allProviders, providerNodes, customModels, disabledModels, kindFilter, activeProviders, cursorModels]);
+  }, [filteredActiveProviders, modelAliases, allProviders, providerNodes, customModels, disabledModels, kindFilter, activeProviders, cursorModels, getName]);
 
   // Filter combos by search query (and hide combos when kindFilter is set — combos are LLM-only by design)
   const filteredCombos = useMemo(() => {

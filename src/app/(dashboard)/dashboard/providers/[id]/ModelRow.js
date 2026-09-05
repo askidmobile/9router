@@ -46,7 +46,7 @@ export default function ModelRow({ model, fullModel, alias, copied, onCopy, test
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           {/* Row 1 — display name */}
           <span className="truncate text-sm font-medium text-text-main">
-            {alias || model.name || model.id}
+            {model.name || model.id}
           </span>
           {/* Row 2 — routed id + copy on hover */}
           <div className="flex min-w-0 items-center gap-1.5">
@@ -62,6 +62,9 @@ export default function ModelRow({ model, fullModel, alias, copied, onCopy, test
             {isFree && <span className="text-[10px] font-bold text-green-500 bg-green-500/10 px-1.5 py-0.5 rounded">FREE</span>}
           </div>
           {/* Row 3 — capabilities, ctx/out/prices, configured */}
+          {alias && (
+            <p className="truncate text-xs text-text-muted"><span>Alias</span>: <code>{alias}</code></p>
+          )}
           <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 pl-0.5">
             <CapacityBadges caps={caps} colorOverride="text-text-muted/70" size={12} />
             {meta && <span className="truncate text-[9px] text-text-muted/70">{meta}</span>}

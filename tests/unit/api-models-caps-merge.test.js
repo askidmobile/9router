@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   getCustomModels: vi.fn(),
   getDisabledModels: vi.fn(),
   getCapsOverrides: vi.fn(),
+  getModelNameOverrides: vi.fn(),
 }));
 
 vi.mock("next/server", () => ({
@@ -25,6 +26,7 @@ vi.mock("@/lib/disabledModelsDb", () => ({
 
 vi.mock("@/lib/db/index.js", () => ({
   getCapsOverrides: mocks.getCapsOverrides,
+  getModelNameOverrides: mocks.getModelNameOverrides,
 }));
 
 const { GET } = await import("../../src/app/api/models/route.js");
@@ -36,6 +38,7 @@ describe("GET /api/models — caps overrides merge", () => {
     mocks.getCustomModels.mockResolvedValue([]);
     mocks.getDisabledModels.mockResolvedValue({});
     mocks.getCapsOverrides.mockResolvedValue({});
+    mocks.getModelNameOverrides.mockResolvedValue({});
   });
 
   it("applies overrides on top of static caps and flags the model", async () => {
@@ -73,5 +76,50 @@ describe("GET /api/models — caps overrides merge", () => {
 
     const response = await GET();
     expect(response.body.models.some((m) => m.provider === "openai" && m.model === "gpt-4o")).toBe(false);
+  });
+
+  it("applies saved limits and explicit false values to manually added models", async () => {
+    mocks.getCustomModels.mockResolvedValue([
+      { providerAlias: "cx", id: "gpt-6-astra", caps: { vision: true, reasoning: true } },
+    ]);
+    mocks.getCapsOverrides.mockResolvedValue({
+      "cx|gpt-6-astra": { contextWindow: 400000, maxOutput: 128000, vision: false, pdf: true, audioInput: true },
+    });
+
+    const response = await GET();
+    const model = response.body.models.find((m) => m.fullModel === "cx/gpt-6-astra");
+    expect(model.caps).toMatchObject({
+      contextWindow: 400000, maxOutput: 128000, vision: false,
+      reasoning: true, pdf: true, audioInput: true, tools: true,
+    });
+    expect(model.capsOverridden).toBe(true);
+  });
+
+  it("keeps custom capabilities when overrides are absent and isolates providers", async () => {
+    mocks.getCustomModels.mockResolvedValue([
+      { providerAlias: "cx", id: "gpt-6-astra", caps: { vision: true } },
+      { providerAlias: "custom-node", id: "gpt-6-astra", caps: { vision: false, videoInput: true, tools: false } },
+    ]);
+    mocks.getCapsOverrides.mockResolvedValue({ "cx|gpt-6-astra": { contextWindow: 400000 } });
+
+    const response = await GET();
+    const model = response.body.models.find((m) => m.fullModel === "custom-node/gpt-6-astra");
+    expect(model.caps).toMatchObject({ vision: false, videoInput: true, tools: false });
+    expect(model.caps.contextWindow).not.toBe(400000);
+    expect(model.capsOverridden).toBeUndefined();
+  });
+
+  it("accepts overrides keyed by the registry ID and prefers the storage alias", async () => {
+    mocks.getCustomModels.mockResolvedValue([{ providerAlias: "cx", id: "gpt-6-astra" }]);
+    mocks.getCapsOverrides.mockResolvedValue({ "codex|gpt-6-astra": { contextWindow: 300000 } });
+    let response = await GET();
+    expect(response.body.models.find((m) => m.fullModel === "cx/gpt-6-astra").caps.contextWindow).toBe(300000);
+
+    mocks.getCapsOverrides.mockResolvedValue({
+      "codex|gpt-6-astra": { contextWindow: 300000 },
+      "cx|gpt-6-astra": { contextWindow: 400000 },
+    });
+    response = await GET();
+    expect(response.body.models.find((m) => m.fullModel === "cx/gpt-6-astra").caps.contextWindow).toBe(400000);
   });
 });

@@ -9,9 +9,12 @@ import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { usePricing } from "@/shared/hooks/usePricing";
 import { formatModelMeta } from "@/shared/utils/modelMeta";
+import { useModelNames } from "@/shared/hooks/useModelNames";
+import EditModelNameModal from "@/shared/components/EditModelNameModal";
+import { getTtsModels } from "@/shared/utils/ttsModels";
 
 // ── ModelRow ───────────────────────────────────────────────────
-export function ModelRow({ model, fullModel, copied, onCopy, testStatus, isCustom, isFree, onDeleteAlias, onTest, isTesting }) {
+export function ModelRow({ model, fullModel, copied, onCopy, testStatus, isCustom, isFree, onDeleteAlias, onTest, isTesting, onEdit }) {
   const { getCaps } = useModelCaps();
   const { getPricing } = usePricing();
   const borderColor = testStatus === "ok" ? "border-green-500/40" : testStatus === "error" ? "border-red-500/40" : "border-border";
@@ -25,9 +28,9 @@ export function ModelRow({ model, fullModel, copied, onCopy, testStatus, isCusto
         <span className="material-symbols-outlined text-base" style={iconColor ? { color: iconColor } : undefined}>
           {testStatus === "ok" ? "check_circle" : testStatus === "error" ? "cancel" : "smart_toy"}
         </span>
-        <div className="flex flex-col gap-1">
-          <code className="text-xs text-text-muted font-mono bg-sidebar px-1.5 py-0.5 rounded">{fullModel}</code>
-          {model.name && <span className="text-[9px] text-text-muted/70 italic pl-1">{model.name}</span>}
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <span className="text-sm font-medium truncate">{model.name || model.id}</span>
+          <code className="text-xs text-text-muted font-mono bg-sidebar px-1.5 py-0.5 rounded truncate">{fullModel}</code>
           {meta && <span className="text-[9px] text-text-muted/70 pl-1">{meta}</span>}
         </div>
         {onTest && (
@@ -51,6 +54,11 @@ export function ModelRow({ model, fullModel, copied, onCopy, testStatus, isCusto
           </span>
         </div>
         {isFree && <span className="text-[10px] font-bold text-green-500 bg-green-500/10 px-1.5 py-0.5 rounded">FREE</span>}
+        {onEdit && (
+          <button onClick={onEdit} title="Edit model name" className="p-0.5 hover:bg-sidebar rounded text-text-muted hover:text-primary">
+            <span className="material-symbols-outlined text-sm">edit</span>
+          </button>
+        )}
         {isCustom && (
           <button onClick={onDeleteAlias} className="p-0.5 hover:bg-red-500/10 rounded text-text-muted hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity ml-auto" title="Remove custom model">
             <span className="material-symbols-outlined text-sm">close</span>
@@ -72,6 +80,7 @@ ModelRow.propTypes = {
   onDeleteAlias: PropTypes.func,
   onTest: PropTypes.func,
   isTesting: PropTypes.bool,
+  onEdit: PropTypes.func,
 };
 
 // ── AddCustomModelModal ────────────────────────────────────────
@@ -117,6 +126,8 @@ AddCustomModelModal.propTypes = {
 // Self-contained card: shows models for a provider, filtered by optional `kindFilter`.
 // kindFilter: if provided, only shows models with matching type/kinds field.
 export default function ModelsCard({ providerId, kindFilter, providerAliasOverride }) {
+  const { getName } = useModelNames();
+  const [editingName, setEditingName] = useState(null);
   const { copied, copy } = useCopyToClipboard();
   const [modelAliases, setModelAliases] = useState({});
   const [customModels, setCustomModels] = useState([]);
@@ -127,6 +138,12 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
 
   const providerAlias = providerAliasOverride || getProviderAlias(providerId);
   const effectiveType = kindFilter || "llm";
+  const openNameEditor = (model) => setEditingName({
+    id: model.id,
+    providerAlias,
+    defaultName: model.name || model.id,
+    name: getName(providerAlias, model.id, model.name),
+  });
 
   const fetchData = useCallback(async () => {
     try {
@@ -206,7 +223,7 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
   };
 
   // Built-in models — filter by kindFilter if provided
-  const allBuiltIn = getModelsByProviderId(providerId);
+  const allBuiltIn = kindFilter === "tts" ? getTtsModels(providerId) : getModelsByProviderId(providerId);
   const builtInModels = kindFilter
     ? allBuiltIn.filter((m) => {
         if (m.kinds) return m.kinds.includes(kindFilter);
@@ -238,7 +255,8 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
             return (
               <ModelRow
                 key={model.id}
-                model={model}
+                model={{ ...model, name: getName(providerAlias, model.id, model.name) }}
+                onEdit={() => openNameEditor(model)}
                 fullModel={`${providerAlias}/${model.id}`}
                 alias={existingAlias}
                 copied={copied}
@@ -256,7 +274,8 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
           {myCustomModels.map((model) => (
             <ModelRow
               key={`${model.id}-${model.type}`}
-              model={{ id: model.id, name: model.name }}
+              model={{ id: model.id, name: getName(providerAlias, model.id, model.name) }}
+              onEdit={() => openNameEditor(model)}
               fullModel={`${providerAlias}/${model.id}`}
               copied={copied}
               onCopy={copy}
@@ -287,6 +306,7 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
         }}
         onClose={() => setShowAddCustomModel(false)}
       />
+      {editingName && <EditModelNameModal model={editingName} onClose={() => setEditingName(null)} />}
     </>
   );
 }

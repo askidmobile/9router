@@ -78,6 +78,13 @@ export async function updateProviderNode(id, data) {
     const previous = rowToNode(row);
     const merged = { ...previous, ...data, updatedAt: new Date().toISOString() };
     upsert(db, merged);
+    if (previous.prefix && merged.prefix && previous.prefix !== merged.prefix) {
+      for (const name of db.all(`SELECT key FROM kv WHERE scope = 'modelNames'`)) {
+        if (name.key.startsWith(`${previous.prefix}|`)) {
+          db.run(`UPDATE kv SET key = ? WHERE scope = 'modelNames' AND key = ?`, [`${merged.prefix}${name.key.slice(previous.prefix.length)}`, name.key]);
+        }
+      }
+    }
     // Combo members address the node by prefix, so a rename leaves them pointing
     // at a prefix nobody owns — or, worse, at a built-in provider that does.
     // Set after upsert so the field is not persisted into the node row.
@@ -104,9 +111,11 @@ function retargetComboMembers(db, from, to) {
 // Returns the names of combos whose model list changed.
 function purgeNodeData(db, nodeId, prefix) {
   const ownsKey = (key) => key === nodeId || key.startsWith(`${nodeId}|`);
-  for (const scope of ["customModels", "modelCaps", "disabledModels", "pricing"]) {
+  for (const scope of ["customModels", "modelCaps", "disabledModels", "pricing", "modelNames"]) {
     for (const row of db.all(`SELECT key FROM kv WHERE scope = ?`, [scope])) {
-      if (ownsKey(row.key)) db.run(`DELETE FROM kv WHERE scope = ? AND key = ?`, [scope, row.key]);
+      if (ownsKey(row.key) || (scope === "modelNames" && prefix && row.key.startsWith(`${prefix}|`))) {
+        db.run(`DELETE FROM kv WHERE scope = ? AND key = ?`, [scope, row.key]);
+      }
     }
   }
 

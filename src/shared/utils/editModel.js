@@ -1,4 +1,5 @@
 import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
+import { resolveModelName } from "./modelNames";
 
 /**
  * Build the record EditModelModal edits.
@@ -14,11 +15,14 @@ import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
  * @param {string} params.providerAlias - key overrides/pricing/custom models are stored under
  * @param {string} [params.providerId] - registry id for static caps; omit for custom models
  * @param {string} [params.alias] - configured routing alias
+ * @param {string} [params.name] - display name, independent of the routing alias
+ * @param {boolean} [params.isCustom] - whether the model was added manually
+ * @param {object} [params.nameOverrides] - provider-scoped display names
  * @param {object} [params.overrides] - capsOverrides map from useModelCaps()
  * @param {Function} [params.getCaps] - getCaps from useModelCaps()
  * @param {Function} [params.getPricing] - getPricing from usePricing()
  */
-export function buildEditModel({ id, providerAlias, providerId, alias = "", overrides = {}, getCaps, getPricing }) {
+export function buildEditModel({ id, providerAlias, providerId, alias = "", name, isCustom = false, nameOverrides = {}, overrides = {}, getCaps, getPricing }) {
   const registryId = providerId || providerAlias;
   const staticCaps = getCapabilitiesForModel(registryId, id) || {};
   const override = overrides[`${providerAlias}|${id}`] || overrides[`${registryId}|${id}`] || null;
@@ -28,6 +32,9 @@ export function buildEditModel({ id, providerAlias, providerId, alias = "", over
 
   return {
     id,
+    name: resolveModelName(nameOverrides, providerAlias, id, name),
+    defaultName: name || id,
+    isCustom,
     providerId: registryId,
     providerAlias,
     aliasKey: `${registryId}/${id}`,
