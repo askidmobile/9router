@@ -89,6 +89,25 @@ describe("Gemini native v1beta endpoint", () => {
     expect(names).toContain("models/gemini-2.5-pro-preview-tts");
   });
 
+  it.each([
+    ["generateContent", { serviceTier: "flex" }],
+    ["streamGenerateContent", { serviceTier: "flex" }],
+    ["generateContent", { service_tier: "flex" }],
+    ["generateContent", { serviceTier: "flex", service_tier: "standard" }],
+  ])("preserves explicit service tiers for %s and common-handler validation", async (action, tiers) => {
+    const modelAction = `gemini-3.5-flash-lite:${action}`;
+    await POST(makeGeminiRequest(`gemini/${modelAction}`, {
+      contents: [{ role: "user", parts: [{ text: "hello" }] }],
+      ...tiers,
+    }), { params: Promise.resolve({ path: ["gemini", modelAction] }) });
+
+    const request = mocks.handleChat.mock.calls[0][0];
+    expect(await request.json()).toMatchObject({
+      model: "gemini/gemini-3.5-flash-lite", stream: action === "streamGenerateContent", ...tiers,
+    });
+    expect(mocks.getProviderCredentials).not.toHaveBeenCalled();
+  });
+
   it("passes Gemini AUDIO generateContent requests through to Google's native endpoint", async () => {
     const body = audioBody();
     const response = await POST(makeGeminiRequest("gemini-3.1-flash-tts-preview:generateContent", body), {

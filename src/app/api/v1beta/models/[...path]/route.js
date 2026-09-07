@@ -400,6 +400,10 @@ function convertGeminiToInternal(geminiBody, model, stream) {
     max_tokens: geminiBody.generationConfig?.maxOutputTokens,
     temperature: geminiBody.generationConfig?.temperature,
     top_p: geminiBody.generationConfig?.topP,
+    // Keep explicit tier intent until the common handler validates it. Keeping
+    // both spellings also prevents a conflicting pair from silently winning.
+    ...(geminiBody.serviceTier != null ? { serviceTier: geminiBody.serviceTier } : {}),
+    ...(geminiBody.service_tier != null ? { service_tier: geminiBody.service_tier } : {}),
   };
 }
 
