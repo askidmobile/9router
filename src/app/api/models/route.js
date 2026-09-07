@@ -14,6 +14,12 @@ export async function GET() {
     const disabled = await getDisabledModels();
     const capsOverrides = await getCapsOverrides();
     const modelNames = await getModelNameOverrides();
+    const savedModels = (await getCustomModels()).filter((m) =>
+      m?.id && (m.kind || m.type || "llm") === "llm"
+    );
+    const savedByModel = new Map(savedModels.map((m) => [
+      `${getProviderAlias(m.providerAlias) || m.providerAlias}/${m.id}`, m,
+    ]));
 
     const models = AI_MODELS
       .filter((m) => {
@@ -23,18 +29,23 @@ export async function GET() {
       })
       .map((m) => {
         const fullModel = `${m.provider}/${m.model}`;
-        const providerAlias = getProviderAlias(m.provider) || m.provider;
+        const providerId = getProviderByAlias(m.provider)?.id || m.provider;
+        const providerAlias = getProviderAlias(providerId) || m.provider;
         const routedModel = `${providerAlias}/${m.model}`;
-        // User overrides (models.dev import / manual edits) win over static caps
-        const override = capsOverrides[`${providerAlias}|${m.model}`] || capsOverrides[`${m.provider}|${m.model}`];
-        const c = { ...getCapabilitiesForModel(m.provider, m.model), ...(override || {}) };
+        // A catalog update can promote a saved custom model to a built-in.
+        // Keep its name/caps, then apply explicit overrides as in the editor.
+        const saved = savedByModel.get(routedModel);
+        const override = capsOverrides[`${providerAlias}|${m.model}`] || capsOverrides[`${providerId}|${m.model}`];
+        const c = { ...getCapabilitiesForModel(providerId, m.model), ...(saved?.caps || {}), ...(override || {}) };
         return {
           ...m,
-          name: resolveModelName(modelNames, m.provider, m.model, m.name),
+          name: resolveModelName(modelNames, providerId, m.model, saved?.name || m.name),
           fullModel,
           routedModel,
           alias: modelAliases[fullModel] || m.model,
           caps: {
+            ...(saved?.caps || {}),
+            ...(override || {}),
             vision: c.vision,
             search: c.search,
             reasoning: c.reasoning,
@@ -51,11 +62,10 @@ export async function GET() {
 
     // Custom models use the same precedence as the editor: defaults, stored
     // capabilities, then the user's current overrides.
-    const seenFull = new Set(models.map((m) => m.fullModel));
-    const customModels = (await getCustomModels()).filter((m) => {
-      if (!m?.id || (m.kind || m.type || "llm") !== "llm") return false;
-      return !seenFull.has(`${m.providerAlias}/${m.id}`);
-    });
+    const seenFull = new Set(models.map((m) => m.routedModel));
+    const customModels = savedModels.filter((m) =>
+      !seenFull.has(`${getProviderAlias(m.providerAlias) || m.providerAlias}/${m.id}`)
+    );
     for (const m of customModels) {
       const fullModel = `${m.providerAlias}/${m.id}`;
       const providerId = getProviderByAlias(m.providerAlias)?.id || m.providerAlias;

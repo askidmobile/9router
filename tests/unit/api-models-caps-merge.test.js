@@ -109,6 +109,21 @@ describe("GET /api/models — caps overrides merge", () => {
     expect(model.capsOverridden).toBeUndefined();
   });
 
+  it("preserves saved metadata when upstream adds the model to its catalog", async () => {
+    mocks.getCustomModels.mockResolvedValue([{
+      providerAlias: "cx", id: "gpt-6-astra", name: "My Astra",
+      caps: { contextWindow: 400000, maxOutput: 128000, vision: false, videoInput: true },
+    }]);
+
+    const response = await GET();
+    const matches = response.body.models.filter((m) => m.routedModel === "cx/gpt-6-astra");
+    expect(matches).toHaveLength(1);
+    expect(matches[0].name).toBe("My Astra");
+    expect(matches[0].caps).toMatchObject({
+      contextWindow: 400000, maxOutput: 128000, vision: false, videoInput: true,
+    });
+  });
+
   it("accepts overrides keyed by the registry ID and prefers the storage alias", async () => {
     mocks.getCustomModels.mockResolvedValue([{ providerAlias: "cx", id: "gpt-6-astra" }]);
     mocks.getCapsOverrides.mockResolvedValue({ "codex|gpt-6-astra": { contextWindow: 300000 } });

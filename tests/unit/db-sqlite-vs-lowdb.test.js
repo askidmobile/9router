@@ -3,7 +3,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from "vitest";
 
 const originalDataDir = process.env.DATA_DIR;
 let tempDir;
@@ -22,6 +22,8 @@ afterAll(() => {
   if (originalDataDir === undefined) delete process.env.DATA_DIR;
   else process.env.DATA_DIR = originalDataDir;
 });
+
+afterEach(() => vi.useRealTimers());
 
 describe("DB SQLite layer — public API parity", () => {
   it("settings: get → defaults; update → merge", async () => {
@@ -66,6 +68,7 @@ describe("DB SQLite layer — public API parity", () => {
   });
 
   it("providerConnections: CRUD + reorder by priority", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
     const c1 = await sqliteDb.createProviderConnection({ provider: "test", authType: "apikey", name: "a", apiKey: "k1" });
     const c2 = await sqliteDb.createProviderConnection({ provider: "test", authType: "apikey", name: "b", apiKey: "k2" });
     const c3 = await sqliteDb.createProviderConnection({ provider: "test", authType: "apikey", name: "c", apiKey: "k3" });
@@ -76,7 +79,9 @@ describe("DB SQLite layer — public API parity", () => {
     expect(list[1].priority).toBe(2);
     expect(list[2].priority).toBe(3);
 
-    // Update priority and reorder
+    // Equal priorities use updatedAt. Make the edit later than creation even
+    // when this test's DB calls complete within the same millisecond.
+    vi.setSystemTime(Date.now() + 1000);
     await sqliteDb.updateProviderConnection(c3.id, { priority: 1 });
     const reordered = await sqliteDb.getProviderConnections({ provider: "test" });
     expect(reordered[0].name).toBe("c");
