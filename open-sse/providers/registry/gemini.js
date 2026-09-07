@@ -1,4 +1,4 @@
-import { GOOGLE_OAUTH_CLIENT } from "../shared.js";
+import { withGeminiFlexModels } from "../../utils/geminiModels.js";
 
 export default {
   id: "gemini",
@@ -6,7 +6,7 @@ export default {
   hasFree: true,
   alias: "gemini",
   display: {
-    name: "Gemini",
+    name: "Google AI Studio",
     icon: "diamond",
     color: "#4285F4",
     textIcon: "GE",
@@ -35,7 +35,7 @@ export default {
       },
     },
   },
-  models: [
+  models: withGeminiFlexModels([
     { id: "gemini-3.8-flash", name: "Gemini 3.8 Flash" },
     { id: "gemini-3.7-flash", name: "Gemini 3.7 Flash" },
     { id: "gemini-3.6-flash", name: "Gemini 3.6 Flash" },
@@ -62,7 +62,7 @@ export default {
     { id: "gemini-2.5-flash-preview-tts", name: "Gemini 2.5 Flash TTS", kind: "tts" },
     { id: "gemini-2.5-pro-preview-tts", name: "Gemini 2.5 Pro TTS", kind: "tts" },
     { id: "embedding-001", name: "Embedding 001", dimensions: 768, kind: "embedding" },
-  ],
+  ]),
   serviceKinds: ["llm","embedding","image","imageToText","webSearch","tts","stt"],
   ttsConfig: {
     baseUrl: "https://generativelanguage.googleapis.com/v1beta/models",

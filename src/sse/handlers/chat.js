@@ -24,6 +24,7 @@ import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
 import { stripModelContextMarker } from "open-sse/utils/modelMarkers.js";
+import { resolveGeminiServiceTier } from "open-sse/utils/geminiModels.js";
 
 /**
  * Handle chat completion request
@@ -219,6 +220,12 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   }
 
   const { provider, model } = modelInfo;
+  if (provider === "gemini") {
+    const tier = resolveGeminiServiceTier(model, body);
+    // A client-side tier conflict must not enter account fallback or lock a
+    // working API key as if Google had rejected the credentials.
+    if (tier.error) return errorResponse(HTTP_STATUS.BAD_REQUEST, tier.error);
+  }
 
   // Routing shown in the unified "▶" line (client model → provider/model)
 

@@ -30,6 +30,7 @@ import { stripUnsupportedModalities } from "../translator/concerns/modality.js";
 import { prefetchRemoteImages } from "../translator/concerns/prefetch.js";
 import { defaultClaudeToolType } from "../translator/concerns/toolCall.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
+import { resolveGeminiServiceTier } from "../utils/geminiModels.js";
 
 /**
  * Core chat handler - shared between SSE and Worker
@@ -100,6 +101,8 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   if (useTransport && credentials) credentials.runtimeTransport = useTransport;
   const stripList = getModelStrip(alias, model);
   const upstreamModel = getModelUpstreamId(alias, model);
+  const geminiTier = provider === "gemini" ? resolveGeminiServiceTier(model, body) : null;
+  if (geminiTier?.error) return createErrorResult(HTTP_STATUS.BAD_REQUEST, geminiTier.error);
 
   body = applyProviderThinking(body, providerThinking?.mode);
 
@@ -190,6 +193,11 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     delete translatedBody._customToolNames;
     translatedBody.model = stripThinkingSuffix(upstreamModel);
     stripContinuityFields(translatedBody);
+  }
+
+  if (geminiTier) {
+    if (geminiTier.serviceTier) translatedBody.serviceTier = geminiTier.serviceTier;
+    delete translatedBody.service_tier;
   }
 
   // Dedupe duplicate built-in tools when equivalent MCP tools are present (Claude clients only).

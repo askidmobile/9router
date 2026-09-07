@@ -1,6 +1,9 @@
 import { getApiKeys } from "@/lib/localDb";
 import { UPDATER_CONFIG } from "@/shared/constants/config";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
+import { GEMINI_FLEX_TIMEOUT_MS } from "open-sse/config/gemini.js";
+import { parseModel } from "open-sse/services/model.js";
+import { splitGeminiModelId } from "open-sse/utils/geminiModels.js";
 
 const CLI_TOKEN_SALT = "9r-cli-auth";
 
@@ -130,7 +133,15 @@ export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:$
     return { ok: true, latencyMs, error: null, status: res.status };
   }
 
-  const res = await fetch(`${baseUrl}/api/v1/chat/completions`, {
+  const parsedModel = parseModel(model);
+  const isGeminiFlex = parsedModel.provider === "gemini"
+    && splitGeminiModelId(parsedModel.model).serviceTier === "flex";
+  // The dashboard probe must allow the same queueing time as the Flex request.
+  // Load the dispatcher-aware fetch only for Flex; ordinary probes stay unchanged.
+  const requestFetch = isGeminiFlex
+    ? (await import("open-sse/utils/proxyFetch.js")).proxyAwareFetch
+    : fetch;
+  const res = await requestFetch(`${baseUrl}/api/v1/chat/completions`, {
     method: "POST",
     headers,
     body: JSON.stringify({
@@ -143,7 +154,11 @@ export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:$
       stream: false,
       messages: [{ role: "user", content: "hi" }],
     }),
-    signal: AbortSignal.timeout(15000),
+    signal: AbortSignal.timeout(isGeminiFlex ? GEMINI_FLEX_TIMEOUT_MS : 15000),
+    ...(isGeminiFlex ? {
+      headersTimeout: GEMINI_FLEX_TIMEOUT_MS,
+      bodyTimeout: GEMINI_FLEX_TIMEOUT_MS,
+    } : {}),
   });
   const latencyMs = Date.now() - start;
 

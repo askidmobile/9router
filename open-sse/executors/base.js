@@ -80,6 +80,14 @@ export class BaseExecutor {
     return body;
   }
 
+  getRequestTimeoutMs(model, body) {
+    return this.config?.timeoutMs || FETCH_CONNECT_TIMEOUT_MS;
+  }
+
+  getDispatcherTimeouts(model, body) {
+    return {};
+  }
+
   shouldRetry(status, urlIndex) {
     return status === HTTP_STATUS.RATE_LIMITED && urlIndex + 1 < this.getFallbackCount();
   }
@@ -133,7 +141,7 @@ export class BaseExecutor {
 
       // Abort if upstream doesn't return response headers within connection timeout
       const connectCtrl = new AbortController();
-      const timeoutMs = this.config?.timeoutMs || FETCH_CONNECT_TIMEOUT_MS;
+      const timeoutMs = this.getRequestTimeoutMs(model, transformedBody);
       const connectTimer = setTimeout(() => connectCtrl.abort(new Error("fetch connect timeout")), timeoutMs);
       const mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
 
@@ -145,7 +153,10 @@ export class BaseExecutor {
           method: "POST",
           headers,
           body: bodyStr,
-          signal: mergedSignal
+          signal: mergedSignal,
+          // The dispatcher has its own timeout; a longer abort timer alone
+          // cannot allow queued inference to wait beyond that limit.
+          ...this.getDispatcherTimeouts(model, transformedBody),
         }, proxyOptions);
         clearTimeout(connectTimer);
         const ct = response.headers?.get?.("content-type") || "";

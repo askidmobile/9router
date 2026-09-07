@@ -12,6 +12,7 @@ import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { resolveCursorModels } from "open-sse/services/cursorModels.js";
 import { resolveClinepassModels, resolveClineModels } from "open-sse/services/clinepassModels.js";
 import { getRegistryEntry, deriveModelsEndpoint, fetchViaDerivedEndpoint, parseOpenAIStyleModels, getStaticProviderModels } from "@/lib/providerModels/deriveModelsEndpoint.js";
+import { resolveGeminiModels } from "@/lib/providerModels/geminiModels.js";
 
 const GEMINI_CLI_MODELS_URL = "https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels";
 
@@ -127,11 +128,7 @@ const PROVIDER_MODELS_CONFIG = {
     parseResponse: (data) => data.data || []
   },
   gemini: {
-    url: "https://generativelanguage.googleapis.com/v1beta/models",
-    method: "GET",
-    headers: { "Content-Type": "application/json" },
-    authQuery: "key", // Use query param for API key
-    parseResponse: (data) => data.models || []
+    customResolver: resolveGeminiModels,
   },
   codex: {
     customResolver: buildOAuthResolver({

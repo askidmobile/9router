@@ -7,6 +7,8 @@ import { buildClineHeaders } from "../shared/clineAuth.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
 import { stripUnsupportedParams } from "../translator/concerns/paramSupport.js";
+import { splitGeminiModelId } from "../utils/geminiModels.js";
+import { GEMINI_FLEX_TIMEOUT_MS, GEMINI_SERVICE_TIERS } from "../config/gemini.js";
 
 // Auth header descriptors — derived from registry transport.auth, fallback to hardcoded defaults.
 const BEARER = { combined: true, header: "Authorization", scheme: "bearer" };
@@ -67,6 +69,18 @@ export class DefaultExecutor extends BaseExecutor {
     super(provider, PROVIDERS[provider] || PROVIDERS.openai);
   }
 
+  getRequestTimeoutMs(model, body) {
+    if (this.provider === "gemini" && body?.serviceTier === GEMINI_SERVICE_TIERS.flex) return GEMINI_FLEX_TIMEOUT_MS;
+    return super.getRequestTimeoutMs(model, body);
+  }
+
+  getDispatcherTimeouts(model, body) {
+    if (this.provider === "gemini" && body?.serviceTier === GEMINI_SERVICE_TIERS.flex) {
+      return { headersTimeout: GEMINI_FLEX_TIMEOUT_MS, bodyTimeout: GEMINI_FLEX_TIMEOUT_MS };
+    }
+    return super.getDispatcherTimeouts(model, body);
+  }
+
   transformRequest(model, body) {
     const transformed = this.applyJsonSchemaFallback(body);
 
@@ -120,7 +134,7 @@ export class DefaultExecutor extends BaseExecutor {
     }
     // gemini-format: build :streamGenerateContent / :generateContent path
     if (this.config.format === "gemini") {
-      return `${this.config.baseUrl}/${model}:${stream ? "streamGenerateContent?alt=sse" : "generateContent"}`;
+      return `${this.config.baseUrl}/${splitGeminiModelId(model).baseModelId}:${stream ? "streamGenerateContent?alt=sse" : "generateContent"}`;
     }
     // urlSuffix (e.g. ?beta=true) declared per-provider in registry
     if (this.config.urlSuffix) {

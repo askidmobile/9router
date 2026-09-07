@@ -325,6 +325,20 @@ async function createBypassRequest(parsedUrl, realIP, options) {
   };
 }
 
+// Undici's fetch does not forward RequestInit timeout fields to dispatch().
+// Wrap the existing pool per request so queued inference can extend its wait
+// without changing timeouts for concurrent Standard requests on the same pool.
+function fetchWithDispatcher(url, options, dispatcher) {
+  const timeouts = {};
+  for (const key of ["headersTimeout", "bodyTimeout"]) {
+    if (Number.isFinite(options[key]) && options[key] > 0) timeouts[key] = options[key];
+  }
+  const scopedDispatcher = Object.keys(timeouts).length ? {
+    dispatch: (opts, handler) => dispatcher.dispatch({ ...opts, ...timeouts }, handler),
+  } : dispatcher;
+  return originalFetch(url, { ...options, dispatcher: scopedDispatcher });
+}
+
 export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
   const targetUrl = typeof url === "string" ? url : url.toString();
 
@@ -337,7 +351,9 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
       "x-relay-target": `${parsed.protocol}//${parsed.host}`,
       "x-relay-path": `${parsed.pathname}${parsed.search}`,
     };
-    return originalFetch(vercelRelayUrl, { ...options, headers: relayHeaders });
+    const relayOptions = { ...options, headers: relayHeaders };
+    if (!options.headersTimeout && !options.bodyTimeout) return originalFetch(vercelRelayUrl, relayOptions);
+    return fetchWithDispatcher(vercelRelayUrl, relayOptions, await getDirectAgent());
   }
 
   const connectionProxyUrl = resolveConnectionProxyUrl(targetUrl, proxyOptions);
@@ -350,7 +366,7 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
       // Proxy resolves DNS externally (not affected by /etc/hosts) — use proxy directly
       try {
         const dispatcher = await getDispatcher(proxyUrl);
-        return await originalFetch(url, { ...options, dispatcher });
+        return await fetchWithDispatcher(url, options, dispatcher);
       } catch (proxyError) {
         if (proxyOptions?.strictProxy === true) {
           throw new Error(`[ProxyFetch] Proxy required but failed (strictProxy=true): ${proxyError.message}`);
@@ -371,19 +387,19 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
   if (proxyUrl) {
     try {
       const dispatcher = await getDispatcher(proxyUrl);
-      return await originalFetch(url, { ...options, dispatcher });
+      return await fetchWithDispatcher(url, options, dispatcher);
     } catch (proxyError) {
       if (proxyOptions?.strictProxy === true) {
         throw new Error(`[ProxyFetch] Proxy required but failed (strictProxy=true): ${proxyError.message}`);
       }
       console.warn(`[ProxyFetch] Proxy failed, falling back to direct: ${proxyError.message}`);
       const agent = await getDirectAgent();
-      return originalFetch(url, { ...options, dispatcher: agent });
+      return fetchWithDispatcher(url, options, agent);
     }
   }
 
   const agent = await getDirectAgent();
-  return originalFetch(url, { ...options, dispatcher: agent });
+  return fetchWithDispatcher(url, options, agent);
 }
 
 /**

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { addCustomModelsBulk } from "@/lib/db/index.js";
+import { normalizeGeminiModelId } from "open-sse/utils/geminiModels.js";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,10 @@ export async function POST(request) {
       return NextResponse.json({ error: "providerAlias and ids[] required" }, { status: 400 });
     }
 
-    const cleanIds = [...new Set(ids.filter((id) => typeof id === "string" && id.trim()).map((id) => id.trim()))];
+    const cleanIds = [...new Set(ids
+      .filter((id) => typeof id === "string")
+      .map((id) => providerAlias === "gemini" ? normalizeGeminiModelId(id) : id.trim())
+      .filter(Boolean))];
     if (cleanIds.length === 0) {
       return NextResponse.json({ error: "ids must contain at least one non-empty string" }, { status: 400 });
     }

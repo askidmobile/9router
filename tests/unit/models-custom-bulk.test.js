@@ -48,6 +48,16 @@ describe("POST /api/models/custom/bulk", () => {
     });
   });
 
+  it("normalizes Google resource names before saving and deduplicates canonical IDs", async () => {
+    await POST(request({ providerAlias: "gemini", ids: [" models/gemini-3.8-flash ", "/models/gemini-3.8-flash", "gemini-3.8-flash", "models/gemini-3.8-flash:flex", "models/"] }));
+    expect(mocks.addCustomModelsBulk).toHaveBeenCalledWith({ providerAlias: "gemini", type: "llm", ids: ["gemini-3.8-flash", "gemini-3.8-flash:flex"] });
+  });
+
+  it("preserves other providers' model namespaces", async () => {
+    await POST(request({ providerAlias: "openrouter", ids: ["models/example", "google/gemini-3.8-flash"] }));
+    expect(mocks.addCustomModelsBulk).toHaveBeenCalledWith({ providerAlias: "openrouter", type: "llm", ids: ["models/example", "google/gemini-3.8-flash"] });
+  });
+
   it("rejects when providerAlias or ids are missing", async () => {
     expect((await POST(request({ ids: ["a"] }))).status).toBe(400);
     expect((await POST(request({ providerAlias: "x" }))).status).toBe(400);
