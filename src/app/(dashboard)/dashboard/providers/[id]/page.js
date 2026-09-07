@@ -52,15 +52,6 @@ export default function ProviderDetailPage() {
   const { getPricing } = usePricing();
   const { getName, overrides: nameOverrides } = useModelNames();
   const [editingModel, setEditingModel] = useState(null);
-  // Effective caps for display: static base + user override. Tries both the
-  // storage alias and the registry id as override key (models.dev import keys
-  // by alias; manual edits may use either).
-  const effectiveCaps = (modelId) => {
-    const base = getCapabilitiesForModel(providerId, modelId) || {};
-    const override = capsOverrides[`${providerStorageAlias}|${modelId}`]
-      || capsOverrides[`${providerId}|${modelId}`] || null;
-    return { ...base, ...(override || {}) };
-  };
   // Static from registry (not providerNode) — search providers reusing a chat
   // provider's key (ollama-search → ollama).
   const credentialFallback = AI_PROVIDERS[providerId]?.credentialFallback || null;
@@ -206,6 +197,19 @@ export default function ProviderDetailPage() {
     return levels && levels.includes(thinkingMode) ? thinkingMode : null;
   };
   const providerStorageAlias = isCompatible ? providerId : providerAlias;
+  // Preserve saved custom caps when a model joins the upstream catalog.
+  // Explicit overrides win; accept either storage alias or registry id keys.
+  const effectiveCaps = (modelId) => {
+    const base = getCapabilitiesForModel(providerId, modelId) || {};
+    const saved = customModels.find((entry) =>
+      getProviderAlias(entry.providerAlias) === providerStorageAlias
+      && entry.id === modelId
+      && (entry.kind || entry.type || "llm") === "llm"
+    );
+    const override = capsOverrides[`${providerStorageAlias}|${modelId}`]
+      || capsOverrides[`${providerId}|${modelId}`] || null;
+    return { ...base, ...(saved?.caps || {}), ...(override || {}) };
+  };
   // Union of levels across this provider's reasoning models — drives the level picker options.
   // Include custom models too (e.g. manually added gpt-5.6-sol → max).
   const providerThinkingLevels = (() => {

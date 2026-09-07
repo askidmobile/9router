@@ -351,7 +351,14 @@ export default function ModelSelectModal({
           .map((m) => ({ id: m.id, name: m.name || m.id, value: `${alias}/${m.id}`, isCustom: true }));
 
         const merged = [
-          ...hardcodedModels.map((m) => ({ id: m.id, name: m.name, value: `${alias}/${m.id}`, kind: getModelKind(m) })),
+          ...hardcodedModels.map((m) => {
+            const saved = customModels.find((entry) =>
+              getProviderAlias(entry.providerAlias) === alias
+              && entry.id === m.id
+              && getModelKind(entry, "llm") === getModelKind(m, "llm")
+            );
+            return { id: m.id, name: saved?.name || m.name, value: `${alias}/${m.id}`, kind: getModelKind(m) };
+          }),
           ...customAliasModels,
           ...customRegisteredModels,
         ];
