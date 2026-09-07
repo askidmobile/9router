@@ -172,10 +172,18 @@ export default function ProviderDetailPage() {
   const supportsApiKeyAuth = !!APIKEY_PROVIDERS[providerId] || authModes.includes("apikey");
   const isFreeNoAuth = !!FREE_PROVIDERS[providerId]?.noAuth;
   const staticModels = getModelsByProviderId(providerId);
-  const models = providerId === "cursor" && liveModels.length > 0
-    ? liveModels
-    : staticModels;
   const providerAlias = getProviderAlias(providerId);
+  const models = (providerId === "cursor" && liveModels.length > 0
+    ? liveModels
+    : staticModels).map((model) => {
+      // Keep a saved name when a manually added model joins the catalog.
+      const saved = customModels.find((entry) =>
+        getProviderAlias(entry.providerAlias) === providerAlias
+        && entry.id === model.id
+        && (entry.kind || entry.type || "llm") === "llm"
+      );
+      return saved?.name ? { ...model, name: saved.name } : model;
+    });
   
   const isOpenAICompatible = isOpenAICompatibleProvider(providerId);
   const isAnthropicCompatible = isAnthropicCompatibleProvider(providerId);

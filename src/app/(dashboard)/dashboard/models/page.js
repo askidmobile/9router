@@ -202,8 +202,8 @@ export default function ModelsPage() {
 
     for (const c of customModels) {
       if (c.type && c.type !== "llm") continue;
-      const group = ensure(c.providerAlias);
-      group.models.push({
+      const group = ensure(getProviderAlias(c.providerAlias));
+      const row = {
         key: `${c.providerAlias}|${c.id}|custom`,
         providerId: group.providerId,
         providerAlias: c.providerAlias,
@@ -211,7 +211,12 @@ export default function ModelsPage() {
         defaultName: c.name || c.id,
         name: getName(c.providerAlias, c.id, c.name),
         isCustom: true,
-      });
+      };
+      // An upstream catalog can acquire an existing custom model. Keep the
+      // saved row (including its edit/delete actions) instead of duplicating it.
+      const builtInIndex = group.models.findIndex((m) => m.id === c.id);
+      if (builtInIndex >= 0) group.models[builtInIndex] = row;
+      else group.models.push(row);
     }
 
     for (const group of map.values()) group.models.sort((a, b) => a.id.localeCompare(b.id));
