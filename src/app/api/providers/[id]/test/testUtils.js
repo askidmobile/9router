@@ -15,10 +15,11 @@ import {
   KIRO_CONFIG,
   CLAUDE_CONFIG,
   CLINE_CONFIG,
+  CLINEPASS_CONFIG,
   KILOCODE_CONFIG,
   KIMCHI_CONFIG,
 } from "@/lib/oauth/constants/oauth";
-import { buildClineHeaders } from "@/shared/utils/clineAuth";
+import { buildClineCredentialHeaders } from "@/shared/utils/clineAuth";
 
 // OAuth provider test endpoints
 const OAUTH_TEST_CONFIG = {
@@ -84,6 +85,7 @@ const OAUTH_TEST_CONFIG = {
     authPrefix: "Bearer ",
   },
   cline: { refreshable: true },
+  clinepass: { refreshable: true },
   gitlab: {
     // Test by hitting the GitLab user API — requires api or read_user scope
     url: "https://gitlab.com/api/v4/user",
@@ -158,13 +160,13 @@ export function classifyOAuthProbeResult(res, config, bodyText = "") {
   return { valid: true, error: null, soft: false };
 }
 
-async function probeClineAccessToken(accessToken) {
-  const res = await fetch("https://api.cline.bot/api/v1/users/me", {
+async function probeClineCredentials(credentials, effectiveProxy = null) {
+  const res = await fetchWithConnectionProxy("https://api.cline.bot/api/v1/users/me", {
     method: "GET",
-    headers: buildClineHeaders(accessToken, {
+    headers: buildClineCredentialHeaders(credentials, {
       Accept: "application/json",
     }),
-  });
+  }, effectiveProxy);
 
   return res;
 }
@@ -216,7 +218,7 @@ async function probeCloudCodeAssistAccess(connection, accessToken, effectiveProx
   };
 }
 
-async function refreshOAuthToken(connection) {
+async function refreshOAuthToken(connection, effectiveProxy = null) {
   const provider = connection.provider;
   const refreshToken = connection.refreshToken;
   if (!refreshToken) return null;
@@ -284,8 +286,9 @@ async function refreshOAuthToken(connection) {
       return { accessToken: data.accessToken, expiresIn: data.expiresIn || 3600, refreshToken: data.refreshToken || refreshToken };
     }
 
-    if (provider === "cline") {
-      const response = await fetch(CLINE_CONFIG.refreshUrl, {
+    if (provider === "cline" || provider === "clinepass") {
+      const config = provider === "clinepass" ? CLINEPASS_CONFIG : CLINE_CONFIG;
+      const response = await fetchWithConnectionProxy(config.refreshUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({
@@ -293,10 +296,11 @@ async function refreshOAuthToken(connection) {
           grantType: "refresh_token",
           clientType: "extension",
         }),
-      });
+      }, effectiveProxy);
       if (!response.ok) return null;
       const payload = await response.json();
       const data = payload?.data || payload;
+      if (!data?.accessToken) return null;
       const expiresIn = data?.expiresAt
         ? Math.max(1, Math.floor((new Date(data.expiresAt).getTime() - Date.now()) / 1000))
         : 3600;
@@ -334,7 +338,7 @@ async function testOAuthConnection(connection, effectiveProxy = null) {
 
   const tokenExpired = isTokenExpired(connection);
   if (config.refreshable && tokenExpired && connection.refreshToken) {
-    const tokens = await refreshOAuthToken(connection);
+    const tokens = await refreshOAuthToken(connection, effectiveProxy);
     if (tokens) {
       accessToken = tokens.accessToken;
       refreshed = true;
@@ -355,7 +359,7 @@ async function testOAuthConnection(connection, effectiveProxy = null) {
     if (initial.valid) return { valid: true, error: null, refreshed, newTokens };
 
     if (initial.status === 401 && config.refreshable && !refreshed && connection.refreshToken) {
-      const tokens = await refreshOAuthToken(connection);
+      const tokens = await refreshOAuthToken(connection, effectiveProxy);
       if (tokens?.accessToken) {
         const retry = await probeCloudCodeAssistAccess(connection, tokens.accessToken, effectiveProxy);
         if (retry.valid) return { valid: true, error: null, refreshed: true, newTokens: tokens };
@@ -367,21 +371,24 @@ async function testOAuthConnection(connection, effectiveProxy = null) {
     return { valid: false, error: initial.error, refreshed };
   }
 
-  if (connection.provider === "cline") {
+  // ClinePass shares Cline's account authentication and refresh protocol.
+  if (connection.provider === "cline" || connection.provider === "clinepass") {
     const tryProbe = async (token) => {
-      const res = await probeClineAccessToken(token);
-      if (res.ok) return { valid: true, error: null, refreshed, newTokens };
-      if (res.status === 401) return { valid: false, error: "Token invalid or revoked", refreshed };
-      if (res.status === 403) return { valid: false, error: "Access denied", refreshed };
-      return { valid: false, error: `API returned ${res.status}`, refreshed };
+      try {
+        const res = await probeClineCredentials({ accessToken: token }, effectiveProxy);
+        const classified = classifyOAuthProbeResult(res, config);
+        return { valid: classified.valid, error: classified.error, refreshed, newTokens, status: res.status };
+      } catch (err) {
+        return { valid: false, error: err.message, refreshed, newTokens };
+      }
     };
 
     const initial = await tryProbe(accessToken);
-    if (initial.valid || initial.error !== "Token invalid or revoked" || !connection.refreshToken) {
+    if (initial.valid || initial.status !== 401 || refreshed || !connection.refreshToken) {
       return initial;
     }
 
-    const tokens = await refreshOAuthToken(connection);
+    const tokens = await refreshOAuthToken(connection, effectiveProxy);
     if (!tokens?.accessToken) {
       return { valid: false, error: "Token invalid or revoked", refreshed: false };
     }
@@ -415,7 +422,7 @@ async function testOAuthConnection(connection, effectiveProxy = null) {
     }
 
     if (res.status === 401 && config.refreshable && !refreshed && connection.refreshToken) {
-      const tokens = await refreshOAuthToken(connection);
+      const tokens = await refreshOAuthToken(connection, effectiveProxy);
       if (tokens) {
         const retryUrl = config.buildUrl ? config.buildUrl(tokens.accessToken) : testUrl;
         const retryHeaders = config.noAuth
@@ -518,6 +525,11 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
 
   try {
     switch (connection.provider) {
+      case "clinepass": {
+        const res = await probeClineCredentials({ apiKey: connection.apiKey }, effectiveProxy);
+        const classified = classifyOAuthProbeResult(res, OAUTH_TEST_CONFIG.clinepass);
+        return { valid: classified.valid, error: classified.error, refreshed: false };
+      }
       case "cloudflare-ai": {
         const psd = connection.providerSpecificData || {};
         const accountId = psd.accountId;

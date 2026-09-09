@@ -5,11 +5,14 @@ import { ollamaBodyToOpenAI } from "../../translator/response/ollama-to-openai.j
 import { addBufferToUsage, filterUsageForFormat } from "../../utils/usageTracking.js";
 import { createErrorResult } from "../../utils/error.js";
 import { HTTP_STATUS } from "../../config/runtimeConfig.js";
+import { PROVIDERS } from "../../config/providers.js";
 import { parseSSEToOpenAIResponse } from "./sseToJsonHandler.js";
 import { buildRequestDetail, extractRequestConfig, extractUsageFromResponse, saveUsageStats, formatDoneLine } from "./requestDetail.js";
 import { appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
 import { decloakToolNames } from "../../utils/claudeCloaking.js";
 import { ROLE, RESPONSES_ITEM } from "../../translator/schema/index.js";
+import { throwIfAborted } from "../../utils/abort.js";
+import { isFailedComboCompletion } from "../../utils/comboUpstream.js";
 
 function parseToolArguments(value) {
   if (!value) return {};
@@ -281,13 +284,13 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
 /**
  * Handle non-streaming response from provider.
  */
-export async function handleNonStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, customToolNames, trackDone, appendLog, pxpipe, reqTag, log }) {
-  trackDone();
+export async function handleNonStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, customToolNames, trackDone, appendLog, pxpipe, reqTag, log, signal, requestPolicy }) {
   const contentType = providerResponse.headers.get("content-type") || "";
   let responseBody;
 
   if (contentType.includes("text/event-stream")) {
     const sseText = await providerResponse.text();
+    throwIfAborted(signal);
     const parsed = parseSSEToOpenAIResponse(sseText, model);
     if (!parsed) {
       appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
@@ -298,13 +301,36 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     try {
       responseBody = await providerResponse.json();
     } catch (err) {
+      throwIfAborted(signal);
       appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
       console.error(`[ChatCore] Failed to parse JSON from ${provider}:`, err.message);
       return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Invalid JSON response from ${provider}`);
     }
   }
+  throwIfAborted(signal);
 
   reqLogger.logProviderResponse(providerResponse.status, providerResponse.statusText, providerResponse.headers, responseBody);
+  if (requestPolicy?.strictCompletion && isFailedComboCompletion(responseBody)) {
+    appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
+    return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Upstream completion failed");
+  }
+
+  // Cline's JSON endpoint wraps chat.completion in { data, success }. Normalize
+  // before translation, usage accounting and success callbacks; flat responses
+  // remain supported for older deployments of the same endpoint.
+  if (PROVIDERS[provider]?.quirks?.responseDataEnvelope) {
+    const envelopeError = responseBody?.error || responseBody?.data?.error;
+    if (responseBody?.success === false || envelopeError) {
+      const message = typeof envelopeError === "string" ? envelopeError : envelopeError?.message;
+      appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
+      return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `${provider}: ${message || "Provider returned an unsuccessful response"}`);
+    }
+    if (!Array.isArray(responseBody?.choices) && responseBody?.data) responseBody = responseBody.data;
+    if (!Array.isArray(responseBody?.choices) || responseBody.choices.length === 0) {
+      appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
+      return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `${provider}: Invalid completion response (no choices)`);
+    }
+  }
 
   // Detect upstream gateway errors masked as HTTP 200 (e.g. OpenRouter
   // sending choices[0].native_finish_reason:"network_error" with empty content).

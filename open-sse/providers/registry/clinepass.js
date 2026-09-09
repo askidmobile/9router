@@ -18,6 +18,7 @@ export default {
   hasOAuth: true,
   transport: {
     baseUrl: "https://api.cline.bot/api/v1/chat/completions",
+    quirks: { responseDataEnvelope: true },
     headers: {
       "HTTP-Referer": "https://cline.bot",
       "X-Title": "Cline",

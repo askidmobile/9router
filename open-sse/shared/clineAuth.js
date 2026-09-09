@@ -15,7 +15,20 @@ export function getClineAuthorizationHeader(token) {
 }
 
 export function buildClineHeaders(token, extraHeaders = {}) {
-  const authorization = getClineAuthorizationHeader(token);
+  return buildHeadersWithAuthorization(getClineAuthorizationHeader(token), extraHeaders);
+}
+
+// API keys are opaque Bearer credentials; only OAuth access tokens use WorkOS.
+// Preserve the executor's API-key precedence when an account retains OAuth fields.
+export function buildClineCredentialHeaders(credentials, extraHeaders = {}) {
+  if (credentials?.apiKey) {
+    const apiKey = typeof credentials.apiKey === "string" ? credentials.apiKey.trim() : "";
+    return buildHeadersWithAuthorization(apiKey ? `Bearer ${apiKey}` : "", extraHeaders);
+  }
+  return buildClineHeaders(credentials?.accessToken, extraHeaders);
+}
+
+function buildHeadersWithAuthorization(authorization, extraHeaders) {
   const headers = {
     "HTTP-Referer": "https://cline.bot",
     "X-Title": "Cline",

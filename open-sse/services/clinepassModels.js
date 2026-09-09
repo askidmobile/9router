@@ -1,4 +1,4 @@
-import { buildClineHeaders } from "../shared/clineAuth.js";
+import { buildClineCredentialHeaders } from "../shared/clineAuth.js";
 
 // Cline moved catalog discovery to the public recommended-models endpoint —
 // the legacy /api/v1/models answers 404. The payload carries three buckets:
@@ -15,17 +15,11 @@ const FETCH_TIMEOUT_MS = 5000;
 /**
  * Build request headers for Cline API endpoints.
  * - API keys are sent as plain Bearer tokens.
- * - OAuth access tokens must carry the WorkOS `workos:` prefix (handled by buildClineHeaders).
+ * - OAuth access tokens must carry the WorkOS `workos:` prefix.
  */
-function buildModelListHeaders(token, isApiKey) {
-  if (!token) return { Accept: "application/json" };
-  if (isApiKey) {
-    return {
-      Accept: "application/json",
-      Authorization: `Bearer ${token}`,
-    };
-  }
-  return buildClineHeaders(token, { Accept: "application/json" });
+function buildModelListHeaders(credentials) {
+  if (!credentials?.apiKey && !credentials?.accessToken) return { Accept: "application/json" };
+  return buildClineCredentialHeaders(credentials, { Accept: "application/json" });
 }
 
 function normalizeBucket(value) {
@@ -45,16 +39,13 @@ function normalizeBucket(value) {
  * @returns {Promise<{ models: { id: string, name: string }[] } | null>}
  */
 async function fetchClineCatalog(pick, credentials = null) {
-  const isApiKey = Boolean(credentials?.apiKey);
-  const token = isApiKey ? credentials.apiKey : credentials?.accessToken;
-
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
   try {
     const response = await fetch(CLINE_RECOMMENDED_MODELS_ENDPOINT, {
       method: "GET",
-      headers: buildModelListHeaders(token, isApiKey),
+      headers: buildModelListHeaders(credentials),
       signal: controller.signal,
     });
 
@@ -87,14 +78,12 @@ export async function resolveClinepassModels(credentials) {
 }
 
 export async function resolveClineModels(credentials) {
-  const isApiKey = Boolean(credentials?.apiKey);
-  const token = isApiKey ? credentials.apiKey : credentials?.accessToken;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
     const response = await fetch(CLINE_FULL_CATALOG_ENDPOINT, {
       method: "GET",
-      headers: buildModelListHeaders(token, isApiKey),
+      headers: buildModelListHeaders(credentials),
       signal: controller.signal,
     });
     if (response.ok) {

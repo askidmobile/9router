@@ -3,6 +3,8 @@ import {
   getProviderConnections,
   updateProviderConnection,
 } from "@/lib/localDb";
+import { listComboHealth } from "open-sse/services/comboHealth.js";
+import { toPublicComboCircuit } from "@/shared/utils/comboHealth";
 
 const MODEL_LOCK_PREFIX = "modelLock_";
 
@@ -21,7 +23,10 @@ function getActiveModelLocks(connection) {
 
 export async function GET() {
   try {
-    const connections = await getProviderConnections();
+    const [connections, comboHealth] = await Promise.all([
+      getProviderConnections(),
+      listComboHealth(),
+    ]);
     const models = [];
 
     for (const connection of connections) {
@@ -53,6 +58,7 @@ export async function GET() {
     return NextResponse.json({
       models,
       unavailableCount: models.length,
+      comboCircuits: comboHealth.map(toPublicComboCircuit).filter(Boolean),
     });
   } catch (error) {
     console.error("[API] Failed to get model availability:", error);

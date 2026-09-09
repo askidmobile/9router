@@ -31,6 +31,8 @@ import { prefetchRemoteImages } from "../translator/concerns/prefetch.js";
 import { defaultClaudeToolType } from "../translator/concerns/toolCall.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
 import { resolveGeminiServiceTier } from "../utils/geminiModels.js";
+import { throwIfAborted } from "../utils/abort.js";
+import { validateComboUpstreamResponse } from "../utils/comboUpstream.js";
 
 /**
  * Core chat handler - shared between SSE and Worker
@@ -59,7 +61,8 @@ export function stripContinuityFields(body) {
   return body;
 }
 
-export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, onPxpipeEvent, sourceFormatOverride, providerThinking }) {
+export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, onPxpipeEvent, sourceFormatOverride, providerThinking, signal, requestPolicy }) {
+  if (signal?.aborted) return createErrorResult(499, "Request aborted");
   const { provider, model } = modelInfo;
   const requestStartTime = Date.now();
   // Stable per-session color so all lines of one CLI conversation share a tag
@@ -300,195 +303,235 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // system/tools/messages, and a stale anchor costs a full prefix rewrite.
   if (passthrough && clientTool === "claude") anchorClaudeCache(translatedBody);
 
+  if (signal?.aborted) return createErrorResult(499, "Request aborted");
   const executor = getExecutor(provider);
   trackPendingRequest(model, provider, connectionId, true);
+  let pending = true;
+  const trackDone = (error = false) => {
+    if (!pending) return;
+    pending = false;
+    trackPendingRequest(model, provider, connectionId, false, error);
+  };
   appendRequestLog({ model, provider, connectionId, status: "PENDING" }).catch(() => { });
 
   const msgCount = translatedBody.messages?.length || translatedBody.input?.length || translatedBody.contents?.length || translatedBody.request?.contents?.length || 0;
   log?.debug?.("REQUEST", `${provider.toUpperCase()} | ${model} | ${msgCount} msgs`);
 
   const streamController = createStreamController({
+    parentSignal: signal,
     onDisconnect: (reason) => {
-      trackPendingRequest(model, provider, connectionId, false);
+      trackDone();
       if (onDisconnect) onDisconnect(reason);
     },
-    onError: () => trackPendingRequest(model, provider, connectionId, false),
+    onError: () => trackDone(true),
+    onComplete: () => trackDone(),
     log, provider, model, reqTag
   });
 
-  const proxyOptions = {
-    connectionProxyEnabled: credentials?.providerSpecificData?.connectionProxyEnabled === true,
-    connectionProxyUrl: credentials?.providerSpecificData?.connectionProxyUrl || "",
-    connectionNoProxy: credentials?.providerSpecificData?.connectionNoProxy || "",
-    vercelRelayUrl: credentials?.providerSpecificData?.vercelRelayUrl || "",
-  };
-
-  if (proxyOptions.vercelRelayUrl) {
-    const connectionName = credentials?.connectionName || credentials?.connectionId || "unknown";
-    const poolId = credentials?.providerSpecificData?.connectionProxyPoolId || "none";
-    log?.info?.("PROXY", `${provider.toUpperCase()} | ${model} | conn=${connectionName} | pool=${poolId} | vercel-relay=${proxyOptions.vercelRelayUrl}`);
-  } else if (proxyOptions.connectionProxyEnabled && proxyOptions.connectionProxyUrl) {
-    let maskedProxyUrl = proxyOptions.connectionProxyUrl;
-    try {
-      const parsed = new URL(proxyOptions.connectionProxyUrl);
-      const host = parsed.hostname || "";
-      const port = parsed.port ? `:${parsed.port}` : "";
-      const protocol = parsed.protocol || "http:";
-      maskedProxyUrl = `${protocol}//${host}${port}`;
-    } catch {
-      // Keep raw if URL parsing fails
-    }
-
-    const poolId = credentials?.providerSpecificData?.connectionProxyPoolId || "none";
-    const connectionName = credentials?.connectionName || credentials?.connectionId || "unknown";
-    log?.info?.("PROXY", `${provider.toUpperCase()} | ${model} | conn=${connectionName} | pool=${poolId} | url=${maskedProxyUrl}`);
-  }
-
-  if (proxyOptions.connectionProxyEnabled && proxyOptions.connectionNoProxy) {
-    const connectionName = credentials?.connectionName || credentials?.connectionId || "unknown";
-    log?.debug?.("PROXY", `${provider.toUpperCase()} | ${model} | conn=${connectionName} | no_proxy=${proxyOptions.connectionNoProxy}`);
-  }
-
-  // Execute request
-  let providerResponse, providerUrl, providerHeaders, finalBody;
-  // Most executors return their registry format. Cursor AgentService is an
-  // exception: it is decoded by the executor into OpenAI-compatible output.
-  let providerResponseFormat = targetFormat;
+  let streamHandedOff = false;
   try {
-    const result = await executor.execute({
-      model,
-      body: translatedBody,
-      stream,
-      credentials,
-      providerSessionId: sessionSeed,
-      clientTool,
-      signal: streamController.signal,
-      log,
-      proxyOptions,
-    });
-    providerResponse = result.response;
-    providerUrl = result.url;
-    providerHeaders = result.headers;
-    finalBody = result.transformedBody;
-    providerResponseFormat = result.responseFormat || targetFormat;
-    reqLogger.logTargetRequest(providerUrl, providerHeaders, finalBody);
-  } catch (error) {
-    trackPendingRequest(model, provider, connectionId, false, true);
-    appendRequestLog({ model, provider, connectionId, status: `FAILED ${error.name === "AbortError" ? 499 : HTTP_STATUS.BAD_GATEWAY}` }).catch(() => { });
-    saveRequestDetail(buildRequestDetail({
-      provider, model, connectionId,
-      latency: { ttft: 0, total: Date.now() - requestStartTime },
-      tokens: { prompt_tokens: 0, completion_tokens: 0 },
-      request: extractRequestConfig(body, stream),
-      providerRequest: translatedBody || null,
-      response: { error: error.message || String(error), status: error.name === "AbortError" ? 499 : 502, thinking: null },
-      pxpipe: pxpipeSummary,
-      status: "error"
-    })).catch(() => { });
+    const proxyOptions = {
+      connectionProxyEnabled: credentials?.providerSpecificData?.connectionProxyEnabled === true,
+      connectionProxyUrl: credentials?.providerSpecificData?.connectionProxyUrl || "",
+      connectionNoProxy: credentials?.providerSpecificData?.connectionNoProxy || "",
+      vercelRelayUrl: credentials?.providerSpecificData?.vercelRelayUrl || "",
+    };
 
-    if (error.name === "AbortError") {
-      streamController.handleError(error);
-      return createErrorResult(499, "Request aborted");
-    }
-    const errMsg = formatProviderError(error, provider, model, HTTP_STATUS.BAD_GATEWAY);
-    if (log?.errorLine) {
-      log.errorLine(reqTag, "✗", `ERROR 502 · ${provider}/${model} · ${Date.now() - requestStartTime}ms\n    ${errMsg}${error.stack ? `\n    ${error.stack}` : ""}`);
-    }
-    return createErrorResult(HTTP_STATUS.BAD_GATEWAY, errMsg);
-  }
-
-  // Handle 401/403 - try token refresh (skip for noAuth providers)
-  if (!executor.noAuth && (providerResponse.status === HTTP_STATUS.UNAUTHORIZED || providerResponse.status === HTTP_STATUS.FORBIDDEN)) {
-    try {
-      // Mutate credentials after each successful refresh: rotating refresh_token
-      // providers (xAI/grok-cli) issue a new RT on every refresh; without this,
-      // refreshWithRetry's 2nd/3rd attempt reuses the already-consumed RT →
-      // invalid_grant → auth_failed retryable=false.
-      const newCredentials = await refreshWithRetry(async () => {
-        const result = await executor.refreshCredentials(credentials, log);
-        if (result?.refreshToken && result.refreshToken !== credentials.refreshToken) {
-          if (result.accessToken) credentials.accessToken = result.accessToken;
-          credentials.refreshToken = result.refreshToken;
-        }
-        return result;
-      }, 3, log);
-      if (newCredentials?.accessToken || newCredentials?.copilotToken) {
-        if (log?.line) log.line(reqTag, "🔑", `TOKEN REFRESHED · ${provider}/${model}`);
-        Object.assign(credentials, newCredentials);
-        if (onCredentialsRefreshed) {
-          try { await onCredentialsRefreshed(newCredentials); } catch (e) { log?.warn?.("TOKEN", `onCredentialsRefreshed failed: ${e.message}`); }
-        }
-        try {
-          const retryResult = await executor.execute({
-            model,
-            body: translatedBody,
-            stream,
-            credentials,
-            providerSessionId: sessionSeed,
-            clientTool,
-            signal: streamController.signal,
-            log,
-            proxyOptions,
-          });
-          if (retryResult.response.ok) {
-            providerResponse = retryResult.response;
-            providerUrl = retryResult.url;
-            providerResponseFormat = retryResult.responseFormat || targetFormat;
-          }
-        } catch { log?.warn?.("TOKEN", `${provider.toUpperCase()} | retry after refresh failed`); }
-      } else {
-        log?.warn?.("TOKEN", `${provider.toUpperCase()} | refresh failed`);
+    if (proxyOptions.vercelRelayUrl) {
+      const connectionName = credentials?.connectionName || credentials?.connectionId || "unknown";
+      const poolId = credentials?.providerSpecificData?.connectionProxyPoolId || "none";
+      log?.info?.("PROXY", `${provider.toUpperCase()} | ${model} | conn=${connectionName} | pool=${poolId} | vercel-relay=${proxyOptions.vercelRelayUrl}`);
+    } else if (proxyOptions.connectionProxyEnabled && proxyOptions.connectionProxyUrl) {
+      let maskedProxyUrl = proxyOptions.connectionProxyUrl;
+      try {
+        const parsed = new URL(proxyOptions.connectionProxyUrl);
+        const host = parsed.hostname || "";
+        const port = parsed.port ? `:${parsed.port}` : "";
+        const protocol = parsed.protocol || "http:";
+        maskedProxyUrl = `${protocol}//${host}${port}`;
+      } catch {
+        // Keep raw if URL parsing fails
       }
-    } catch (e) {
-      log?.warn?.("TOKEN", `${provider.toUpperCase()} | refresh threw: ${e.message}`);
+
+      const poolId = credentials?.providerSpecificData?.connectionProxyPoolId || "none";
+      const connectionName = credentials?.connectionName || credentials?.connectionId || "unknown";
+      log?.info?.("PROXY", `${provider.toUpperCase()} | ${model} | conn=${connectionName} | pool=${poolId} | url=${maskedProxyUrl}`);
     }
-  }
 
-  // Provider returned error
-  if (!providerResponse.ok) {
-    trackPendingRequest(model, provider, connectionId, false, true);
-    const { statusCode, message, resetsAtMs } = await parseUpstreamError(providerResponse, executor);
-    appendRequestLog({ model, provider, connectionId, status: `FAILED ${statusCode}` }).catch(() => { });
-    saveRequestDetail(buildRequestDetail({
-      provider, model, connectionId,
-      latency: { ttft: 0, total: Date.now() - requestStartTime },
-      tokens: { prompt_tokens: 0, completion_tokens: 0 },
-      request: extractRequestConfig(body, stream),
-      providerRequest: finalBody || translatedBody || null,
-      response: { error: message, status: statusCode, thinking: null },
-      pxpipe: pxpipeSummary,
-      status: "error"
-    })).catch(() => { });
-
-    const errMsg = formatProviderError(new Error(message), provider, model, statusCode);
-    if (log?.errorLine) {
-      const urlStr = providerUrl ? `\n    URL: ${providerUrl}` : "";
-      log.errorLine(reqTag, "✗", `ERROR ${statusCode} · ${provider}/${model} · ${Date.now() - requestStartTime}ms${urlStr}\n    ${errMsg}`);
+    if (proxyOptions.connectionProxyEnabled && proxyOptions.connectionNoProxy) {
+      const connectionName = credentials?.connectionName || credentials?.connectionId || "unknown";
+      log?.debug?.("PROXY", `${provider.toUpperCase()} | ${model} | conn=${connectionName} | no_proxy=${proxyOptions.connectionNoProxy}`);
     }
-    reqLogger.logError(new Error(message), finalBody || translatedBody);
-    return createErrorResult(statusCode, errMsg, resetsAtMs);
-  }
 
-  const sharedCtx = { provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, pxpipe: pxpipeSummary, reqTag, log };
-  const appendLog = (extra) => appendRequestLog({ model, provider, connectionId, ...extra }).catch(() => { });
-  const trackDone = () => trackPendingRequest(model, provider, connectionId, false);
+    // Execute request
+    let providerResponse, providerUrl, providerHeaders, finalBody;
+    // Most executors return their registry format. Cursor AgentService is an
+    // exception: it is decoded by the executor into OpenAI-compatible output.
+    let providerResponseFormat = targetFormat;
+    try {
+      const result = await executor.execute({
+        model,
+        body: translatedBody,
+        stream,
+        credentials,
+        providerSessionId: sessionSeed,
+        clientTool,
+        signal: streamController.signal,
+        requestPolicy,
+        log,
+        proxyOptions,
+      });
+      providerResponse = result.response;
+      providerUrl = result.url;
+      providerHeaders = result.headers;
+      finalBody = result.transformedBody;
+      providerResponseFormat = result.responseFormat || targetFormat;
+      if (requestPolicy?.strictCompletion && providerResponse.ok) {
+        providerResponse = validateComboUpstreamResponse(providerResponse, { format: providerResponseFormat });
+      }
+      reqLogger.logTargetRequest(providerUrl, providerHeaders, finalBody);
+      throwIfAborted(signal);
+    } catch (error) {
+      const cancelled = signal?.aborted || error?.name === "AbortError";
+      trackDone(!cancelled);
+      appendRequestLog({ model, provider, connectionId, status: `FAILED ${cancelled ? 499 : HTTP_STATUS.BAD_GATEWAY}` }).catch(() => { });
+      saveRequestDetail(buildRequestDetail({
+        provider, model, connectionId,
+        latency: { ttft: 0, total: Date.now() - requestStartTime },
+        tokens: { prompt_tokens: 0, completion_tokens: 0 },
+        request: extractRequestConfig(body, stream),
+        providerRequest: translatedBody || null,
+        response: { error: error?.message || String(error), status: cancelled ? 499 : 502, thinking: null },
+        pxpipe: pxpipeSummary,
+        status: "error"
+      })).catch(() => { });
 
-  // Provider forced streaming but client wants JSON
-  if (!clientRequestedStreaming && providerRequiresStreaming) {
-    const result = await handleForcedSSEToJson({ ...sharedCtx, providerResponse, sourceFormat, targetFormat: providerResponseFormat, customToolNames, trackDone, appendLog });
-    if (result) { streamController.handleComplete(); return result; }
-  }
+      if (cancelled) {
+        return createErrorResult(499, "Request aborted");
+      }
+      const errMsg = formatProviderError(error, provider, model, HTTP_STATUS.BAD_GATEWAY);
+      if (log?.errorLine) {
+        log.errorLine(reqTag, "✗", `ERROR 502 · ${provider}/${model} · ${Date.now() - requestStartTime}ms\n    ${errMsg}${error.stack ? `\n    ${error.stack}` : ""}`);
+      }
+      return createErrorResult(HTTP_STATUS.BAD_GATEWAY, errMsg);
+    }
 
-  // True non-streaming response
-  if (!stream) {
-    const result = await handleNonStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat: providerResponseFormat, reqLogger, toolNameMap, customToolNames, trackDone, appendLog });
-    streamController.handleComplete();
+    // Handle 401/403 - try token refresh (skip for noAuth providers)
+    if (!executor.noAuth && (providerResponse.status === HTTP_STATUS.UNAUTHORIZED || providerResponse.status === HTTP_STATUS.FORBIDDEN)) {
+      try {
+        // Mutate credentials after each successful refresh: rotating refresh_token
+        // providers (xAI/grok-cli) issue a new RT on every refresh; without this,
+        // refreshWithRetry's 2nd/3rd attempt reuses the already-consumed RT →
+        // invalid_grant → auth_failed retryable=false.
+        const newCredentials = await refreshWithRetry(async () => {
+          throwIfAborted(signal);
+          const result = await executor.refreshCredentials(credentials, log);
+          if (result?.refreshToken && result.refreshToken !== credentials.refreshToken) {
+            if (result.accessToken) credentials.accessToken = result.accessToken;
+            credentials.refreshToken = result.refreshToken;
+          }
+          return result;
+        }, 3, log);
+        if (newCredentials?.accessToken || newCredentials?.copilotToken) {
+          if (log?.line) log.line(reqTag, "🔑", `TOKEN REFRESHED · ${provider}/${model}`);
+          Object.assign(credentials, newCredentials);
+          if (onCredentialsRefreshed) {
+            try { await onCredentialsRefreshed(newCredentials); } catch (e) { log?.warn?.("TOKEN", `onCredentialsRefreshed failed: ${e.message}`); }
+          }
+          // A refresh already in flight may rotate a single-use token. Apply
+          // and persist that result even if the caller left, then stop inference.
+          throwIfAborted(signal);
+          try {
+            const retryResult = await executor.execute({
+              model,
+              body: translatedBody,
+              stream,
+              credentials,
+              providerSessionId: sessionSeed,
+              clientTool,
+              signal: streamController.signal,
+              requestPolicy,
+              log,
+              proxyOptions,
+            });
+            if (retryResult.response.ok) {
+              providerResponse = retryResult.response;
+              providerUrl = retryResult.url;
+              providerResponseFormat = retryResult.responseFormat || targetFormat;
+              if (requestPolicy?.strictCompletion) {
+                providerResponse = validateComboUpstreamResponse(providerResponse, { format: providerResponseFormat });
+              }
+            }
+          } catch { log?.warn?.("TOKEN", `${provider.toUpperCase()} | retry after refresh failed`); }
+        } else {
+          log?.warn?.("TOKEN", `${provider.toUpperCase()} | refresh failed`);
+        }
+      } catch (e) {
+        throwIfAborted(signal);
+        log?.warn?.("TOKEN", `${provider.toUpperCase()} | refresh threw: ${e.message}`);
+      }
+    }
+    throwIfAborted(signal);
+
+    // Provider returned error
+    if (!providerResponse.ok) {
+      const { statusCode, message, resetsAtMs } = await parseUpstreamError(providerResponse, executor);
+      throwIfAborted(signal);
+      trackDone(true);
+      appendRequestLog({ model, provider, connectionId, status: `FAILED ${statusCode}` }).catch(() => { });
+      saveRequestDetail(buildRequestDetail({
+        provider, model, connectionId,
+        latency: { ttft: 0, total: Date.now() - requestStartTime },
+        tokens: { prompt_tokens: 0, completion_tokens: 0 },
+        request: extractRequestConfig(body, stream),
+        providerRequest: finalBody || translatedBody || null,
+        response: { error: message, status: statusCode, thinking: null },
+        pxpipe: pxpipeSummary,
+        status: "error"
+      })).catch(() => { });
+
+      const errMsg = formatProviderError(new Error(message), provider, model, statusCode);
+      if (log?.errorLine) {
+        const urlStr = providerUrl ? `\n    URL: ${providerUrl}` : "";
+        log.errorLine(reqTag, "✗", `ERROR ${statusCode} · ${provider}/${model} · ${Date.now() - requestStartTime}ms${urlStr}\n    ${errMsg}`);
+      }
+      reqLogger.logError(new Error(message), finalBody || translatedBody);
+      return createErrorResult(statusCode, errMsg, resetsAtMs);
+    }
+
+    const sharedCtx = { provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, pxpipe: pxpipeSummary, reqTag, log, signal, trackDone, requestPolicy };
+    const appendLog = (extra) => appendRequestLog({ model, provider, connectionId, ...extra }).catch(() => { });
+
+    // Provider forced streaming but client wants JSON
+    if (!clientRequestedStreaming && providerRequiresStreaming) {
+      const result = await handleForcedSSEToJson({ ...sharedCtx, providerResponse, sourceFormat, targetFormat: providerResponseFormat, customToolNames, trackDone, appendLog });
+      throwIfAborted(signal);
+      if (result) { streamController.handleComplete(); return result; }
+    }
+
+    // True non-streaming response
+    if (!stream) {
+      const result = await handleNonStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat: providerResponseFormat, reqLogger, toolNameMap, customToolNames, trackDone, appendLog });
+      throwIfAborted(signal);
+      streamController.handleComplete();
+      return result;
+    }
+
+    // Streaming response
+    const { onStreamComplete, streamDetailId } = buildOnStreamComplete({ ...sharedCtx });
+    const result = await handleStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat: providerResponseFormat, userAgent, reqLogger, toolNameMap, customToolNames, streamController, onStreamComplete, streamDetailId, credentials });
+    throwIfAborted(signal);
+    streamHandedOff = result.success === true;
     return result;
+  } catch (error) {
+    if (signal?.aborted) return createErrorResult(499, "Request aborted");
+    throw error;
+  } finally {
+    if (!streamHandedOff) {
+      trackDone();
+      streamController.handleComplete();
+    }
   }
-
-  // Streaming response
-  const { onStreamComplete, streamDetailId } = buildOnStreamComplete({ ...sharedCtx });
-  return handleStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat: providerResponseFormat, userAgent, reqLogger, toolNameMap, customToolNames, streamController, onStreamComplete, streamDetailId, credentials });
 }
 
 export function isTokenExpiringSoon(expiresAt, bufferMs = 5 * 60 * 1000) {

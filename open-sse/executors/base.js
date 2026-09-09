@@ -4,6 +4,7 @@ import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { dbg } from "../utils/debugLog.js";
 import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE } from "../providers/shared.js";
 import { resolveOpenAICompatibleApiType } from "../services/provider.js";
+import { abortableDelay, throwIfAborted } from "../utils/abort.js";
 
 /**
  * BaseExecutor - Base class for provider executors
@@ -105,7 +106,8 @@ export class BaseExecutor {
     return { status: response.status, message: bodyText || `HTTP ${response.status}` };
   }
 
-  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null }) {
+  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, requestPolicy }) {
+    throwIfAborted(signal);
     const fallbackCount = this.getFallbackCount();
     let lastError = null;
     let lastStatus = 0;
@@ -117,22 +119,26 @@ export class BaseExecutor {
     // Schedule retry via retryConfig[statusKey]. Returns true when caller should `urlIndex--; continue`
     // response (optional) lets a subclass hook compute a dynamic delay (e.g. antigravity Retry-After).
     const tryRetry = async (urlIndex, statusKey, reason, response = null) => {
+      throwIfAborted(signal);
+      if (requestPolicy?.maxRetries === 0) return false;
       const { attempts, delayMs } = resolveRetryEntry(retryConfig[statusKey]);
       if (attempts <= 0 || retryAttemptsByUrl[urlIndex] >= attempts) return false;
       // Hook: subclass may derive delay from the response (headers/body). null → skip retry, use fallback.
       let waitMs = delayMs;
       if (response && this.computeRetryDelay) {
         const dynamic = await this.computeRetryDelay(response, retryAttemptsByUrl[urlIndex] + 1, delayMs);
+        throwIfAborted(signal);
         if (dynamic === false) return false; // hook vetoes retry (e.g. Retry-After too long)
         if (dynamic != null) waitMs = dynamic;
       }
       retryAttemptsByUrl[urlIndex]++;
       log?.debug?.("RETRY", `${reason} retry ${retryAttemptsByUrl[urlIndex]}/${attempts} after ${waitMs / 1000}s`);
-      await new Promise(resolve => setTimeout(resolve, waitMs));
+      await abortableDelay(waitMs, signal);
       return true;
     };
 
     for (let urlIndex = 0; urlIndex < fallbackCount; urlIndex++) {
+      throwIfAborted(signal);
       const url = this.buildUrl(model, stream, urlIndex, credentials);
       const transformedBody = this.transformRequest(model, body, stream, credentials);
       const headers = this.buildHeaders(credentials, stream, url, model);
@@ -141,7 +147,9 @@ export class BaseExecutor {
 
       // Abort if upstream doesn't return response headers within connection timeout
       const connectCtrl = new AbortController();
-      const timeoutMs = this.getRequestTimeoutMs(model, transformedBody);
+      const timeoutMs = requestPolicy?.headersTimeoutMs
+        ? Math.min(this.getRequestTimeoutMs(model, transformedBody), requestPolicy.headersTimeoutMs)
+        : this.getRequestTimeoutMs(model, transformedBody);
       const connectTimer = setTimeout(() => connectCtrl.abort(new Error("fetch connect timeout")), timeoutMs);
       const mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
 
@@ -159,6 +167,7 @@ export class BaseExecutor {
           ...this.getDispatcherTimeouts(model, transformedBody),
         }, proxyOptions);
         clearTimeout(connectTimer);
+        throwIfAborted(signal);
         const ct = response.headers?.get?.("content-type") || "";
         const cl = response.headers?.get?.("content-length") || "?";
         dbg("FETCH", `${this.provider.toUpperCase()} ← ${response.status} | ttft=${Date.now() - fetchT0}ms | ct=${ct} | cl=${cl}`);
@@ -174,6 +183,9 @@ export class BaseExecutor {
         return { response, url, headers, transformedBody };
       } catch (error) {
         clearTimeout(connectTimer);
+        // Caller cancellation may carry Error, TimeoutError, or a primitive
+        // reason. It must never enter provider network retries or URL fallback.
+        throwIfAborted(signal);
         lastError = error;
         const isConnectTimeout = connectCtrl.signal.aborted && error.name === "AbortError";
         dbg("FETCH", `${this.provider.toUpperCase()} ✖ ${error.name}: ${error.message}${isConnectTimeout ? " (connect timeout)" : ""}`);

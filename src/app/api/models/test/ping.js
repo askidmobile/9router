@@ -47,15 +47,63 @@ async function getInternalHeaders() {
     apiKey = keys.find((k) => k.isActive !== false)?.key || null;
   } catch {}
 
-  const headers = { "Content-Type": "application/json" };
+  const headers = { "Content-Type": "application/json", Accept: "application/json" };
   if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
   headers["x-9r-cli-token"] = await getConsistentMachineId(CLI_TOKEN_SALT);
   return headers;
 }
 
+function formatProbeError(error) {
+  const message = error?.message || String(error);
+  return error?.name && error.name !== "Error" ? `${error.name}: ${message}` : message;
+}
+
+async function readProbeResponse(res, start) {
+  let rawText;
+  try {
+    rawText = await res.text();
+  } catch (error) {
+    const failure = new Error(`Failed to read response body: ${formatProbeError(error)}`, { cause: error });
+    failure.status = res.status;
+    throw failure;
+  }
+
+  let parsed = null;
+  try {
+    parsed = JSON.parse(rawText);
+  } catch {
+    // Keep HTTP failures intact even when an intermediary returned plain text.
+    // A successful response with an unreadable body is a protocol failure, not
+    // evidence that the model returned a valid completion without choices.
+    if (res.ok) {
+      const contentType = res.headers?.get?.("content-type") || "missing";
+      const failure = new Error(rawText.trim()
+        ? `Invalid JSON response (HTTP ${res.status}, Content-Type: ${contentType.slice(0, 100)})`
+        : `Empty response body (HTTP ${res.status})`);
+      failure.status = res.status;
+      throw failure;
+    }
+  }
+
+  return { rawText, parsed, latencyMs: Date.now() - start };
+}
+
 export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:${process.env.PORT || UPDATER_CONFIG.appPort}`) {
-  const headers = await getInternalHeaders();
   const start = Date.now();
+  try {
+    return await runModelPing(model, kind, baseUrl, start);
+  } catch (error) {
+    return {
+      ok: false,
+      latencyMs: Date.now() - start,
+      error: formatProbeError(error),
+      ...(error?.status ? { status: error.status } : {}),
+    };
+  }
+}
+
+async function runModelPing(model, kind, baseUrl, start) {
+  const headers = await getInternalHeaders();
 
   if (kind === "embedding") {
     const res = await fetch(`${baseUrl}/api/v1/embeddings`, {
@@ -64,10 +112,7 @@ export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:$
       body: JSON.stringify({ model, input: "test" }),
       signal: AbortSignal.timeout(15000),
     });
-    const latencyMs = Date.now() - start;
-    const rawText = await res.text().catch(() => "");
-    let parsed = null;
-    try { parsed = rawText ? JSON.parse(rawText) : null; } catch {}
+    const { latencyMs, rawText, parsed } = await readProbeResponse(res, start);
 
     if (!res.ok) {
       const detail = parsed?.error?.message || parsed?.error || rawText;
@@ -87,10 +132,7 @@ export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:$
       body: JSON.stringify({ model, prompt: "test" }),
       signal: AbortSignal.timeout(15000),
     });
-    const latencyMs = Date.now() - start;
-    const rawText = await res.text().catch(() => "");
-    let parsed = null;
-    try { parsed = rawText ? JSON.parse(rawText) : null; } catch {}
+    const { latencyMs, rawText, parsed } = await readProbeResponse(res, start);
 
     if (!res.ok) {
       const detail = parsed?.error?.message || parsed?.msg || parsed?.message || parsed?.error || rawText;
@@ -116,10 +158,7 @@ export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:$
       body: form,
       signal: AbortSignal.timeout(15000),
     });
-    const latencyMs = Date.now() - start;
-    const rawText = await res.text().catch(() => "");
-    let parsed = null;
-    try { parsed = rawText ? JSON.parse(rawText) : null; } catch {}
+    const { latencyMs, rawText, parsed } = await readProbeResponse(res, start);
 
     if (!res.ok) {
       const detail = parsed?.error?.message || parsed?.msg || parsed?.message || parsed?.error || rawText;
@@ -160,11 +199,7 @@ export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:$
       bodyTimeout: GEMINI_FLEX_TIMEOUT_MS,
     } : {}),
   });
-  const latencyMs = Date.now() - start;
-
-  const rawText = await res.text().catch(() => "");
-  let parsed = null;
-  try { parsed = rawText ? JSON.parse(rawText) : null; } catch {}
+  const { latencyMs, rawText, parsed } = await readProbeResponse(res, start);
 
   if (!res.ok) {
     const detail = parsed?.error?.message || parsed?.msg || parsed?.message || parsed?.error || rawText;

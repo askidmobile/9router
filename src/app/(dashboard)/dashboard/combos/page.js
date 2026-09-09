@@ -10,6 +10,7 @@ import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { getConservativeComboCapabilities } from "open-sse/providers/capabilities.js";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, getProviderAlias } from "@/shared/constants/providers";
+import { buildComboProviderMap, getComboMemberCircuit } from "@/shared/utils/comboHealth";
 
 // Validate combo name: only a-z, A-Z, 0-9, -, _
 const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
@@ -136,23 +137,40 @@ export default function CombosPage() {
   const { copied, copy } = useCopyToClipboard();
   // Active cooldown locks (modelLock_*) from /api/models/availability — polled.
   const [availability, setAvailability] = useState([]);
+  const [comboCircuits, setComboCircuits] = useState([]);
+  const comboProviders = useMemo(() => buildComboProviderMap(activeProviders), [activeProviders]);
+  const hasComboCircuits = comboCircuits.length > 0;
   const [now, setNow] = useState(() => Date.now());
 
-  // Poll cooldown locks every 30s; tick the clock every 1s only while some lock is active.
+  // Check recovery more often while a pair is frozen. Failed polls retain its
+  // last known state: only a successful server check can reopen the pair.
   useEffect(() => {
-    const fetchAvail = () => fetch("/api/models/availability", { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : { models: [] }))
-      .then((d) => setAvailability(d.models || []))
-      .catch(() => {});
+    let active = true;
+    let inFlight = false;
+    const controller = new AbortController();
+    const fetchAvail = async () => {
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        const response = await fetch("/api/models/availability", { cache: "no-store", signal: controller.signal });
+        if (!response.ok) return;
+        const d = await response.json();
+        if (!active) return;
+        if (Array.isArray(d.models)) setAvailability(d.models);
+        if (Array.isArray(d.comboCircuits)) setComboCircuits(d.comboCircuits);
+        setNow(Date.now());
+      } catch { /* Keep the last confirmed state until polling recovers. */ }
+      finally { inFlight = false; }
+    };
     fetchAvail();
-    const poll = setInterval(fetchAvail, 30000);
-    return () => clearInterval(poll);
-  }, []);
+    const poll = setInterval(fetchAvail, hasComboCircuits ? 5000 : 30000);
+    return () => { active = false; controller.abort(); clearInterval(poll); };
+  }, [hasComboCircuits]);
   useEffect(() => {
-    if (availability.length === 0) return;
+    if (availability.length === 0 && !hasComboCircuits) return;
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
-  }, [availability.length]);
+  }, [availability.length, hasComboCircuits]);
 
   useEffect(() => {
     fetchData();
@@ -338,6 +356,8 @@ export default function CombosPage() {
               aliasCandidates={aliasCandidates}
               modelCaps={modelCaps}
               availability={availability}
+              comboCircuits={comboCircuits}
+              comboProviders={comboProviders}
               now={now}
               activeProviders={activeProviders}
               isMemberOff={isMemberOff}
@@ -401,7 +421,7 @@ const STRATEGY_OPTIONS = [
   { value: "fusion", label: "Fusion — panel + judge" },
 ];
 
-function ComboCard({ combo, getCaps, capsOverrides = {}, allCombos = [], aliasCandidates = null, modelCaps = null, availability = [], now = 0, activeProviders = [], isMemberOff = null, copied, onCopy, onEdit, onDelete, strategy = {}, onSetStrategy }) {
+function ComboCard({ combo, getCaps, capsOverrides = {}, allCombos = [], aliasCandidates = null, modelCaps = null, availability = [], comboCircuits = [], comboProviders = new Map(), now = 0, activeProviders = [], isMemberOff = null, copied, onCopy, onEdit, onDelete, strategy = {}, onSetStrategy }) {
   const [showJudgeSelect, setShowJudgeSelect] = useState(false);
   const current = strategy.fallbackStrategy || "fallback";
   const judge = strategy.judgeModel || "";
@@ -447,6 +467,14 @@ function ComboCard({ combo, getCaps, capsOverrides = {}, allCombos = [], aliasCa
   const memberLocks = (combo.models || []).map(cooldownUntil);
   const allLocked = combo.models?.length > 0 && memberLocks.every((t) => t > 0);
   const maxLockMs = memberLocks.length ? Math.max(...memberLocks) - now : 0;
+  const circuitFor = (model) => getComboMemberCircuit(model, comboCircuits, comboProviders, now);
+  const frozenMembers = (combo.models || [])
+    .map((model) => ({ model, circuit: circuitFor(model) }))
+    .filter(({ circuit }) => circuit);
+  const circuitLabel = (circuit) => circuit.phase === "probing" ? "Checking now"
+    : circuit.phase === "waiting" ? `Next check in ${fmtRemaining(circuit.remainingMs)}` : "Awaiting background check";
+  const allBlocked = combo.models?.length > 0 && combo.models.every((model, index) =>
+    isMemberOff?.(model) || memberLocks[index] > 0 || circuitFor(model));
 
   return (
     <Card padding="sm" className="group">
@@ -464,9 +492,10 @@ function ComboCard({ combo, getCaps, capsOverrides = {}, allCombos = [], aliasCa
                 combo.models.slice(0, 3).map((model, index) => {
                   const lockUntil = cooldownUntil(model);
                   const off = isMemberOff?.(model) === true;
+                  const circuit = circuitFor(model);
                   return (
-                  <code key={index} className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-xs ${off ? "text-text-muted/60 bg-black/5 line-through dark:bg-white/5" : lockUntil ? "text-orange-600 dark:text-orange-400 bg-orange-500/10" : "text-text-muted bg-black/5 dark:bg-white/5"}`}>
-                    <span>{model}</span>
+                  <code key={index} className={`inline-flex max-w-full flex-wrap items-center gap-1 rounded px-1.5 py-0.5 font-mono text-xs ${off ? "text-text-muted/60 bg-black/5 line-through dark:bg-white/5" : circuit || lockUntil ? "text-orange-600 dark:text-orange-400 bg-orange-500/10" : "text-text-muted bg-black/5 dark:bg-white/5"}`}>
+                    <span className="break-all">{model}</span>
                     {off && (
                       <Tooltip text="Disabled — the model or its provider is switched off, so the combo skips it. Re-enable it in Models / Providers.">
                         <span className="inline-flex items-center gap-0.5 font-normal no-underline">
@@ -475,7 +504,15 @@ function ComboCard({ combo, getCaps, capsOverrides = {}, allCombos = [], aliasCa
                         </span>
                       </Tooltip>
                     )}
-                    {!off && lockUntil > 0 && (
+                    {!off && circuit && (
+                      <Tooltip text={`Frozen for all combos. ${circuitLabel(circuit)}. Returns only after a successful check.`}>
+                        <span className="inline-flex items-center gap-0.5 font-normal">
+                          <span className="material-symbols-outlined text-[12px] align-middle">{circuit.phase === "probing" ? "sync" : "ac_unit"}</span>
+                          {circuit.phase === "probing" ? "checking" : "frozen"}
+                        </span>
+                      </Tooltip>
+                    )}
+                    {!off && !circuit && lockUntil > 0 && (
                       <Tooltip text={`Rate-limited — cooling down for ${fmtRemaining(lockUntil - now)}`}>
                         <span className="inline-flex items-center gap-0.5 font-normal">
                           <span className="material-symbols-outlined text-[12px] align-middle">timer</span>
@@ -493,13 +530,28 @@ function ComboCard({ combo, getCaps, capsOverrides = {}, allCombos = [], aliasCa
               )}
             </div>
             {/* All members cooling down — combo cannot serve until the longest lock expires */}
-            {allLocked && (
+            {allLocked && frozenMembers.length === 0 && (
               <div className="mt-1.5 flex items-center gap-1.5 rounded bg-red-500/10 px-2 py-1 text-xs text-red-600 dark:text-red-400">
                 <span className="material-symbols-outlined text-[14px] align-middle">block</span>
                 <span>
                   Combo unavailable — all models cooling down, retries in {" "}
                   <span className="font-mono font-medium">{fmtRemaining(maxLockMs)}</span>
                 </span>
+              </div>
+            )}
+            {frozenMembers.length > 0 && (
+              <div className="mt-1.5 space-y-1 rounded bg-orange-500/10 px-2 py-1.5 text-xs text-orange-700 dark:text-orange-400">
+                <p>{allBlocked ? "Combo unavailable. " : ""}{frozenMembers.length} {frozenMembers.length === 1 ? "model frozen" : "models frozen"} across combos; return only after a successful background check.</p>
+                {frozenMembers.map(({ model, circuit }) => (
+                  <div key={model} className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                    <code className="break-all font-mono">{model}</code>
+                    <span>{circuitLabel(circuit)}</span>
+                    <span>{circuit.failureCount} {circuit.failureCount === 1 ? "failure" : "failures"}</span>
+                    {(circuit.lastStatus || circuit.lastReason) && (
+                      <span className="break-words">{circuit.lastStatus ? `HTTP ${circuit.lastStatus}` : ""}{circuit.lastStatus && circuit.lastReason ? " · " : ""}{circuit.lastReason || ""}</span>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
             {/* 3rd row: combined caps as served by /v1/models */}

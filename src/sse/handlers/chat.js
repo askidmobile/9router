@@ -24,7 +24,10 @@ import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
 import { stripModelContextMarker } from "open-sse/utils/modelMarkers.js";
-import { resolveGeminiServiceTier } from "open-sse/utils/geminiModels.js";
+import { resolveGeminiServiceTier, splitGeminiModelId } from "open-sse/utils/geminiModels.js";
+import { GEMINI_FLEX_SUFFIX } from "open-sse/config/gemini.js";
+import { COMBO_HEALTH_CONFIG } from "open-sse/config/comboHealth.js";
+import { runComboModelExecution, comboRetryAfter } from "open-sse/services/comboExecution.js";
 
 /**
  * Handle chat completion request
@@ -32,10 +35,12 @@ import { resolveGeminiServiceTier } from "open-sse/utils/geminiModels.js";
  * Format detection and translation handled by translator
  */
 export async function handleChat(request, clientRawRequest = null) {
+  if (request.signal?.aborted) return errorResponse(499, "Request aborted");
   let body;
   try {
     body = await request.json();
   } catch {
+    if (request.signal?.aborted) return errorResponse(499, "Request aborted");
     log.warn("CHAT", "Invalid JSON body");
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid JSON body");
   }
@@ -108,13 +113,14 @@ export async function handleChat(request, clientRawRequest = null) {
       return handleFusionChat({
         body,
         models: comboModels,
-        handleSingleModel: (b, m, isPanel) => {
+        signal: request.signal,
+        handleSingleModel: (b, m, isPanel, execution = {}) => {
           let cleanRawReq = clientRawRequest;
           if (isPanel && clientRawRequest) {
             const { tools, tool_choice, ...cleanBody } = clientRawRequest.body || {};
             cleanRawReq = { ...clientRawRequest, body: cleanBody };
           }
-          return handleSingleModelChat(b, m, cleanRawReq, request, apiKey);
+          return handleSingleModelChat(b, m, cleanRawReq, request, apiKey, { ...execution, combo: true, visitedCombos: [modelStr] });
         },
         log,
         comboName: modelStr,
@@ -127,9 +133,11 @@ export async function handleChat(request, clientRawRequest = null) {
     log.info("CHAT", `Combo "${modelStr}" with ${augmentedModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
     return handleComboChat({
       body,
+      skipCooldown: true,
+      signal: request.signal,
       models: augmentedModels,
       handleSingleModel: withCapacityAdapterStripping(
-        (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey),
+        (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, { combo: true, visitedCombos: [modelStr] }),
         adapterAdded
       ),
       log,
@@ -147,9 +155,13 @@ export async function handleChat(request, clientRawRequest = null) {
     log.info("CHAT", `Capacity adapter for [${[...requiredCapabilities].join(",")}] on "${modelStr}" → trying ${soloAugmented.join(", ")}`);
     return handleComboChat({
       body,
+      skipCooldown: true,
+      signal: request.signal,
       models: soloAugmented,
       handleSingleModel: withCapacityAdapterStripping(
-        (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey),
+        // Only configured adapter additions belong to Combo recovery. The
+        // explicitly requested original model retains its direct-request policy.
+        (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, { combo: adapterAdded.includes(m), visitedCombos: [] }),
         adapterAdded
       ),
       log,
@@ -164,13 +176,19 @@ export async function handleChat(request, clientRawRequest = null) {
 /**
  * Handle single model chat request
  */
-async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null) {
-  const modelInfo = await getModelInfo(modelStr);
+async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null, execution = {}) {
+  if (execution.signal && execution.signal !== request?.signal) {
+    request = { url: request?.url, headers: request?.headers, signal: execution.signal };
+  }
+  if (request?.signal?.aborted) return errorResponse(499, "Request aborted");
+  const modelInfo = execution.resolvedModelInfo || await getModelInfo(modelStr);
 
   // If provider is null, this might be a combo name - check and handle
   if (!modelInfo.provider) {
     const comboModels = await getComboModels(modelStr);
     if (comboModels) {
+      if (execution.visitedCombos?.includes(modelStr)) return errorResponse(400, "Circular Combo reference");
+      const nestedExecution = { ...execution, combo: true, visitedCombos: [...(execution.visitedCombos || []), modelStr] };
       const chatSettings = await getSettings();
       // Check for combo-specific strategy first, fallback to global
       const comboStrategies = chatSettings.comboStrategies || {};
@@ -185,13 +203,14 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         return handleFusionChat({
           body,
           models: comboModels,
-          handleSingleModel: (b, m, isPanel) => {
+          signal: request?.signal,
+          handleSingleModel: (b, m, isPanel, panelExecution = {}) => {
             let cleanRawReq = clientRawRequest;
             if (isPanel && clientRawRequest) {
               const { tools, tool_choice, ...cleanBody } = clientRawRequest.body || {};
               cleanRawReq = { ...clientRawRequest, body: cleanBody };
             }
-            return handleSingleModelChat(b, m, cleanRawReq, request, apiKey);
+            return handleSingleModelChat(b, m, cleanRawReq, request, apiKey, { ...nestedExecution, ...panelExecution });
           },
           log,
           comboName: modelStr,
@@ -204,9 +223,11 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       log.info("CHAT", `Combo "${modelStr}" with ${augmentedModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
       return handleComboChat({
         body,
+        skipCooldown: true,
+        signal: request?.signal,
         models: augmentedModels,
         handleSingleModel: withCapacityAdapterStripping(
-          (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey),
+          (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, nestedExecution),
           adapterAdded
         ),
         log,
@@ -227,6 +248,18 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     if (tier.error) return errorResponse(HTTP_STATUS.BAD_REQUEST, tier.error);
   }
 
+  if (execution.combo && !execution.guarded) {
+    const flex = provider === "gemini" && resolveGeminiServiceTier(model, body).serviceTier === "flex";
+    const variant = flex ? splitGeminiModelId(model) : null;
+    const healthModel = flex ? variant.baseModelId + GEMINI_FLEX_SUFFIX + variant.modelId.slice(variant.baseModelId.length) : model;
+    return runComboModelExecution({
+      provider, model: healthModel, body, flex, signal: request?.signal, probe: !!execution.probe, log,
+      execute: (signal, requestPolicy) => handleSingleModelChat(body, modelStr, clientRawRequest, request, apiKey, {
+        ...execution, guarded: true, signal, requestPolicy, resolvedModelInfo: modelInfo,
+      }),
+    });
+  }
+
   // Routing shown in the unified "▶" line (client model → provider/model)
 
   // Extract userAgent from request
@@ -238,7 +271,9 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   let lastStatus = null;
 
   while (true) {
+    if (request?.signal?.aborted) return errorResponse(499, "Request aborted");
     const credentials = await getProviderCredentials(provider, excludeConnectionIds, model);
+    if (request?.signal?.aborted) return errorResponse(499, "Request aborted");
 
     // All accounts unavailable
     if (!credentials || credentials.allRateLimited) {
@@ -258,6 +293,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
     // Account selection shown in the unified "▶" line (acc:...)
     const refreshedCredentials = await checkAndRefreshToken(provider, credentials);
+    if (request?.signal?.aborted) return errorResponse(499, "Request aborted");
 
     // Ensure real project ID is available for providers that need it (P0 fix: cold miss)
     if ((provider === "antigravity" || provider === "gemini-cli") && !refreshedCredentials.projectId) {
@@ -274,6 +310,8 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     const providerThinking = (chatSettings.providerThinking || {})[provider] || null;
     const result = await handleChatCore({
       body: { ...body, model: `${provider}/${model}` },
+      signal: request?.signal,
+      requestPolicy: execution.requestPolicy,
       modelInfo: { provider, model },
       credentials: refreshedCredentials,
       log,
@@ -314,7 +352,14 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       }
     });
 
+    if (request?.signal?.aborted || result.status === 499) return errorResponse(499, "Request aborted");
     if (result.success) return result.response;
+    // A malformed user request cannot be repaired by rotating credentials.
+    // Transport/server failures belong to the Combo's provider+model circuit;
+    // don't multiply a 45-second network timeout by the number of accounts.
+    if (execution.combo && ([400, 408, 413, 422].includes(result.status) || result.status >= 500)) {
+      return result.response;
+    }
 
     // Antigravity 409/429: refresh live quota to get exact resetAt before locking
     let quotaResetMs = null;
@@ -326,6 +371,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       );
       if (quotaResetMs) resetsAtMs = quotaResetMs;
     }
+    if (request?.signal?.aborted) return errorResponse(499, "Request aborted");
 
     // Exhausted Antigravity model is blocked only in RAM cache until upstream resetAt.
     // Do not persist a modelLock_* for this path.
@@ -343,4 +389,29 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
     return result.response;
   }
+}
+
+/** Internal synthetic inference; never uses a user's prompt or falls back to another pair. */
+export async function runComboModelProbe({ provider, model, signal }) {
+  const body = {
+    model: `${provider}/${model}`,
+    messages: [{ role: "user", content: COMBO_HEALTH_CONFIG.probePrompt }],
+    max_tokens: COMBO_HEALTH_CONFIG.probeMaxTokens,
+    stream: false,
+  };
+  const request = { url: "http://localhost/api/v1/chat/completions", signal,
+    headers: new Headers({ accept: "application/json", "user-agent": "9router-combo-health" }) };
+  const response = await handleSingleModelChat(body, body.model, null, request, null, {
+    combo: true, probe: true, resolvedModelInfo: { provider, model },
+  });
+  let payload;
+  try { payload = await response.json(); } catch { /* Failed probe, never a soft success. */ }
+  const ok = response.ok && typeof payload?.choices?.[0]?.message?.content === "string" &&
+    payload.choices[0].message.content.trim().length > 0;
+  return {
+    ok,
+    status: response.status,
+    reason: ok ? undefined : response.ok ? "Invalid completion response" : `Upstream HTTP ${response.status}`,
+    retryAfterMs: comboRetryAfter(response, payload),
+  };
 }
