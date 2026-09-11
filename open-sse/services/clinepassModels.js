@@ -87,7 +87,8 @@ export async function resolveClineModels(credentials) {
       signal: controller.signal,
     });
     if (response.ok) {
-      const data = (await response.json())?.data;
+      const payload = await response.json();
+      const data = Array.isArray(payload) ? payload : payload?.data;
       if (Array.isArray(data)) {
         const models = data
           .filter((m) => {

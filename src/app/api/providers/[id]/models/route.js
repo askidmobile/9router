@@ -417,8 +417,8 @@ const PROVIDER_MODELS_CONFIG = {
       };
     },
   },
-  // Cline shares the upstream /models endpoint with ClinePass, but `cline-pass/*`
-  // ids are valid only for ClinePass connections — resolveClineModels excludes them.
+  // Cline uses the full public catalog; ClinePass uses the subscription bucket.
+  // Keep cline-pass/* ids scoped to ClinePass connections.
   cline: {
     customResolver: async (connection) => {
       const result = await resolveClineModels({

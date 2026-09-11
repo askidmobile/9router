@@ -1,4 +1,6 @@
 import { getApiKeys } from "@/lib/localDb";
+import { resolveProviderId } from "@/shared/constants/providers.js";
+import { unwrapClineEnvelope } from "open-sse/shared/clineEnvelope.js";
 import { UPDATER_CONFIG } from "@/shared/constants/config";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
 import { GEMINI_FLEX_TIMEOUT_MS } from "open-sse/config/gemini.js";
@@ -199,7 +201,12 @@ async function runModelPing(model, kind, baseUrl, start) {
       bodyTimeout: GEMINI_FLEX_TIMEOUT_MS,
     } : {}),
   });
-  const { latencyMs, rawText, parsed } = await readProbeResponse(res, start);
+  const { latencyMs, rawText, parsed: rawParsed } = await readProbeResponse(res, start);
+
+  // Unwrap before the choices checks below. No-op for providers that do not
+  // opt in via transport.quirks.clineEnvelope.
+  const providerId = resolveProviderId(String(model).split("/")[0]);
+  const parsed = unwrapClineEnvelope(rawParsed, providerId);
 
   if (!res.ok) {
     const detail = parsed?.error?.message || parsed?.msg || parsed?.message || parsed?.error || rawText;

@@ -14,15 +14,17 @@ export default {
     },
   },
   category: "oauth",
+  // Keep both credential types; API keys remain opaque Bearer credentials.
   authModes: ["oauth", "apikey"],
   hasOAuth: true,
   transport: {
     baseUrl: "https://api.cline.bot/api/v1/chat/completions",
-    quirks: { responseDataEnvelope: true },
     headers: {
       "HTTP-Referer": "https://cline.bot",
       "X-Title": "Cline",
     },
+    // Non-stream chat completions come back wrapped in {"success":true,"data":{...}}
+    quirks: { responseDataEnvelope: true, clineEnvelope: true },
     auth: {
       combined: true,
       header: "Authorization",
