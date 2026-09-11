@@ -1,12 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { Button, Card } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 
 const inputClass = "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:border-primary";
 const shellQuote = text => `'${text.replaceAll("'", "'\\''")}'`;
+const subscribeToOrigin = () => () => {};
+const readOrigin = () => window.location.origin;
+const serverOrigin = () => "";
 
 export default function ChatGPTPage() {
   const [available, setAvailable] = useState([]);
@@ -18,25 +21,21 @@ export default function ChatGPTPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [origin, setOrigin] = useState("");
+  const origin = useSyncExternalStore(subscribeToOrigin, readOrigin, serverOrigin);
   const { copied, copy } = useCopyToClipboard();
   const [copiedItem, setCopiedItem] = useState("");
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const response = await fetch("/api/chatgpt", { cache: "no-store" });
+  const load = useCallback(() => {
+    return fetch("/api/chatgpt", { cache: "no-store" }).then(async response => {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Could not load models.");
       setAvailable(data.available);
       setModels(data.models.map(model => model.id));
       setSaved(data.models.map(model => model.id));
       setLimit(data.limit);
-    } catch (error) { setError(error.message); }
-    finally { setLoading(false); }
+    }).catch(error => setError(error.message)).finally(() => setLoading(false));
   }, []);
-  useEffect(() => { setOrigin(window.location.origin); load(); }, [load]);
+  useEffect(() => { load(); }, [load]);
   const dirty = JSON.stringify(models) !== JSON.stringify(saved);
   const visible = useMemo(() => available.filter(model => `${model.id} ${model.name || ""}`.toLowerCase().includes(search.toLowerCase())), [available, search]);
   const endpoint = `${origin}/api/chatgpt/v1`;
@@ -78,7 +77,7 @@ export default function ChatGPTPage() {
         </div>
         <p className="max-w-2xl text-sm text-text-muted">Add 9router models to the same model picker as your native Codex models, in the desktop app and CLI.</p>
       </div>
-      <Button variant="secondary" icon="refresh" loading={loading} disabled={dirty || saving} onClick={load}>Refresh models</Button>
+      <Button variant="secondary" icon="refresh" loading={loading} disabled={dirty || saving} onClick={() => { setLoading(true); setError(""); load(); }}>Refresh models</Button>
     </div>
 
     {error && <div role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-500">{error}</div>}
