@@ -13,6 +13,10 @@ normal configuration, without a separate Codex profile.
    The installer requires macOS and Node.js 24.5 or newer. It reads a 9router API
    key from `ROUTER9_API_KEY` or a hidden terminal prompt. Keys can be managed on
    **Endpoint & Key**. The downloadable installer can be inspected before running.
+   At `9router API key (hidden):`, paste the key and press Enter; characters and
+   asterisks are not displayed. If `ROUTER9_API_KEY` is already set, or the helper
+   has a saved key for the same endpoint, no prompt appears. The installer prints
+   which source it used, without printing the key. Do not put a key in the URL.
 4. Quit and reopen Codex. Router entries have IDs such as
    `9router/glm/glm-5.3`; native entries keep their existing IDs and metadata.
 
@@ -42,6 +46,12 @@ Restart Codex after syncing; the model catalog is loaded at startup.
 ```sh
 node "$HOME/.codex/9router-chatgpt/bridge.mjs" status
 node "$HOME/.codex/9router-chatgpt/bridge.mjs" disable
+```
+
+To enter a different key, overriding both the environment and the saved key:
+
+```sh
+node "$HOME/.codex/9router-chatgpt/bridge.mjs" enable --ask-api-key
 ```
 
 Restart Codex after disabling. Re-run `enable` to connect again. For a custom
@@ -79,6 +89,10 @@ Native requests do not depend on the availability of the remote 9router server
 or its model catalog. They do require the local helper while integration is
 enabled. If it stops, run `enable` to repair it or `disable` and restart Codex to
 restore the preceding connection configuration.
+
+Native auxiliary GET/POST endpoints, including hosted tools, retain the fixed
+OpenAI destination, original authorization, query string and encoded request
+body. Only Responses requests with a selected `9router/` model go to the router.
 
 ## Files and restoration
 
@@ -124,8 +138,19 @@ explicitly declaring no tool support cannot be selected. Unknown context limits
 use a conservative 32,768-token catalog entry; known limits come from `/v1/models`.
 
 Native catalog entries remain intact, including reasoning levels and service
-tiers. Added entries use provider defaults for reasoning, generic Codex tool
-metadata, and no native-only speed tiers or built-in search capability.
+tiers. Added entries expose the provider's supported reasoning levels; Combos
+use the intersection across all members, including nested Combos and aliases.
+Fixed reasoning suffixes and routes with no shared levels do not offer a picker.
+Binary reasoning uses `none` / `high` (off / on). The manifest refreshes metadata
+for existing selections, so another Save is not required. To upgrade an older
+helper, run the dashboard install command again; it keeps the saved key and
+original configuration backup and refreshes the catalog. `sync` alone refreshes
+models without upgrading the installed helper. Restart Codex after the update.
+Entries retain generic tool metadata
+and no native-only speed tiers or built-in search capability.
+
+GLM-5.3 and GLM-5.3-FLASH support `low`, `high`, and `max`; disabling reasoning is
+not supported by the native Z.AI API. See [Z.AI thinking documentation](https://docs.z.ai/guides/capabilities/thinking).
 
 ## Verification
 

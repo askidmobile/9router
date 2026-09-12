@@ -117,7 +117,9 @@ export default function ChatGPTPage() {
       </div>
       <ol className="list-decimal space-y-4 pl-5 text-sm text-text-main">
         <li>Save the models above. Sign in to Codex with your usual ChatGPT account.</li>
-        <li><p className="mb-2">Run this command in Terminal on the computer where you use Codex. Enter a <Link href="/dashboard/endpoint" className="text-primary underline">9router API key</Link> when prompted.</p>{command("install command", install)}</li>
+        <li><p className="mb-2">Copy a key from <Link href="/dashboard/endpoint" className="text-primary underline">Endpoint & Key</Link>, then run this command in Terminal on the computer where you use Codex.</p>{command("install command", install)}
+          <p className="mt-2 text-xs leading-5 text-text-muted">At <code>9router API key (hidden):</code>, paste the key and press Enter. No characters or asterisks appear while you type. If a key is already set in <code>ROUTER9_API_KEY</code> or saved by the helper, it is reused automatically and the installer prints its source.</p>
+        </li>
         <li>Quit and reopen Codex. Open the model picker to select a native or 9router model.</li>
       </ol>
       <div className="mt-4 flex flex-wrap items-center gap-4 text-sm">
@@ -135,9 +137,11 @@ export default function ChatGPTPage() {
       <div className="space-y-4">
         <div><p className="mb-2 text-sm font-medium">After changing models: sync, then restart Codex</p>{command("sync command", `${helper} sync`)}</div>
         <div><p className="mb-2 text-sm font-medium">Check the local helper</p>{command("status command", `${helper} status`)}</div>
+        <div><p className="mb-2 text-sm font-medium">Enter a different API key (hidden terminal prompt)</p>{command("change API key command", `${helper} enable --ask-api-key`)}</div>
         <div><p className="mb-2 text-sm font-medium">Disable and restore previous routing, then restart Codex</p>{command("disable command", `${helper} disable`)}</div>
       </div>
       <p className="mt-4 text-xs leading-5 text-text-muted">Disabling restores the connection settings saved during installation and stops the helper. Other Codex settings and auth.json are preserved. Re-run the install command to enable it again. If CC Switch or Ollama changes those connection settings, the helper reports a conflict instead of overwriting them.</p>
+      <p className="mt-3 text-xs leading-5 text-text-muted">Reasoning levels in Codex follow provider support. Combos expose levels shared by all members. A model with a fixed reasoning suffix keeps that setting. To update an older helper, run the install command above again and restart Codex; sync only refreshes the model list.</p>
       <p className="mt-3 text-xs leading-5 text-text-muted">Start a new task when changing providers: encrypted reasoning and server-side response references may not be portable between backends. Commands use the default ~/.codex directory; for a custom CODEX_HOME, use its bridge.mjs and pass --codex-home explicitly.</p>
     </Card>
   </div>;

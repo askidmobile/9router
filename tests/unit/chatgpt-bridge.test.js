@@ -7,7 +7,7 @@ import * as zlib from "node:zlib";
 import { once } from "node:events";
 import {
   activateIntegration, deactivateIntegration, createBridge, enableConfig, disableConfig, mergeCatalog,
-  rootSettings, validateRouterUrl, validateManifest,
+  rootSettings, validateRouterUrl, validateManifest, resolveApiKey,
 } from "../../public/9router-codex.mjs";
 
 const native = [{ slug: "native-codex", visibility: "list", priority: 0, base_instructions: "Native instructions", service_tiers: [{ id: "priority" }] }];
@@ -52,6 +52,20 @@ describe("Codex config restoration", () => {
 });
 
 describe("catalog and endpoint validation", () => {
+  it("exposes supported reasoning and default without changing native metadata", () => {
+    const routed = { ...manifest.models[0], reasoningLevels: ["low", "high", "max"], defaultReasoningLevel: "high" };
+    const combined = mergeCatalog(native, { ...manifest, models: [routed] });
+    expect(combined.models[0].supported_reasoning_levels.map(level => level.effort)).toEqual(["low", "high", "max"]);
+    expect(combined.models[0].default_reasoning_level).toBe("high");
+    expect(combined.models[1]).toEqual(native[0]);
+    expect(mergeCatalog(native, manifest).models[0].supported_reasoning_levels).toEqual([]);
+  });
+  it.each([
+    { reasoningLevels: ["thinking"] }, { reasoningLevels: ["high", "high"] },
+    { reasoningLevels: "high" }, { reasoningLevels: ["low"], defaultReasoningLevel: "high" },
+  ])("rejects malformed reasoning metadata %j", metadata => {
+    expect(() => validateManifest({ ...manifest, models: [{ ...manifest.models[0], ...metadata }] })).toThrow();
+  });
   it("keeps native model metadata byte-for-byte and namespaces added models", () => {
     const combined = mergeCatalog(native, manifest);
     expect(combined.models[1]).toEqual(native[0]);
@@ -65,6 +79,27 @@ describe("catalog and endpoint validation", () => {
     expect(validateManifest(manifest)).toBe(manifest);
     expect(() => validateManifest({ ...manifest, models: [{ ...manifest.models[0], slug: "native-codex" }] })).toThrow();
     expect(() => validateManifest({ ...manifest, models: [manifest.models[0], manifest.models[0]] })).toThrow();
+  });
+});
+
+describe("API key selection", () => {
+  const routerUrl = "https://router.example/api/chatgpt/v1";
+  const previous = { routerUrl, apiKey: "saved-key" };
+  it("reports an environment key without prompting", async () => {
+    const prompt = vi.fn();
+    expect(await resolveApiKey(previous, routerUrl, { env: { ROUTER9_API_KEY: " env-key " }, prompt })).toEqual({ apiKey: "env-key", source: "ROUTER9_API_KEY" });
+    expect(prompt).not.toHaveBeenCalled();
+  });
+  it("reuses a saved key only for the same endpoint", async () => {
+    const prompt = vi.fn(async () => "entered-key");
+    expect(await resolveApiKey(previous, routerUrl, { env: {}, prompt })).toEqual({ apiKey: "saved-key", source: "saved helper settings" });
+    expect(prompt).not.toHaveBeenCalled();
+    expect((await resolveApiKey(previous, "https://other.example/api/chatgpt/v1", { env: {}, prompt })).apiKey).toBe("entered-key");
+  });
+  it("allows explicit key entry to override both saved and environment keys", async () => {
+    const prompt = vi.fn(async () => "entered-key");
+    expect(await resolveApiKey(previous, routerUrl, { env: { ROUTER9_API_KEY: "env-key" }, ask: true, prompt })).toEqual({ apiKey: "entered-key", source: "terminal prompt" });
+    expect(prompt).toHaveBeenCalledOnce();
   });
 });
 
@@ -86,6 +121,24 @@ describe("bridge on real HTTP sockets", () => {
     return { origin, url: `${origin}/local-token/v1`, captured };
   }
   const nativeHeaders = { authorization: "Bearer native-secret", "chatgpt-account-id": "native-account", cookie: "private-cookie", "x-codex-session-id": "session", "content-type": "application/json" };
+  it("preserves native auxiliary endpoints, compressed bodies and credentials independently of router models", async () => {
+    let received;
+    const payload = zlib.gzipSync('{"query":"test"}');
+    const { url, captured } = await setup(async (req, res) => {
+      const chunks = []; for await (const chunk of req) chunks.push(chunk);
+      received = Buffer.concat(chunks);
+      res.writeHead(200, { "content-type": "application/json" }); res.end('{"ok":true}');
+    });
+    const response = await fetch(`${url}/tools/search?client_version=0.154`, { method: "POST", headers: { ...nativeHeaders, "content-encoding": "gzip" }, body: payload });
+    expect(response.status).toBe(200);
+    expect(received).toEqual(payload);
+    expect(captured[0].url).toBe("https://chatgpt.com/backend-api/codex/tools/search?client_version=0.154");
+    expect(captured[0].headers.authorization).toBe("Bearer native-secret");
+    expect(captured[0].headers["chatgpt-account-id"]).toBe("native-account");
+    expect(captured[0].headers.cookie).toBeUndefined();
+    expect((await fetch(`${url}/tools/search`, { method: "POST", body: "{}" })).status).toBe(401);
+    expect(captured).toHaveLength(1);
+  });
   it.each(["identity", "gzip", ...(zlib.zstdCompressSync ? ["zstd"] : [])])("routes %s native and external bodies with distinct credentials", async encoding => {
     const bodies = [];
     const { url, captured } = await setup(async (req, res) => {
