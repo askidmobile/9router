@@ -39,7 +39,8 @@ export default function ChatGPTPage() {
   const dirty = JSON.stringify(models) !== JSON.stringify(saved);
   const visible = useMemo(() => available.filter(model => `${model.id} ${model.name || ""}`.toLowerCase().includes(search.toLowerCase())), [available, search]);
   const endpoint = `${origin}/api/chatgpt/v1`;
-  const install = origin ? `(router_setup_dir=$(mktemp -d) && trap 'rm -rf "$router_setup_dir"' EXIT && curl -fsS ${shellQuote(`${origin}/9router-codex.mjs`)} -o "$router_setup_dir/install.mjs" && node "$router_setup_dir/install.mjs" enable --url ${shellQuote(endpoint)})` : "";
+  // Separate the closing subshell from the URL so zsh's url-quote-magic does not escape it on paste.
+  const install = origin ? `(router_setup_dir=$(mktemp -d) && trap 'rm -rf "$router_setup_dir"' EXIT && curl -fsS ${shellQuote(`${origin}/9router-codex.mjs`)} -o "$router_setup_dir/install.mjs" && node "$router_setup_dir/install.mjs" enable --url ${shellQuote(endpoint)} )` : "";
   const helper = 'node "$HOME/.codex/9router-chatgpt/bridge.mjs"';
 
   async function save() {
