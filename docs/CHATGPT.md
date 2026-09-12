@@ -25,6 +25,10 @@ node ./9router-codex.mjs enable --url https://your-router/api/chatgpt/v1
 The default local port is **20130**, separate from the router's 20128 service and
 20129 status service. Override it with `--port 20131` if needed.
 
+If an older copied command leaves zsh at `subsh>`, press **Ctrl+C**, refresh the
+dashboard and copy the command again. The space before its final `)` is required
+for shells using `url-quote-magic`, which can otherwise paste it as `\)`.
+
 ## Update, status, disable
 
 After changing the model selection, save it in the dashboard, then run:
