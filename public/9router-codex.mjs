@@ -345,13 +345,22 @@ export function createBridge(state, options = {}) {
 
 function xml(value) { return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;"); }
 function launchLabel(codexHome) { return `org.9router.codex.${createHash("sha256").update(codexHome).digest("hex").slice(0, 12)}`; }
-async function stopService(state) {
-  try { await exec("/bin/launchctl", ["bootout", `gui/${process.getuid()}/${state.label}`]); }
+export async function stopService(state, { run = exec, wait = delay } = {}) {
+  const target = `gui/${process.getuid()}/${state.label}`;
+  const registered = () => run("/bin/launchctl", ["print", target]).then(() => true, () => false);
+  try { await run("/bin/launchctl", ["bootout", target]); }
   catch (error) {
     // Only absence is safe to ignore. A running service must not be orphaned.
-    const result = await exec("/bin/launchctl", ["print", `gui/${process.getuid()}/${state.label}`]).then(() => true, () => false);
-    if (result) throw new Error("Could not stop the 9router launch agent.");
+    if (await registered()) throw new Error("Could not stop the 9router launch agent.");
+    return;
   }
+  // bootout can return before launchd removes the registration. Bootstrapping
+  // the same label during that interval fails with error 5 on a running helper.
+  for (let attempt = 0; attempt < 50; attempt++) {
+    if (!await registered()) return;
+    await wait(100);
+  }
+  throw new Error("The previous 9router launch agent is still stopping. Retry enable shortly.");
 }
 async function startService(state) {
   await stopService(state);

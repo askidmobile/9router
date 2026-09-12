@@ -7,7 +7,7 @@ import * as zlib from "node:zlib";
 import { once } from "node:events";
 import {
   activateIntegration, deactivateIntegration, createBridge, enableConfig, disableConfig, mergeCatalog,
-  rootSettings, validateRouterUrl, validateManifest, resolveApiKey,
+  rootSettings, validateRouterUrl, validateManifest, resolveApiKey, stopService,
 } from "../../public/9router-codex.mjs";
 
 const native = [{ slug: "native-codex", visibility: "list", priority: 0, base_instructions: "Native instructions", service_tiers: [{ id: "priority" }] }];
@@ -276,5 +276,28 @@ describe("installation rollback", () => {
     })).rejects.toThrow("stop denied");
     expect(await fs.readFile(configPath, "utf8")).toBe(installed.text);
     expect(await fs.readFile(statePath, "utf8")).toBe("old state");
+  });
+});
+
+describe("launch agent shutdown", () => {
+  it("waits for asynchronous launchd removal before allowing a restart", async () => {
+    let remaining = 2;
+    const run = vi.fn(async (_command, [action]) => {
+      if (action === "print" && remaining-- <= 0) throw new Error("service not found");
+    });
+    const wait = vi.fn(async () => {});
+    await stopService({ label: "test" }, { run, wait });
+    expect(wait).toHaveBeenCalledTimes(2);
+    expect(run.mock.calls.map(([, args]) => args[0])).toEqual(["bootout", "print", "print", "print"]);
+  });
+  it("does not treat a still registered service as stopped", async () => {
+    const run = vi.fn(async () => {});
+    await expect(stopService({ label: "test" }, { run, wait: async () => {} })).rejects.toThrow("still stopping");
+  });
+  it("allows an absent service but refuses a denied stop of a registered service", async () => {
+    await stopService({ label: "test" }, { run: async () => { throw new Error("not found"); } });
+    await expect(stopService({ label: "test" }, {
+      run: async (_command, [action]) => { if (action === "bootout") throw new Error("denied"); },
+    })).rejects.toThrow("Could not stop");
   });
 });
