@@ -129,7 +129,10 @@ export function mergeCatalog(nativeModels, manifest) {
   const minPriority = Math.min(0, ...native.map(m => Number(m.priority) || 0));
   const additions = manifest.models.map((model, index) => ({
     slug: model.slug, display_name: model.slug, description: "9router model",
-    default_reasoning_level: null, supported_reasoning_levels: [],
+    default_reasoning_level: model.defaultReasoningLevel || null,
+    supported_reasoning_levels: (model.reasoningLevels || []).map(effort => ({
+      effort, description: effort === "none" ? "Disable reasoning where supported" : `${effort} reasoning supported by the selected 9router route`,
+    })),
     shell_type: "unified_exec", visibility: "list", supported_in_api: true,
     priority: minPriority - manifest.models.length + index,
     additional_speed_tiers: [], service_tiers: [], default_service_tier: null,
@@ -150,9 +153,14 @@ export function mergeCatalog(nativeModels, manifest) {
 }
 
 export function validateManifest(data) {
+  const levels = ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
   if (data?.version !== 1 || !Array.isArray(data.models) || data.models.length > 5 ||
       data.models.some(m => !m || typeof m.id !== "string" || !m.id || m.slug !== PREFIX + m.id ||
-        !Number.isFinite(m.contextWindow) || m.contextWindow < 4096 || m.contextWindow > 10000000) ||
+        !Number.isFinite(m.contextWindow) || m.contextWindow < 4096 || m.contextWindow > 10000000 ||
+        (m.reasoningLevels !== undefined && (!Array.isArray(m.reasoningLevels) ||
+          m.reasoningLevels.length > levels.length || new Set(m.reasoningLevels).size !== m.reasoningLevels.length ||
+          m.reasoningLevels.some(level => !levels.includes(level)))) ||
+        (m.defaultReasoningLevel != null && !m.reasoningLevels?.includes(m.defaultReasoningLevel))) ||
       new Set(data.models.map(m => m.slug)).size !== data.models.length) {
     throw new Error("Invalid 9router model catalog.");
   }
@@ -273,8 +281,10 @@ export function createBridge(state, options = {}) {
         response.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
         return response.end(JSON.stringify({ ok: true, integration: "9router-codex", version: 1 }));
       }
-      const post = request.method === "POST" && ["/responses", "/responses/compact"].includes(suffix);
-      if (!post && !(request.method === "GET" && suffix === "/models")) return sendError(response, 404, "Unsupported Codex endpoint.");
+      const inference = request.method === "POST" && ["/responses", "/responses/compact"].includes(suffix);
+      // Codex also uses native auxiliary endpoints (for example hosted tools).
+      // Only inference with a namespaced model can reach the remote router.
+      if (!["GET", "POST"].includes(request.method)) return sendError(response, 405, "Unsupported Codex method.");
       let size = 0;
       const chunks = [];
       for await (const chunk of request) {
@@ -285,10 +295,10 @@ export function createBridge(state, options = {}) {
       const raw = Buffer.concat(chunks);
       let decoded, body;
       try {
-        decoded = await decodeBody(raw, request.headers["content-encoding"]);
-        body = post ? JSON.parse(decoded.toString("utf8")) : null;
+        decoded = inference ? await decodeBody(raw, request.headers["content-encoding"]) : raw;
+        body = inference ? JSON.parse(decoded.toString("utf8")) : null;
       } catch { return sendError(response, 400, "Invalid or unsupported request body."); }
-      if (post && typeof body?.model !== "string") return sendError(response, 400, "Model is required.");
+      if (inference && typeof body?.model !== "string") return sendError(response, 400, "Model is required.");
       const external = body?.model.startsWith(PREFIX) === true;
       if (external) {
         const manifest = validateManifest(await getManifest());
@@ -302,7 +312,7 @@ export function createBridge(state, options = {}) {
       const forwarded = routeHeaders(request.headers, external, state.apiKey);
       const payload = external ? decoded : raw;
       // Router requests use uncompressed JSON; native requests retain encoding.
-      if (post) forwarded["content-length"] = String(payload.length);
+      if (request.method === "POST" || payload.length) forwarded["content-length"] = String(payload.length);
       const upstream = requestUpstream(target, { method: request.method, headers: forwarded }, async upstreamResponse => {
         const safeHeaders = {};
         for (const [key, value] of Object.entries(upstreamResponse.headers)) if (!HOP_HEADERS.has(key) && key !== "set-cookie") safeHeaders[key] = value;
@@ -319,7 +329,7 @@ export function createBridge(state, options = {}) {
       const timer = setTimeout(() => upstream.destroy(new Error("Upstream header timeout")), 120000);
       upstream.once("response", () => clearTimeout(timer));
       upstream.once("close", () => clearTimeout(timer));
-      upstream.end(post ? payload : undefined);
+      upstream.end(payload.length ? payload : undefined);
     } catch {
       if (!response.headersSent) sendError(response, 503, "Integration unavailable. Run the sync or disable command.");
       else response.destroy();
@@ -430,8 +440,8 @@ export async function deactivateIntegration(state, configPath, statePath, servic
 }
 
 async function secretKey() {
-  if (process.env.ROUTER9_API_KEY?.trim()) return process.env.ROUTER9_API_KEY.trim();
   if (!process.stdin.isTTY) throw new Error("Set ROUTER9_API_KEY or run in a terminal to enter a 9router API key.");
+  process.stdout.write("Copy a 9router key from Dashboard > Endpoint & Key. Paste it below and press Enter.\nThe input is hidden; no characters or asterisks will appear.\n");
   process.stdout.write("9router API key (hidden): ");
   process.stdin.setRawMode(true);
   process.stdin.resume();
@@ -457,11 +467,17 @@ async function secretKey() {
   });
 }
 
+export async function resolveApiKey(previous, routerUrl, { env = process.env, prompt = secretKey, ask = false } = {}) {
+  if (!ask && env.ROUTER9_API_KEY?.trim()) return { apiKey: env.ROUTER9_API_KEY.trim(), source: "ROUTER9_API_KEY" };
+  if (!ask && previous?.routerUrl === routerUrl && previous?.apiKey) return { apiKey: previous.apiKey, source: "saved helper settings" };
+  return { apiKey: await prompt(), source: "terminal prompt" };
+}
+
 async function runMain(args) {
   const command = args[0] || "help";
   const arg = name => { const index = args.indexOf(name); return index < 0 ? undefined : args[index + 1]; };
   if (command === "help" || command === "--help") {
-    console.log("9router Codex integration (macOS, Node.js 24.5+)\n\n  enable --url https://your-router/api/chatgpt/v1 [--port 20130]\n  sync       Refresh models, then restart Codex\n  status     Check the local bridge\n  disable    Restore previous settings and stop the bridge\n\nOptional: --codex-home /path/to/.codex\nThe API key is read from ROUTER9_API_KEY or a hidden terminal prompt.");
+    console.log("9router Codex integration (macOS, Node.js 24.5+)\n\n  enable --url https://your-router/api/chatgpt/v1 [--port 20130]\n  sync       Refresh models, then restart Codex\n  status     Check the local bridge\n  disable    Restore previous settings and stop the bridge\n\nOptional: --codex-home /path/to/.codex\n  enable --ask-api-key  Enter a different key even when one is already saved\nThe API key is read from ROUTER9_API_KEY or a hidden terminal prompt.");
     return;
   }
   const [major, minor] = process.versions.node.split(".").map(Number);
@@ -501,7 +517,8 @@ async function runMain(args) {
   const routerUrl = validateRouterUrl(arg("--url") || previous?.routerUrl || "");
   const port = Number(arg("--port") || previous?.port || 20130);
   if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error("Port must be between 1024 and 65535.");
-  const apiKey = process.env.ROUTER9_API_KEY?.trim() || (previous?.routerUrl === routerUrl && previous?.apiKey) || await secretKey();
+  const { apiKey, source: keySource } = await resolveApiKey(previous, routerUrl, { ask: args.includes("--ask-api-key") });
+  console.log(`Using API key from ${keySource}.`);
   const label = launchLabel(codexHome);
   const state = { active: true, codexHome, directory, routerUrl, apiKey, port, label, proxyEnv: proxyEnvironment(previous),
     token: previous?.token || randomBytes(24).toString("hex"),

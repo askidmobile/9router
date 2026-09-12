@@ -9,6 +9,7 @@ import PROVIDERS from "./registry/index.js";
 const L = {
   base: ["none", "low", "medium", "high"],                          // qwen, step, hunyuan, gemini-budget
   onOff: ["none", "thinking"],                                      // zai (binary), minimax (adaptive)
+  zaiEffort: ["none", "low", "high", "max"],                        // newer GLM models accept explicit effort
   openai: ["none", "minimal", "low", "medium", "high", "xhigh"],    // GPT-5.x / o-series (no "max")
   levelMax: ["none", "low", "medium", "high", "max"],               // claude-adaptive, kimi
   budgetX: ["none", "low", "medium", "high", "xhigh", "max"],       // claude-budget
@@ -80,7 +81,9 @@ export function getThinkingLevels(provider, model) {
     (!entry.provider || entry.provider === provider) && matchPattern(entry.pattern, model)
   );
   const providerFmt = PROVIDERS.find((p) => p.id === provider)?.transport?.thinkingFormat;
-  let levels = hit?.levels || PROVIDER_THINKING_LEVELS[provider] || PROVIDER_FORMAT_LEVELS[providerFmt] || FORMAT_LEVELS[caps.thinkingFormat] || L.base;
+  const modelLevels = caps.thinkingFormat === "zai" && caps.thinkingEffortSupported
+    ? L.zaiEffort : FORMAT_LEVELS[caps.thinkingFormat];
+  let levels = hit?.levels || PROVIDER_THINKING_LEVELS[provider] || PROVIDER_FORMAT_LEVELS[providerFmt] || modelLevels || L.base;
   if (caps.thinkingCanDisable === false) levels = levels.filter((l) => l !== "none");
   return levels;
 }

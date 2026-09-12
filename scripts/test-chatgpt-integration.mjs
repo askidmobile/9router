@@ -18,7 +18,7 @@ const received = [];
 const fixture = http.createServer(async (req, res) => {
   if (req.url === "/v1/models") {
     res.setHeader("content-type", "application/json");
-    return res.end(JSON.stringify({ data: [{ id: "qa-model" }] }));
+    return res.end(JSON.stringify({ data: [{ id: "glm-5.3" }] }));
   }
   const chunks = []; for await (const chunk of req) chunks.push(chunk);
   const body = JSON.parse(Buffer.concat(chunks).toString());
@@ -34,12 +34,12 @@ const fixture = http.createServer(async (req, res) => {
     res.writeHead(200, { "content-type": "text/event-stream" });
     const delta = { ...message };
     if (delta.tool_calls) delta.tool_calls[0].index = 0;
-    res.write(`data: ${JSON.stringify({ id: "chatcmpl-qa", object: "chat.completion.chunk", model: "qa-model", choices: [{ index: 0, delta, finish_reason: null }] })}\n\n`);
+    res.write(`data: ${JSON.stringify({ id: "chatcmpl-qa", object: "chat.completion.chunk", model: body.model, choices: [{ index: 0, delta, finish_reason: null }] })}\n\n`);
     res.write(`data: ${JSON.stringify({ id: "chatcmpl-qa", object: "chat.completion.chunk", choices: [{ index: 0, delta: {}, finish_reason: choice.finish_reason }], usage: { prompt_tokens: 20, completion_tokens: 10, total_tokens: 30 } })}\n\n`);
     return res.end("data: [DONE]\n\n");
   }
   res.setHeader("content-type", "application/json");
-  res.end(JSON.stringify({ id: "chatcmpl-qa", object: "chat.completion", model: "qa-model", choices: [choice], usage: { prompt_tokens: 20, completion_tokens: 10, total_tokens: 30 } }));
+  res.end(JSON.stringify({ id: "chatcmpl-qa", object: "chat.completion", model: body.model, choices: [choice], usage: { prompt_tokens: 20, completion_tokens: 10, total_tokens: 30 } }));
 });
 fixture.listen(0, "127.0.0.1");
 await once(fixture, "listening");
@@ -60,12 +60,13 @@ try {
   ({ node } = await api("/api/provider-nodes", "POST", { name: "ChatGPT QA fixture", prefix, apiType: "chat", baseUrl: `http://127.0.0.1:${fixture.address().port}/v1` }));
   const added = await api("/api/providers", "POST", { provider: node.id, apiKey: "fixture-upstream-key", name: prefix });
   connection = added.connection || added;
-  await api("/api/chatgpt", "PUT", { models: [`${prefix}/qa-model`] });
-  assert.equal((await api("/api/chatgpt")).models[0].id, `${prefix}/qa-model`);
+  await api("/api/chatgpt", "PUT", { models: [`${prefix}/glm-5.3`] });
+  assert.equal((await api("/api/chatgpt")).models[0].id, `${prefix}/glm-5.3`);
   const manifestResponse = await fetch(new URL("/api/chatgpt/v1/models", base), { headers: { authorization: `Bearer ${key.key}` } });
   assert.equal(manifestResponse.status, 200);
   const manifest = await manifestResponse.json();
   assert.equal(manifest.models.length, 1);
+  assert.deepEqual(manifest.models[0].reasoningLevels, ["low", "high", "max"]);
   assert.equal((await fetch(new URL("/api/chatgpt/v1/models", base))).status, 401);
   bridge = createBridge({ token: "qa-local-token", routerUrl: `${base.origin}/api/chatgpt/v1`, apiKey: key.key }, { getManifest: async () => manifest });
   bridge.listen(0, "127.0.0.1"); await once(bridge, "listening");
@@ -80,12 +81,13 @@ try {
     return text;
   }
   const first = await completion("/responses", {
-    input: [{ role: "user", content: "Read hello.txt" }], stream: true,
+    input: [{ role: "user", content: "Read hello.txt" }], stream: true, reasoning: { effort: "max" },
     tools: [{ type: "function", name: "read_file", parameters: { type: "object", properties: { path: { type: "string" } }, required: ["path"] } }],
   });
   assert.match(first, /response\.completed/);
   assert.match(first, /function_call/);
   assert.match(first, /call_qa/);
+  assert.equal(received[0].body.reasoning_effort, "max");
   const history = [{ role: "user", content: "Read hello.txt" },
     { type: "function_call", call_id: "call_qa", name: "read_file", arguments: '{"path":"hello.txt"}' },
     { type: "function_call_output", call_id: "call_qa", output: "hello world" }];
@@ -118,7 +120,7 @@ try {
     await new Promise(resolve => allocator.close(resolve));
     const run = command => exec(process.execPath, [installer, command, "--codex-home", codexHome, "--url", `${base.origin}/api/chatgpt/v1`, "--port", String(port)], { env: { ...process.env, ROUTER9_API_KEY: key.key }, timeout: 30000 });
     try {
-      await run("enable");
+      assert.match((await run("enable")).stdout, /Using API key from ROUTER9_API_KEY/);
       assert.match((await run("status")).stdout, /Running:/);
       const state = JSON.parse(await fs.readFile(path.join(codexHome, "9router-chatgpt/state.json"), "utf8"));
       assert.equal((await fs.stat(path.join(codexHome, "9router-chatgpt/state.json"))).mode & 0o777, 0o600);

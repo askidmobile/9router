@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const db = vi.hoisted(() => ({ getSettings: vi.fn(), updateSettings: vi.fn(), validateApiKey: vi.fn(), buildModelsList: vi.fn() }));
+const db = vi.hoisted(() => ({ getSettings: vi.fn(), getCombos: vi.fn(), getModelAliases: vi.fn(), updateSettings: vi.fn(), validateApiKey: vi.fn(), buildModelsList: vi.fn() }));
 vi.mock("@/lib/localDb", () => db);
 vi.mock("@/app/api/v1/models/route", () => ({ buildModelsList: db.buildModelsList }));
 const { GET, PUT } = await import("../../src/app/api/chatgpt/route.js");
@@ -23,6 +23,8 @@ function request(body, extra = {}, signal) {
 beforeEach(() => {
   vi.clearAllMocks();
   db.getSettings.mockResolvedValue({ chatgptIntegration: { models: selected } });
+  db.getCombos.mockResolvedValue([]);
+  db.getModelAliases.mockResolvedValue({});
   db.buildModelsList.mockResolvedValue(available);
   db.validateApiKey.mockImplementation(async key => key === "router-key");
 });
@@ -44,7 +46,17 @@ describe("ChatGPT integration settings and catalog", () => {
     const data = await res.json();
     expect(data.models.map(m => m.slug)).toEqual(["9router/glm/glm-5.3", "9router/gpt-6-astra", "9router/Coding"]);
     expect(data.models[0].contextWindow).toBe(202752);
+    expect(data.models[0].reasoningLevels).toEqual(["low", "high", "max"]);
     expect(res.headers.get("cache-control")).toBe("no-store");
+  });
+  it("refreshes reasoning for already saved Combo selections without requiring another save", async () => {
+    db.getCombos.mockResolvedValue([{ name: "Coding", models: ["glm/glm-5.3", "ds/deepseek-flash"] }]);
+    const first = await (await getChatGPTManifest(request({}))).json();
+    expect(first.models[2].reasoningLevels).toEqual(["high", "max"]);
+    db.getCombos.mockResolvedValue([{ name: "Coding", models: ["glm/glm-5.3"] }]);
+    const second = await (await getChatGPTManifest(request({}))).json();
+    expect(second.models[2].reasoningLevels).toEqual(["low", "high", "max"]);
+    expect(db.updateSettings).not.toHaveBeenCalled();
   });
   it.each([{ authorization: "Bearer invalid" }, { authorization: "" }, { "chatgpt-account-id": "account" }])("rejects non-router credentials %j", async headers => {
     expect((await getChatGPTManifest(request({}, headers))).status).toBe(401);
