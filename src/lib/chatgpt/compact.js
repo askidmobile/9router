@@ -2,7 +2,9 @@ import { createCipheriv, createDecipheriv, hkdfSync, randomBytes, randomUUID } f
 
 const STATE_PREFIX = "9router.compaction.v1.";
 const MAX_SUMMARY_BYTES = 256 * 1024;
-const summaryMessage = text => ({ type: "message", role: "assistant", content: [{ type: "output_text", text: `Conversation summary for continuation:\n${text}`, annotations: [] }] });
+// Text-only assistant arrays are silently discarded by some Chat-compatible
+// providers. A string preserves the assistant role and survives those adapters.
+const summaryMessage = text => ({ type: "message", role: "assistant", content: `Conversation summary for continuation:\n${text}` });
 const stateKey = apiKey => hkdfSync("sha256", apiKey, "9router", "codex-compaction-v1", 32);
 
 // This is 9router-owned encrypted state, not an OpenAI token. Derivation from
