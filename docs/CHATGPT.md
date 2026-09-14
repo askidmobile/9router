@@ -150,10 +150,13 @@ from the reported context usage.
 Large histories are summarized in chronological parts, then those summaries are
 reduced to a single handoff. Each part uses a conservative UTF-8 byte budget
 within the saved model context limit (at most 256 KiB), with at most two requests
-in flight. This also handles a single oversized tool result; it does not discard
-the oldest turns. Opaque reasoning and binary attachment payloads are replaced
-by explicit placeholders while surrounding text is retained. Any failed,
-incomplete, empty or non-reducing part aborts the entire operation without
+in flight and up to 8,192 output tokens for supported contexts. This also handles
+a single oversized tool result; it does not discard the oldest turns. Opaque
+reasoning and binary attachment payloads are replaced by explicit placeholders
+while surrounding text is retained. If an HTTP 200 response is truncated or has
+no complete assistant text, only that part is split into smaller chronological
+fragments (at most four levels) and retried. Provider HTTP errors, persistent
+incomplete output and non-reducing summaries abort the entire operation without
 replacing history. The selected route and its ordinary Combo fallback apply to
 every part; native subscription routes are unaffected.
 
@@ -164,8 +167,8 @@ Small histories retain the single-request HTTP error behavior. Multi-part
 compaction uses more inference calls and its quality still depends on the model;
 the non-streaming legacy endpoint remains subject to client/proxy timeouts.
 Returning an ordinary assistant message causes `expected exactly one compaction
-output item, got 0`. Empty, incomplete or failed summaries return an error before
-replacing history. A new task is recommended when changing providers:
+output item, got 0`. A summary that remains empty or incomplete after bounded
+retries returns an error before replacing history. A new task is recommended when changing providers:
 encrypted reasoning and opaque response IDs
 from one backend are not portable to another. Requests containing
 `previous_response_id` or `item_reference` are rejected with an actionable error.

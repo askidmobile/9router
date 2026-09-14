@@ -90,7 +90,7 @@ describe("ChatGPT Responses production adapter", () => {
     let forwarded;
     const handler = vi.fn(async req => { forwarded = req; return Response.json({ status: "completed", output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text: "Changed app.js; tests passed." }] }] }); });
     const result = await routeChatGPTResponse(request({ model: "9router/Coding", input: [] }, {}, abort.signal), handler, true);
-    expect(await forwarded.json()).toMatchObject({ model: "Coding", stream: false, max_output_tokens: 4096 });
+    expect(await forwarded.json()).toMatchObject({ model: "Coding", stream: false, max_output_tokens: 8192 });
     const compacted = await result.json();
     expect(compacted).toMatchObject({ object: "response.compaction", output: [{ type: "compaction", encrypted_content: expect.any(String) }] });
     expect(openCompactionSummary(compacted.output[0].encrypted_content, "router-key")).toBe("Changed app.js; tests passed.");
