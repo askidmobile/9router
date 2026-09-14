@@ -16,6 +16,8 @@ if (!process.argv.includes("--disposable") || !["127.0.0.1", "localhost"].includ
 }
 const received = [];
 let autoHighTokensSent = false;
+let largePartsSeen = 0;
+let largeSeedSent = false;
 const fixture = http.createServer(async (req, res) => {
   if (req.url === "/v1/models") {
     res.setHeader("content-type", "application/json");
@@ -35,10 +37,29 @@ const fixture = http.createServer(async (req, res) => {
   if (body.messages?.some(message => message.role === "user" && /Continue after (manual|repeated|automatic) compaction|Continue the saved task/.test(JSON.stringify(message.content)))) {
     assert.match(JSON.stringify(body.messages), /QA_SUMMARY/, "Codex must retain the summary across compaction and restart");
   }
+  const userMessages = (body.messages || []).filter(message => message.role === "user").map(message => typeof message.content === "string" ? message.content : (message.content || []).map(part => part.text || "").join("\n"));
+  const userText = userMessages.join("\n");
+  const latestUserText = userMessages.at(-1) || "";
+  if (body.stream === false && userText.includes("LARGE_FACT_")) {
+    assert.ok(Buffer.byteLength(userText) <= 262144, "Large compaction must bound the real provider prompt");
+    largePartsSeen++;
+  }
+  if (latestUserText.includes("Continue after large compaction")) {
+    assert.ok(largePartsSeen > 2, "The built server must summarize several parts before merging");
+    for (const marker of ["LARGE_FACT_START", "LARGE_FACT_MIDDLE", "LARGE_FACT_END"]) {
+      assert.ok(JSON.stringify(body.messages).includes(marker), `Lost fact after large compaction: ${marker}`);
+    }
+  }
   const toolResult = body.messages?.some(message => message.role === "tool");
   const tool = !toolResult && body.tools?.some(item => item.function?.name === "read_file");
+  // Codex adds environment/user context before the current user message.
+  const largeSeed = body.stream === true && /\bLARGE_COMPACT_SEED\b/.test(latestUserText);
+  if (largeSeed) largeSeedSent = true;
+  const summaryMarkers = [...new Set(userText.match(/LARGE_FACT_(?:START|MIDDLE|END)/g) || [])];
   const message = tool ? { role: "assistant", content: null, tool_calls: [{ id: "call_qa", type: "function", function: { name: "read_file", arguments: '{"path":"hello.txt"}' } }] }
-    : { role: "assistant", content: body.stream === false ? "QA_SUMMARY: read hello.txt; continue the task." : "QA_OK" };
+    : { role: "assistant", content: largeSeed
+      ? "LARGE_FACT_START\n" + "Build log: checked app.js successfully.\n".repeat(15000) + "\nLARGE_FACT_MIDDLE\n" + "Test log: confirmed unchanged behavior.\n".repeat(15000) + "\nLARGE_FACT_END"
+      : body.stream === false ? "QA_SUMMARY: read hello.txt; continue the task. " + summaryMarkers.join(" ") : "QA_OK" };
   const choice = { index: 0, message, finish_reason: tool ? "tool_calls" : "stop" };
   if (body.stream) {
     const autoSeed = !autoHighTokensSent && body.messages?.some(message => message.role === "user" && JSON.stringify(message.content).includes("AUTO_COMPACT_SEED"));
@@ -129,10 +150,22 @@ try {
   const scriptText = await script.text();
   assert.match(scriptText, /export async function main/);
   assert.equal(received.length, 6);
+  const largeInput = [{ role: "user", content: "LARGE_FACT_START\n" + "Bounded history fixture.\n".repeat(15000) + "\nLARGE_FACT_MIDDLE\n" + "Saved test output.\n".repeat(15000) + "\nLARGE_FACT_END" }, { type: "compaction_trigger" }];
+  const large = await completion("/responses", { input: largeInput, stream: true });
+  const largeEvents = large.split("\n").filter(line => line.startsWith("data: ")).map(line => JSON.parse(line.slice(6)));
+  const largeItems = largeEvents.filter(event => event.type === "response.output_item.done");
+  assert.equal(largeItems.length, 1);
+  assert.equal(largeEvents[0].type, "ping");
+  assert.equal(largeEvents.at(-1).type, "response.completed");
+  await completion("/responses", { input: [largeItems[0].item, { role: "user", content: "Continue after large compaction" }], stream: true });
   console.log("PASS: persisted selection → local bridge → built server → real translator → fixture provider; tools, legacy and v2 compaction, repeated compaction and decoded continuation; separate auth; downloadable installer.");
   if (process.argv.includes("--check-codex")) {
+    largePartsSeen = 0;
     const { checkCodexCompaction } = await import("./test-chatgpt-codex.mjs");
-    try { await checkCodexCompaction(endpoint, manifest); }
+    try {
+      await checkCodexCompaction(endpoint, manifest);
+      assert.ok(largeSeedSent, "Codex must actually receive the large assistant history fixture");
+    }
     catch (error) { console.error(`Fixture high-token seed sent: ${autoHighTokensSent}`); throw error; }
   }
   if (process.argv.includes("--check-installer")) {
