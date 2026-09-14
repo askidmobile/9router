@@ -161,7 +161,7 @@ replacing history. The selected route and its ordinary Combo fallback apply to
 every part; native subscription routes are unaffected.
 
 For large streaming v2 requests, SSE heartbeats keep the bridge and Codex
-connection alive while summaries are generated (bounded to 15 minutes). A
+connection alive while summaries are generated (bounded to 20 minutes). A
 failure after headers is reported as `response.failed`, with no compaction item.
 Small histories retain the single-request HTTP error behavior. Multi-part
 compaction uses more inference calls and its quality still depends on the model;

@@ -7,7 +7,7 @@ const MAX_ROUNDS = 8;
 const MAX_PART_SPLITS = 4;
 const MIN_PART_BYTES = 8 * 1024;
 const HEARTBEAT_MS = 15000;
-const MAX_DURATION_MS = 15 * 60 * 1000;
+const MAX_DURATION_MS = 20 * 60 * 1000;
 
 // A UTF-8 byte budget is deliberately conservative across provider tokenizers.
 // Reserve space for the summarizer instructions and its generated answer.
