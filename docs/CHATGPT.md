@@ -120,17 +120,34 @@ overwrite the whole live config with an old backup if other settings have change
 - `PUT /api/chatgpt`: validate and save `{ "models": ["provider/model", "Combo"] }`.
 - `GET /api/chatgpt/v1/models`: versioned integration manifest for the helper.
 - `POST /api/chatgpt/v1/responses`: allowlisted router model → existing `handleChat`.
+  Codex v2 requests ending in `compaction_trigger` invoke compaction through this
+  same endpoint and return a completed `compaction` item over SSE.
 - `POST /api/chatgpt/v1/responses/compact`: summarize with the selected router
-  model and return portable message history in a `response.compaction` envelope.
+  model and return a `compaction` item in a `response.compaction` JSON envelope
+  for clients using the legacy protocol.
 
 Management routes use the existing dashboard authentication. Data endpoints
 always require an active 9router API key, including on loopback and when general
 API-key enforcement is disabled. Namespacing prevents a router model with a
 native-looking ID from overriding subscription routing.
 
-Compaction produces a text summary, not OpenAI encrypted state. Incomplete or
-empty summaries return an error without replacing the history. A new task is
-recommended when changing providers: encrypted reasoning and opaque response IDs
+Compaction summarizes the conversation with the selected router model and seals
+the summary as 9router's own AES-GCM state in `encrypted_content`. The adapter
+restores this summary before translating the next request or compacting again.
+The key is derived from the authenticated 9router API key, so the state survives
+server and Codex restarts without a server-side conversation database. **Keep the
+same router API key to continue a compacted task.** A different key cannot decrypt
+its summary. This state is separate from native OpenAI encrypted content.
+
+Codex v2 requires exactly one `response.output_item.done` containing a
+`compaction` item, followed by `response.completed` with complete usage counters.
+The Chat Completions translator also waits for trailing usage chunks before
+completing a normal response, allowing Codex to trigger automatic compaction
+from the reported context usage.
+Returning an ordinary assistant message causes `expected exactly one compaction
+output item, got 0`. Empty, incomplete or failed summaries return an error before
+replacing history. A new task is recommended when changing providers:
+encrypted reasoning and opaque response IDs
 from one backend are not portable to another. Requests containing
 `previous_response_id` or `item_reference` are rejected with an actionable error.
 Model quality and tool reliability still depend on the selected upstream. Models
@@ -157,6 +174,7 @@ not supported by the native Z.AI API. See [Z.AI thinking documentation](https://
 ```sh
 ./tests/node_modules/.bin/vitest run --config tests/vitest.config.js \
   tests/unit/chatgpt-bridge.test.js tests/unit/chatgpt-integration.test.js \
+  tests/unit/chatgpt-compaction.test.js tests/unit/chatgpt-reasoning.test.js \
   tests/unit/dashboard-guard.test.js
 ```
 
@@ -165,20 +183,24 @@ separate loopback port, set `INITIAL_PASSWORD`, then run:
 
 ```sh
 CHATGPT_QA_PASSWORD=your-test-password node scripts/test-chatgpt-integration.mjs \
-  http://127.0.0.1:20237 --disposable --check-installer
+  http://127.0.0.1:20237 --disposable --check-codex --check-installer
 ```
 
 This creates temporary provider and key fixtures in that database. It covers the
 built server, actual Responses translator, streaming tools, continuation,
-compaction, and the downloaded macOS installer's real launchd lifecycle using a
+legacy/v2 compaction, and the downloaded macOS installer's real launchd lifecycle using a
 temporary Codex home. It never installs over the user's real Codex config.
 
-The combined catalog was also parsed by Codex CLI 0.154.0. These tests do not
-establish generation quality for every real provider or production deployment.
+`--check-codex` uses Codex CLI 0.154.0's actual app-server in a separate temporary
+`CODEX_HOME` with fake authentication and fixture inference. It checks manual,
+repeated and automatic compaction, restarts app-server, resumes the saved task
+and continues. Set `CHATGPT_QA_CODEX` if the executable is not on PATH. These tests
+do not establish generation quality for every real provider or production deployment.
 
 ## Reference behavior
 
 - [Ollama's Codex integration](https://docs.ollama.com/integrations/codex-app)
 - [Codex configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference)
 - [Codex 0.154 compact response parser](https://github.com/openai/codex/blob/rust-v0.154.0/codex-rs/codex-api/src/endpoint/compact.rs)
+- [Codex 0.154 compaction v2 validation](https://github.com/openai/codex/blob/rust-v0.154.0/codex-rs/core/src/compact_remote_v2.rs)
 - [Node.js HTTP proxy support](https://nodejs.org/api/http.html#built-in-proxy-support)

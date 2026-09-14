@@ -15,6 +15,7 @@ if (!process.argv.includes("--disposable") || !["127.0.0.1", "localhost"].includ
   throw new Error("This smoke test creates providers and keys. Pass a loopback URL for a disposable database and --disposable.");
 }
 const received = [];
+let autoHighTokensSent = false;
 const fixture = http.createServer(async (req, res) => {
   if (req.url === "/v1/models") {
     res.setHeader("content-type", "application/json");
@@ -25,17 +26,24 @@ const fixture = http.createServer(async (req, res) => {
   received.push({ url: req.url, headers: req.headers, body });
   assert.equal(req.headers.authorization, "Bearer fixture-upstream-key");
   assert.equal(req.headers["chatgpt-account-id"], undefined);
+  assert.ok(!JSON.stringify(body).includes("9router.compaction.v1."), "The provider must receive the restored summary, never opaque state");
+  if (body.messages?.some(message => message.role === "user" && /Continue after (manual|repeated|automatic) compaction|Continue the saved task/.test(JSON.stringify(message.content)))) {
+    assert.match(JSON.stringify(body.messages), /QA_SUMMARY/, "Codex must retain the summary across compaction and restart");
+  }
   const toolResult = body.messages?.some(message => message.role === "tool");
-  const tool = !toolResult && body.tools?.length > 0;
+  const tool = !toolResult && body.tools?.some(item => item.function?.name === "read_file");
   const message = tool ? { role: "assistant", content: null, tool_calls: [{ id: "call_qa", type: "function", function: { name: "read_file", arguments: '{"path":"hello.txt"}' } }] }
     : { role: "assistant", content: body.stream === false ? "QA_SUMMARY: read hello.txt; continue the task." : "QA_OK" };
   const choice = { index: 0, message, finish_reason: tool ? "tool_calls" : "stop" };
   if (body.stream) {
+    const autoSeed = !autoHighTokensSent && body.messages?.some(message => message.role === "user" && JSON.stringify(message.content).includes("AUTO_COMPACT_SEED"));
+    if (autoSeed) autoHighTokensSent = true;
     res.writeHead(200, { "content-type": "text/event-stream" });
     const delta = { ...message };
     if (delta.tool_calls) delta.tool_calls[0].index = 0;
     res.write(`data: ${JSON.stringify({ id: "chatcmpl-qa", object: "chat.completion.chunk", model: body.model, choices: [{ index: 0, delta, finish_reason: null }] })}\n\n`);
-    res.write(`data: ${JSON.stringify({ id: "chatcmpl-qa", object: "chat.completion.chunk", choices: [{ index: 0, delta: {}, finish_reason: choice.finish_reason }], usage: { prompt_tokens: 20, completion_tokens: 10, total_tokens: 30 } })}\n\n`);
+    res.write(`data: ${JSON.stringify({ id: "chatcmpl-qa", object: "chat.completion.chunk", choices: [{ index: 0, delta: {}, finish_reason: choice.finish_reason }] })}\n\n`);
+    res.write(`data: ${JSON.stringify({ id: "chatcmpl-qa", object: "chat.completion.chunk", choices: [], usage: { prompt_tokens: autoSeed ? 300000 : 20, completion_tokens: 10, total_tokens: autoSeed ? 300010 : 30 } })}\n\n`);
     return res.end("data: [DONE]\n\n");
   }
   res.setHeader("content-type", "application/json");
@@ -94,14 +102,34 @@ try {
   assert.match(await completion("/responses", { input: history, stream: true }), /QA_OK/);
   const compact = JSON.parse(await completion("/responses/compact", { input: history }));
   assert.equal(compact.object, "response.compaction");
-  assert.match(compact.output[0].content[0].text, /QA_SUMMARY/);
+  assert.equal(compact.output.length, 1);
+  assert.equal(compact.output[0].type, "compaction");
+  assert.match(compact.output[0].encrypted_content, /^9router\.compaction\.v1\./);
   assert.match(await completion("/responses", { input: [...compact.output, { role: "user", content: "Continue" }], stream: true }), /QA_OK/);
+  assert.match(JSON.stringify(received.at(-1).body.messages), /QA_SUMMARY/);
+  assert.ok(!JSON.stringify(received.at(-1).body).includes(compact.output[0].encrypted_content));
+  const v2 = await completion("/responses", { input: [...compact.output, ...history, { type: "compaction_trigger" }], stream: true });
+  const events = v2.split("\n").filter(line => line.startsWith("data: ")).map(line => JSON.parse(line.slice(6)));
+  const items = events.filter(event => event.type === "response.output_item.done");
+  assert.equal(items.length, 1);
+  assert.equal(items[0].item.type, "compaction");
+  assert.equal(events.at(-1).type, "response.completed");
+  assert.match(JSON.stringify(received.at(-1).body.messages), /QA_SUMMARY/);
+  assert.ok(!JSON.stringify(received.at(-1).body).includes("compaction_trigger"));
+  assert.match(await completion("/responses", { input: [items[0].item, { role: "user", content: "Continue after v2" }], stream: true }), /QA_OK/);
+  assert.match(JSON.stringify(received.at(-1).body.messages), /QA_SUMMARY/);
+  assert.ok(!JSON.stringify(received.at(-1).body).includes(items[0].item.encrypted_content));
   const script = await fetch(new URL("/9router-codex.mjs", base));
   assert.equal(script.status, 200);
   const scriptText = await script.text();
   assert.match(scriptText, /export async function main/);
-  assert.equal(received.length, 4);
-  console.log("PASS: persisted selection → local bridge → built server → real translator → fixture provider; streaming tool call, tool result continuation, compaction and post-compaction continuation; separate auth; downloadable installer.");
+  assert.equal(received.length, 6);
+  console.log("PASS: persisted selection → local bridge → built server → real translator → fixture provider; tools, legacy and v2 compaction, repeated compaction and decoded continuation; separate auth; downloadable installer.");
+  if (process.argv.includes("--check-codex")) {
+    const { checkCodexCompaction } = await import("./test-chatgpt-codex.mjs");
+    try { await checkCodexCompaction(endpoint, manifest); }
+    catch (error) { console.error(`Fixture high-token seed sent: ${autoHighTokensSent}`); throw error; }
+  }
   if (process.argv.includes("--check-installer")) {
     const exec = promisify(execFile);
     const temporary = await fs.mkdtemp(path.join(os.tmpdir(), "9router-installer-smoke-"));
