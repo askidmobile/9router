@@ -40,7 +40,7 @@ describe("Codex remote compaction v2", () => {
     const handler = vi.fn(async req => {
       const body = await req.json();
       const history = again ? JSON.parse(body.input[0].content[0].text).history : body.input;
-      expect(history[0]).toMatchObject({ type: "message", role: "assistant", content: [{ type: "output_text", text: expect.stringContaining(summary) }] });
+      expect(history[0]).toMatchObject({ type: "message", role: "assistant", content: expect.stringContaining(summary) });
       expect(JSON.stringify(body)).not.toContain(item.encrypted_content);
       expect(JSON.stringify(body)).not.toContain("compaction_trigger");
       return completion();

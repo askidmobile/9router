@@ -134,6 +134,9 @@ native-looking ID from overriding subscription routing.
 Compaction summarizes the conversation with the selected router model and seals
 the summary as 9router's own AES-GCM state in `encrypted_content`. The adapter
 restores this summary before translating the next request or compacting again.
+Decoded summaries use plain assistant text so Chat-compatible providers do not
+discard them as unsupported assistant content arrays. Native Gemini/Antigravity
+and Claude JSON responses complete both translation stages into Responses output.
 The key is derived from the authenticated 9router API key, so the state survives
 server and Codex restarts without a server-side conversation database. **Keep the
 same router API key to continue a compacted task.** A different key cannot decrypt

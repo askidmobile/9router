@@ -27,6 +27,11 @@ const fixture = http.createServer(async (req, res) => {
   assert.equal(req.headers.authorization, "Bearer fixture-upstream-key");
   assert.equal(req.headers["chatgpt-account-id"], undefined);
   assert.ok(!JSON.stringify(body).includes("9router.compaction.v1."), "The provider must receive the restored summary, never opaque state");
+  for (const message of body.messages || []) {
+    if (message.role === "assistant" && JSON.stringify(message.content).includes("QA_SUMMARY")) {
+      assert.equal(typeof message.content, "string", "Text-only assistant arrays are not portable to every Chat provider");
+    }
+  }
   if (body.messages?.some(message => message.role === "user" && /Continue after (manual|repeated|automatic) compaction|Continue the saved task/.test(JSON.stringify(message.content)))) {
     assert.match(JSON.stringify(body.messages), /QA_SUMMARY/, "Codex must retain the summary across compaction and restart");
   }
