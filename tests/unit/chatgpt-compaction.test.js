@@ -19,7 +19,7 @@ describe("Codex remote compaction v2", () => {
   it("recognizes the Responses trigger and emits exactly one completed compaction item", async () => {
     const handler = vi.fn(async req => {
       const body = await req.json();
-      expect(body).toMatchObject({ model: "Coding", stream: false, max_output_tokens: 4096 });
+      expect(body).toMatchObject({ model: "Coding", stream: false, max_output_tokens: 8192 });
       expect(body.tools).toBeUndefined();
       expect(body.instructions).toContain("Summarize");
       expect(JSON.parse(body.input[0].content[0].text).history).toEqual([{ role: "user", content: "Fix app.js" }]);

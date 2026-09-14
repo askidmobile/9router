@@ -2,6 +2,15 @@ import { createCipheriv, createDecipheriv, hkdfSync, randomBytes, randomUUID } f
 
 const STATE_PREFIX = "9router.compaction.v1.";
 const MAX_SUMMARY_BYTES = 256 * 1024;
+export class IncompleteCompactionSummaryError extends Error {
+  constructor(data, { textPresent = false, tooLong = false } = {}) {
+    const status = data?.status || "missing";
+    const reason = data?.incomplete_details?.reason || (tooLong ? "summary exceeds size limit" : textPresent ? "provider did not complete" : "empty assistant text");
+    const outputTokens = data?.usage?.output_tokens;
+    super(`Compaction did not produce a complete summary (status: ${status}, reason: ${reason}${Number.isFinite(outputTokens) ? `, output tokens: ${outputTokens}` : ""}); history was not replaced.`);
+    this.name = "IncompleteCompactionSummaryError";
+  }
+}
 // Text-only assistant arrays are silently discarded by some Chat-compatible
 // providers. A string preserves the assistant role and survives those adapters.
 const summaryMessage = text => ({ type: "message", role: "assistant", content: `Conversation summary for continuation:\n${text}` });
@@ -83,8 +92,9 @@ export async function readCompactionCompletion(response) {
   const text = (Array.isArray(data?.output) ? data.output : []).filter(item => item?.type === "message" && item.role === "assistant")
     .flatMap(item => Array.isArray(item.content) ? item.content : []).filter(content => content?.type === "output_text")
     .map(content => content.text || "").join("\n").trim();
-  if (!text || Buffer.byteLength(text) > MAX_SUMMARY_BYTES || data.status !== "completed" || data.error) {
-    throw Response.json({ error: { message: "Compaction did not produce a complete summary; history was not replaced." } }, { status: 502 });
+  if (data?.error) throw Response.json({ error: { message: "Compaction provider reported an error; history was not replaced." } }, { status: 502 });
+  if (!text || Buffer.byteLength(text) > MAX_SUMMARY_BYTES || data.status !== "completed") {
+    throw new IncompleteCompactionSummaryError(data, { textPresent: Boolean(text), tooLong: Buffer.byteLength(text) > MAX_SUMMARY_BYTES });
   }
   return { data, text };
 }
@@ -92,7 +102,11 @@ export async function readCompactionCompletion(response) {
 export async function compactResponse(response, { apiKey, model, v2 = false, stream = false }) {
   let data, text;
   try { ({ data, text } = await readCompactionCompletion(response)); }
-  catch (failure) { return failure; }
+  catch (failure) {
+    return failure instanceof IncompleteCompactionSummaryError
+      ? Response.json({ error: { message: failure.message } }, { status: 502 })
+      : failure;
+  }
   const item = { id: `cmp_${randomUUID()}`, type: "compaction", encrypted_content: sealCompactionSummary(text, apiKey) };
   // Some Responses translators omit total_tokens, but Codex's SSE decoder
   // requires it whenever usage is present.

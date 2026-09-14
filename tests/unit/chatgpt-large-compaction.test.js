@@ -61,6 +61,34 @@ describe("large Codex history compaction", () => {
     const parts = splitCompactionTranscript(text, partBytes);
     expect(parts.join("")).toBe(text);
     expect(parts.every(part => Buffer.byteLength(part) + maxOutputTokens + 2048 <= 4096)).toBe(true);
+    expect(compactionBudget(1_000_000).maxOutputTokens).toBe(8192);
+  });
+
+  it.each(["incomplete", "empty"])("recovers a %s successful HTTP response by splitting only the affected part", async failure => {
+    const input = [{ role: "user", content: "FACT_FIRST " + "build-check-01 passed\n".repeat(15000) },
+      { role: "user", content: "FACT_LAST " + "build-check-02 passed\n".repeat(15000) }];
+    const received = [];
+    const handler = vi.fn(async req => {
+      const payload = await req.json();
+      expect(payload.max_output_tokens).toBe(8192);
+      const text = payload.input[0].content[0].text;
+      received.push(text);
+      if (!text.startsWith('{"chronological_summaries":') && Buffer.byteLength(text) > 130000) {
+        if (failure === "empty") return Response.json({ status: "completed", output: [], usage: { output_tokens: 0 } });
+        return Response.json({ status: "incomplete", incomplete_details: { reason: "max_output_tokens" },
+          output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text: "truncated" }] }], usage: { output_tokens: 8192 } });
+      }
+      const facts = [...new Set(text.match(/FACT_(?:FIRST|LAST)/g) || [])];
+      return completion(facts.join(" ") || "build checks passed");
+    });
+    const response = await routeChatGPTResponse(request(input), handler);
+    const output = events(await response.text());
+    expect(output.at(-1).type).toBe("response.completed");
+    const item = output.find(event => event.type === "response.output_item.done")?.item;
+    expect(openCompactionSummary(item.encrypted_content, key)).toContain("FACT_FIRST");
+    expect(openCompactionSummary(item.encrypted_content, key)).toContain("FACT_LAST");
+    expect(received.some(text => Buffer.byteLength(text) > 130000)).toBe(true);
+    expect(received.some(text => Buffer.byteLength(text) < 130000)).toBe(true);
   });
 
   it("keeps readable reasoning and attachment context without serializing opaque state", () => {
@@ -77,17 +105,18 @@ describe("large Codex history compaction", () => {
   it.each(["upstream", "incomplete", "empty"])("does not replace any history when a part fails: %s", async failure => {
     let calls = 0;
     const handler = vi.fn(async () => {
-      if (++calls === 2) {
-        if (failure === "upstream") return Response.json({ error: { message: "Background check pending" } }, { status: 503 });
-        return completion(failure === "empty" ? "" : "unfinished", failure === "incomplete" ? "incomplete" : "completed");
-      }
+      calls++;
+      if (failure === "upstream" && calls === 2) return Response.json({ error: { message: "Background check pending" } }, { status: 503 });
+      if (failure === "incomplete") return completion("unfinished", "incomplete");
+      if (failure === "empty") return completion("");
       return completion("Part one summary");
     });
     const response = await routeChatGPTResponse(request([{ role: "user", content: "history ".repeat(100000) }]), handler);
     const output = events(await response.text());
     expect(output.some(event => event.type === "response.output_item.done" || event.type === "response.completed")).toBe(false);
-    expect(output.at(-1)).toMatchObject({ type: "response.failed", response: { status: "failed", output: [], error: { message: expect.stringContaining("History was not replaced") } } });
-    expect(calls).toBeLessThan(4);
+    expect(output.at(-1)).toMatchObject({ type: "response.failed", response: { status: "failed", output: [], error: { message: expect.any(String) } } });
+    expect(output.at(-1).response.error.message.toLowerCase()).toContain("history was not replaced");
+    expect(calls).toBeLessThan(failure === "upstream" ? 4 : 15);
   });
 
   it("delivers headers before inference completes and cancels every active part on disconnect", async () => {

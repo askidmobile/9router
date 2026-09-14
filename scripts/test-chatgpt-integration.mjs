@@ -18,6 +18,8 @@ const received = [];
 let autoHighTokensSent = false;
 let largePartsSeen = 0;
 let largeSeedSent = false;
+let truncatedPartsSeen = 0;
+let recoveredPartsSeen = 0;
 const fixture = http.createServer(async (req, res) => {
   if (req.url === "/v1/models") {
     res.setHeader("content-type", "application/json");
@@ -50,17 +52,26 @@ const fixture = http.createServer(async (req, res) => {
       assert.ok(JSON.stringify(body.messages).includes(marker), `Lost fact after large compaction: ${marker}`);
     }
   }
+  if (latestUserText.includes("Continue after retry compaction")) {
+    assert.ok(truncatedPartsSeen > 0 && recoveredPartsSeen > 0, "The real translator must retry a truncated provider response");
+    for (const marker of ["RETRY_FACT_START", "RETRY_FACT_MIDDLE", "RETRY_FACT_END"]) {
+      assert.ok(JSON.stringify(body.messages).includes(marker), `Lost fact after retry compaction: ${marker}`);
+    }
+  }
   const toolResult = body.messages?.some(message => message.role === "tool");
   const tool = !toolResult && body.tools?.some(item => item.function?.name === "read_file");
   // Codex adds environment/user context before the current user message.
   const largeSeed = body.stream === true && /\bLARGE_COMPACT_SEED\b/.test(latestUserText);
   if (largeSeed) largeSeedSent = true;
-  const summaryMarkers = [...new Set(userText.match(/LARGE_FACT_(?:START|MIDDLE|END)/g) || [])];
+  const summaryMarkers = [...new Set(userText.match(/(?:LARGE|RETRY)_FACT_(?:START|MIDDLE|END)/g) || [])];
+  const truncateSummary = body.stream === false && userText.includes("RETRY_FACT_START") && Buffer.byteLength(userText) > 130000;
+  if (truncateSummary) truncatedPartsSeen++;
+  else if (body.stream === false && userText.includes("RETRY_FACT_START")) recoveredPartsSeen++;
   const message = tool ? { role: "assistant", content: null, tool_calls: [{ id: "call_qa", type: "function", function: { name: "read_file", arguments: '{"path":"hello.txt"}' } }] }
     : { role: "assistant", content: largeSeed
       ? "LARGE_FACT_START\n" + "Build log: checked app.js successfully.\n".repeat(15000) + "\nLARGE_FACT_MIDDLE\n" + "Test log: confirmed unchanged behavior.\n".repeat(15000) + "\nLARGE_FACT_END"
       : body.stream === false ? "QA_SUMMARY: read hello.txt; continue the task. " + summaryMarkers.join(" ") : "QA_OK" };
-  const choice = { index: 0, message, finish_reason: tool ? "tool_calls" : "stop" };
+  const choice = { index: 0, message, finish_reason: truncateSummary ? "length" : tool ? "tool_calls" : "stop" };
   if (body.stream) {
     const autoSeed = !autoHighTokensSent && body.messages?.some(message => message.role === "user" && JSON.stringify(message.content).includes("AUTO_COMPACT_SEED"));
     if (autoSeed) autoHighTokensSent = true;
@@ -158,6 +169,14 @@ try {
   assert.equal(largeEvents[0].type, "ping");
   assert.equal(largeEvents.at(-1).type, "response.completed");
   await completion("/responses", { input: [largeItems[0].item, { role: "user", content: "Continue after large compaction" }], stream: true });
+  const retryInput = [{ role: "user", content: "RETRY_FACT_START\n" + "dense-history-01 passed\n".repeat(15000) +
+    "\nRETRY_FACT_MIDDLE\n" + "dense-history-02 passed\n".repeat(15000) + "\nRETRY_FACT_END" }, { type: "compaction_trigger" }];
+  const retryEvents = (await completion("/responses", { input: retryInput, stream: true })).split("\n")
+    .filter(line => line.startsWith("data: ")).map(line => JSON.parse(line.slice(6)));
+  const retryItems = retryEvents.filter(event => event.type === "response.output_item.done");
+  assert.equal(retryItems.length, 1);
+  assert.equal(retryEvents.at(-1).type, "response.completed");
+  await completion("/responses", { input: [retryItems[0].item, { role: "user", content: "Continue after retry compaction" }], stream: true });
   console.log("PASS: persisted selection → local bridge → built server → real translator → fixture provider; tools, legacy and v2 compaction, repeated compaction and decoded continuation; separate auth; downloadable installer.");
   if (process.argv.includes("--check-codex")) {
     largePartsSeen = 0;
