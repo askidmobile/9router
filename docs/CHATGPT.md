@@ -147,6 +147,22 @@ Codex v2 requires exactly one `response.output_item.done` containing a
 The Chat Completions translator also waits for trailing usage chunks before
 completing a normal response, allowing Codex to trigger automatic compaction
 from the reported context usage.
+Large histories are summarized in chronological parts, then those summaries are
+reduced to a single handoff. Each part uses a conservative UTF-8 byte budget
+within the saved model context limit (at most 256 KiB), with at most two requests
+in flight. This also handles a single oversized tool result; it does not discard
+the oldest turns. Opaque reasoning and binary attachment payloads are replaced
+by explicit placeholders while surrounding text is retained. Any failed,
+incomplete, empty or non-reducing part aborts the entire operation without
+replacing history. The selected route and its ordinary Combo fallback apply to
+every part; native subscription routes are unaffected.
+
+For large streaming v2 requests, SSE heartbeats keep the bridge and Codex
+connection alive while summaries are generated (bounded to 15 minutes). A
+failure after headers is reported as `response.failed`, with no compaction item.
+Small histories retain the single-request HTTP error behavior. Multi-part
+compaction uses more inference calls and its quality still depends on the model;
+the non-streaming legacy endpoint remains subject to client/proxy timeouts.
 Returning an ordinary assistant message causes `expected exactly one compaction
 output item, got 0`. Empty, incomplete or failed summaries return an error before
 replacing history. A new task is recommended when changing providers:

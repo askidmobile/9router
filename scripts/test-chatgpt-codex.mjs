@@ -105,7 +105,11 @@ export async function checkCodexCompaction(endpoint, manifest) {
     await turn(automatic, "AUTO_COMPACT_SEED");
     await turn(automatic, "Continue after automatic compaction.");
     assert.ok(notifications.slice(cursor).some(m => m.method === "item/completed" && m.params.threadId === automatic && m.params.item.type === "contextCompaction"), `Codex must actually perform automatic compaction: ${JSON.stringify(notifications.slice(cursor).filter(m => /tokenUsage|error/.test(m.method)))}`);
-    console.log("PASS: real Codex app-server manual, repeated and automatic compaction, restart/resume from disk, and subsequent turns in isolated CODEX_HOME.");
+    const large = await start(1000000);
+    await turn(large, "LARGE_COMPACT_SEED");
+    await compactThread(large);
+    await turn(large, "Continue after large compaction");
+    console.log("PASS: real Codex app-server manual, repeated, automatic and large-history compaction, restart/resume from disk, and subsequent turns in isolated CODEX_HOME.");
   } finally {
     for (const handler of pending.values()) handler.reject(new Error("QA stopped"));
     listeners.clear();
