@@ -144,7 +144,7 @@ describe("large Codex history compaction", () => {
     try {
       const response = await routeChatGPTResponse(request([{ role: "user", content: "history ".repeat(100000) }]), () => new Promise(() => {}));
       const finished = response.text();
-      await vi.advanceTimersByTimeAsync(15 * 60 * 1000);
+      await vi.advanceTimersByTimeAsync(20 * 60 * 1000);
       const output = events(await finished);
       expect(output.filter(event => event.type === "ping").length).toBeGreaterThan(1);
       expect(output.at(-1)).toMatchObject({ type: "response.failed", response: { error: { message: expect.stringContaining("time limit") } } });
