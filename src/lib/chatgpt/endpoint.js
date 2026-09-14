@@ -1,6 +1,6 @@
 import { getSettings, getCombos, getModelAliases, validateApiKey } from "@/lib/localDb";
 import { chatGPTManifest, selectedModels, codexModelId } from "./models";
-import { compactRequest, compactResponse } from "./compact";
+import { compactRequest, compactResponse, prepareCompactionInput } from "./compact";
 import { withChatGPTReasoning } from "./reasoning";
 
 const headers = { "Cache-Control": "no-store" };
@@ -36,12 +36,17 @@ export async function routeChatGPTResponse(request, handleChat, compact = false)
   if (body.previous_response_id || body.input?.some?.(item => item?.type === "item_reference")) {
     return jsonError("This history references another backend. Start a new Codex task for this model.", 400);
   }
-  body = { ...body, model: selected.id };
-  if (compact) body = compactRequest(body);
+  let prepared;
+  try { prepared = prepareCompactionInput(body, key); }
+  catch (error) { return jsonError(error.message, 400); }
+  const v2 = !compact && prepared.triggered;
+  const stream = v2 && body.stream === true;
+  body = { ...prepared.body, model: selected.id };
+  if (compact || v2) body = compactRequest(body);
   const forwarded = new Headers({ "content-type": "application/json", authorization: `Bearer ${key}` });
   // Construct a fresh request; never copy account IDs, cookies or OAuth headers.
   const response = await handleChat(new Request(request.url, {
     method: "POST", headers: forwarded, body: JSON.stringify(body), signal: request.signal,
   }));
-  return compact ? compactResponse(response) : response;
+  return compact || v2 ? compactResponse(response, { apiKey: key, model: codexModelId(selected.id), v2, stream }) : response;
 }

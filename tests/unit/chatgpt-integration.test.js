@@ -6,6 +6,7 @@ vi.mock("@/app/api/v1/models/route", () => ({ buildModelsList: db.buildModelsLis
 const { GET, PUT } = await import("../../src/app/api/chatgpt/route.js");
 const { getChatGPTManifest, routeChatGPTResponse } = await import("../../src/lib/chatgpt/endpoint.js");
 const { selectChatGPTModels } = await import("../../src/lib/chatgpt/models.js");
+const { openCompactionSummary } = await import("../../src/lib/chatgpt/compact.js");
 
 const available = [
   { id: "glm/glm-5.3", context_length: 202752, capabilities: { tools: true, vision: false } },
@@ -90,7 +91,9 @@ describe("ChatGPT Responses production adapter", () => {
     const handler = vi.fn(async req => { forwarded = req; return Response.json({ status: "completed", output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text: "Changed app.js; tests passed." }] }] }); });
     const result = await routeChatGPTResponse(request({ model: "9router/Coding", input: [] }, {}, abort.signal), handler, true);
     expect(await forwarded.json()).toMatchObject({ model: "Coding", stream: false, max_output_tokens: 4096 });
-    expect(await result.json()).toMatchObject({ object: "response.compaction", output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text: expect.stringContaining("tests passed") }] }] });
+    const compacted = await result.json();
+    expect(compacted).toMatchObject({ object: "response.compaction", output: [{ type: "compaction", encrypted_content: expect.any(String) }] });
+    expect(openCompactionSummary(compacted.output[0].encrypted_content, "router-key")).toBe("Changed app.js; tests passed.");
     abort.abort();
     expect(forwarded.signal.aborted).toBe(true);
   });
