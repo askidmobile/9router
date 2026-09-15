@@ -27,7 +27,7 @@ import { stripModelContextMarker } from "open-sse/utils/modelMarkers.js";
 import { resolveGeminiServiceTier, splitGeminiModelId } from "open-sse/utils/geminiModels.js";
 import { GEMINI_FLEX_SUFFIX } from "open-sse/config/gemini.js";
 import { COMBO_HEALTH_CONFIG } from "open-sse/config/comboHealth.js";
-import { runComboModelExecution, comboRetryAfter } from "open-sse/services/comboExecution.js";
+import { runComboModelExecution, comboRetryAfter, getComboCompletionIssue } from "open-sse/services/comboExecution.js";
 
 /**
  * Handle chat completion request
@@ -416,12 +416,12 @@ export async function runComboModelProbe({ provider, model, signal }) {
   });
   let payload;
   try { payload = await response.json(); } catch { /* Failed probe, never a soft success. */ }
-  const ok = response.ok && typeof payload?.choices?.[0]?.message?.content === "string" &&
-    payload.choices[0].message.content.trim().length > 0;
+  const issue = response.ok ? getComboCompletionIssue(payload, { probe: true }) : null;
+  const ok = response.ok && issue === null;
   return {
     ok,
     status: response.status,
-    reason: ok ? undefined : response.ok ? "Invalid completion response" : `Upstream HTTP ${response.status}`,
+    reason: ok ? undefined : response.ok ? issue.reason : `Upstream HTTP ${response.status}`,
     retryAfterMs: comboRetryAfter(response, payload),
   };
 }

@@ -13,7 +13,10 @@ function envInteger(env, name, fallback, maximum) {
 
 export function loadComboHealthConfig(env = process.env) {
   const maxTimerMs = 6 * 60 * 60 * 1000;
-  const baseCooldownMs = envInteger(env, "COMBO_BASE_COOLDOWN_MS", 60_000, maxTimerMs);
+  // Recheck a transient failure within an interactive client's retry window.
+  // Explicit provider Retry-After deadlines still take precedence in the
+  // persistent health service, while repeated failures back off exponentially.
+  const baseCooldownMs = envInteger(env, "COMBO_BASE_COOLDOWN_MS", 10_000, maxTimerMs);
   return Object.freeze({
     firstResponseTimeoutMs: envInteger(env, "COMBO_FIRST_RESPONSE_TIMEOUT_MS", 45_000, maxTimerMs),
     requestTimeoutMs: envInteger(env, "COMBO_REQUEST_TIMEOUT_MS", 120_000, maxTimerMs),

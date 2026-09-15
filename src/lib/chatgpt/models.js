@@ -34,6 +34,25 @@ export function selectChatGPTModels(ids, available) {
   });
 }
 
+// Saved selections are an allow-list, not an immutable capability snapshot.
+// Catalog sync must pick up Combo edits, capability overrides and provider
+// discovery changes without requiring the user to save the same selection again.
+export function refreshSelectedModels(models, available) {
+  const currentById = new Map((available || []).map(model => [model.id, model]));
+  return (models || []).map(saved => {
+    const current = currentById.get(saved.id);
+    if (!current) return saved;
+    const caps = current.capabilities || {};
+    return {
+      ...saved,
+      name: current.name || saved.name || saved.id,
+      contextWindow: Number.isFinite(current.context_length) && current.context_length >= 4096
+        ? current.context_length : saved.contextWindow,
+      imageInput: caps.vision === true || caps.imageInput === true,
+    };
+  });
+}
+
 export function chatGPTManifest(models) {
   return {
     version: 1,

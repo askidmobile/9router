@@ -9,6 +9,7 @@ import { buildUsage } from "../concerns/usage.js";
 import { fallbackToolCallId } from "../concerns/toolCall.js";
 import { reasoningDelta, extractReasoningText } from "../concerns/reasoning.js";
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, OPENAI_FINISH, MODEL_FALLBACK } from "../schema/index.js";
+import { responsesStatusFromFinishReason, finishReasonFromIncompleteReason } from "./openai-responses-json.js";
 
 /**
  * Translate OpenAI chunk to Responses API events
@@ -110,6 +111,7 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
 
   // Handle finish_reason
   if (choice.finish_reason) {
+    state.responsesFinishReason = choice.finish_reason;
     for (const i in state.msgItemAdded) closeMessage(state, emit, i);
     closeReasoning(state, emit);
     for (const i in state.funcCallIds) closeToolCall(state, emit, i);
@@ -374,13 +376,15 @@ function sendCompleted(state, emit) {
     const usage = state.responsesUsage || state.usage;
     const inputTokens = usage?.input_tokens ?? usage?.prompt_tokens ?? 0;
     const outputTokens = usage?.output_tokens ?? usage?.completion_tokens ?? 0;
-    emit("response.completed", {
-      type: "response.completed",
+    const completion = responsesStatusFromFinishReason(state.responsesFinishReason);
+    const eventType = completion.status === "incomplete" ? "response.incomplete" : "response.completed";
+    emit(eventType, {
+      type: eventType,
       response: {
         id: state.responseId,
         object: "response",
         created_at: state.created,
-        status: "completed",
+        ...completion,
         background: false,
         error: null,
         ...(usage ? { usage: {
@@ -416,7 +420,10 @@ function flushEvents(state) {
 // currentToolCallId is intentionally sticky for the current turn so flush/completion
   // can still finalize as tool_calls even if the tool call was emitted before stream end.
 function computeFinishReason(state) {
-   return state.toolCallIndex > 0 || state.currentToolCallId
+  // A truncated answer must not reach a Chat client labelled "stop".
+  const capped = finishReasonFromIncompleteReason(state.responsesIncompleteReason);
+  if (capped) return capped;
+  return state.toolCallIndex > 0 || state.currentToolCallId
     ? OPENAI_FINISH.TOOL_CALLS
     : OPENAI_FINISH.STOP;
 }
@@ -551,9 +558,12 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
     return null;
   }
 
-  // Response completed
-  if (eventType === "response.completed" || eventType === "response.done") {
-    // Extract usage from response.completed event
+  // Response reached a terminal state (completed, or capped by budget/filter)
+  if (eventType === "response.completed" || eventType === "response.done" || eventType === "response.incomplete") {
+    if (eventType === "response.incomplete") {
+      state.responsesIncompleteReason = data.response?.incomplete_details?.reason;
+    }
+    // Extract usage from the terminal event
     const responseUsage = data.response?.usage;
     if (responseUsage && typeof responseUsage === "object") {
       const inputTokens = responseUsage.input_tokens || responseUsage.prompt_tokens || 0;

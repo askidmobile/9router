@@ -636,10 +636,16 @@ export async function buildModelsList(kindFilter, options = {}) {
   // Enrich modelCaps with the now-fully-resolved per-model caps (live
   // catalogs + overrides), then compute combo caps in a second pass so
   // combos inherit real upstream limits instead of static-pattern guesses.
+  const resolvedModelIds = new Set();
   for (const m of models) {
-    if (m?.id && m.capabilities && !m.id.includes("/") === false && m.owned_by !== "combo" && m.owned_by !== "alias") {
-      modelCaps.set(m.id, m.capabilities);
-    }
+    if (!m?.id || !m.id.includes("/") || m.owned_by === "combo" || m.owned_by === "alias") continue;
+    // The public list below keeps the first entry for duplicate IDs. Keep the
+    // same capability record here; otherwise a later connection sharing the
+    // prefix can make a Combo look text-only while /v1/models exposes the
+    // first (vision-capable) entry for that exact ID.
+    if (resolvedModelIds.has(m.id)) continue;
+    resolvedModelIds.add(m.id);
+    if (m.capabilities) modelCaps.set(m.id, m.capabilities);
   }
   for (const { entry, combo } of comboEntries) {
     if (combo.kind === "webSearch" || combo.kind === "webFetch") {

@@ -29,6 +29,29 @@ function hasContent(value) {
     .some((key) => hasContent(value[key]));
 }
 
+function hasFinalContent(value) {
+  if (typeof value === "string") return value.trim().length > 0;
+  if (Array.isArray(value)) return value.some(hasFinalContent);
+  if (!value || typeof value !== "object") return false;
+  if (value.type === "tool_use" || value.type?.endsWith("_call") || value.functionCall) return true;
+  if (Array.isArray(value.tool_calls) && value.tool_calls.length) return true;
+  if (value.function_call || value.inlineData || value.audio || value.image_url) return true;
+  return ["text", "content", "delta", "refusal", "partial_json", "arguments", "parts", "content_block", "item"]
+    .some((key) => hasFinalContent(value[key]));
+}
+
+function hasReasoning(value) {
+  if (typeof value === "string") return value.trim().length > 0;
+  if (Array.isArray(value)) return value.some(hasReasoning);
+  if (!value || typeof value !== "object") return false;
+  if (["reasoning", "thinking", "redacted_thinking"].includes(value.type)) {
+    return ["summary", "content", "text", "thinking"].some((key) => hasContent(value[key]));
+  }
+  return ["reasoning", "reasoning_content", "reasoning_details", "thinking", "summary",
+    "choices", "candidates", "output", "message", "delta"]
+    .some((key) => hasReasoning(value[key]));
+}
+
 function hasFailure(json) {
   return !!(json?.error || json?.response?.error || json?.status === "failed" ||
     json?.type === "error" || json?.type === "response.failed" ||
@@ -36,17 +59,67 @@ function hasFailure(json) {
       ["failed", "error", "network_error", "timeout"].includes(c.finish_reason)));
 }
 
-export function isValidComboCompletion(json, { probe = false } = {}) {
-  if (!json || hasFailure(json)) return false;
-  if (probe) {
-    // Probes request ordinary text, so reasoning-only / empty successes are insufficient.
-    return typeof json.choices?.[0]?.message?.content === "string" &&
-      json.choices[0].message.content.trim().length > 0;
+function completionMarker(json) {
+  const incomplete = typeof json?.incomplete_details?.reason === "string"
+    ? json.incomplete_details.reason : null;
+  const finish = json?.choices?.find((choice) => choice?.finish_reason)?.finish_reason ||
+    json?.candidates?.find((candidate) => candidate?.finishReason)?.finishReason || null;
+  const outputTokens = json?.usage?.output_tokens ?? json?.usage?.completion_tokens;
+  const parts = [];
+  if (incomplete && /^[A-Za-z0-9_.:-]{1,64}$/.test(incomplete)) parts.push(`reason=${incomplete}`);
+  else if (finish && /^[A-Za-z0-9_.:-]{1,64}$/.test(finish)) parts.push(`finish_reason=${finish}`);
+  else if (typeof json?.status === "string" && /^[A-Za-z0-9_.:-]{1,64}$/.test(json.status)) parts.push(`status=${json.status}`);
+  if (Number.isSafeInteger(outputTokens) && outputTokens >= 0) parts.push(`output_tokens=${outputTokens}`);
+  return parts.length ? ` (${parts.join(", ")})` : "";
+}
+
+/** A recognized but empty generation is request-specific and must not open a global circuit. */
+export function getComboCompletionIssue(json, { probe = false } = {}) {
+  if (!json || typeof json !== "object" || Array.isArray(json)) {
+    return { reason: "Invalid completion response shape", healthFailure: true };
   }
-  if (Array.isArray(json.choices)) return json.choices.some((c) => hasContent(c.message || c.delta || c.text));
-  if (Array.isArray(json.candidates)) return json.candidates.some((c) => hasContent(c.content));
-  if (Array.isArray(json.output)) return json.output.some(hasContent);
-  return json.type === "message" && hasContent(json.content);
+  if (hasFailure(json)) return { reason: "Upstream completion reported failure", healthFailure: true };
+
+  if (probe) {
+    const text = json.choices?.[0]?.message?.content;
+    if (typeof text === "string" && text.trim()) return null;
+    return { reason: `Recovery probe returned no answer text${completionMarker(json)}`, healthFailure: false };
+  }
+
+  let recognized = false;
+  let valid = false;
+  if (Array.isArray(json.choices)) {
+    recognized = json.choices.length > 0;
+    valid = json.choices.some((choice) => hasFinalContent(choice.message || choice.delta || choice.text));
+  } else if (Array.isArray(json.candidates)) {
+    recognized = json.candidates.length > 0;
+    valid = json.candidates.some((candidate) => hasFinalContent(candidate.content));
+  } else if (Array.isArray(json.output)) {
+    recognized = true;
+    valid = json.output.some(hasFinalContent);
+  } else if (json.type === "message") {
+    recognized = true;
+    valid = hasFinalContent(json.content);
+  }
+  if (valid) return null;
+  if (!recognized) return { reason: "Invalid completion response shape", healthFailure: true };
+
+  const marker = completionMarker(json);
+  if (hasReasoning(json)) {
+    return { reason: `Completion contained reasoning but no final answer${marker}`, healthFailure: false };
+  }
+  return { reason: `Completion returned no final answer${marker}`, healthFailure: false };
+}
+
+export function isValidComboCompletion(json, { probe = false } = {}) {
+  return getComboCompletionIssue(json, { probe }) === null;
+}
+
+class ComboCompletionError extends Error {
+  constructor(issue) {
+    super(issue.reason);
+    this.healthFailure = issue.healthFailure;
+  }
 }
 
 /** Inspects translated SSE without changing any bytes returned to the client. */
@@ -191,8 +264,10 @@ export async function runComboModelExecution({
     if (!response.headers.get("content-type")?.includes("text/event-stream")) {
       const text = await wait(response.text());
       let json;
-      try { json = JSON.parse(text); } catch { throw new Error("Invalid completion response"); }
-      if (!isValidComboCompletion(json, { probe })) throw new Error("Invalid completion response");
+      try { json = JSON.parse(text); }
+      catch { throw new ComboCompletionError({ reason: "Malformed completion JSON", healthFailure: true }); }
+      const issue = getComboCompletionIssue(json, { probe });
+      if (issue) throw new ComboCompletionError(issue);
       cleanup();
       return new Response(text, { status: response.status, headers: response.headers });
     }
@@ -260,8 +335,13 @@ export async function runComboModelExecution({
     return new Response(stream, { status: response.status, headers: response.headers });
   } catch (error) {
     const status = signal?.aborted && !isComboDeadlineError(signal.reason) ? 499 : timeoutReason ? 504 : 502;
-    const reason = status === 499 ? "Request aborted" : timeoutReason || "Invalid completion response";
-    try { await fail(status, reason); } finally { cancel(); cleanup(); }
+    const completionError = error instanceof ComboCompletionError;
+    const reason = status === 499 ? "Request aborted" : timeoutReason ||
+      (completionError ? error.message : "Invalid completion response");
+    try {
+      if (!completionError || error.healthFailure) await fail(status, reason);
+      else log?.warn?.("COMBO", `Rejected ${provider}/${model} response without opening its circuit: ${reason}`);
+    } finally { cancel(); cleanup(); }
     return errorResponse(status, reason);
   }
 }

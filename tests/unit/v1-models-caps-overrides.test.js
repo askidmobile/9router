@@ -102,4 +102,44 @@ describe("GET /v1/models — caps overrides and model aliases", () => {
     // Tools is true because both support tools
     expect(combo.capabilities.tools).toBe(true);
   });
+
+  it("uses capabilities from the same duplicate model entry exposed by /v1/models", async () => {
+    mocks.getProviderConnections.mockResolvedValue([
+      {
+        id: "conn-primary",
+        provider: "codebuddy-cn",
+        apiKey: "sk-primary",
+        isActive: true,
+        providerSpecificData: {
+          prefix: "shared",
+          enabledModels: ["deepseek-v4.1-flash"],
+        },
+      },
+      {
+        id: "conn-secondary",
+        provider: "openai-compatible-chat-secondary",
+        apiKey: "sk-secondary",
+        isActive: true,
+        providerSpecificData: {
+          prefix: "shared",
+          enabledModels: ["deepseek-v4.1-flash"],
+        },
+      },
+    ]);
+    mocks.getCombos.mockResolvedValue([
+      {
+        id: "combo-vision",
+        name: "vision-combo",
+        models: ["shared/deepseek-v4.1-flash"],
+      },
+    ]);
+
+    const response = await GET(new Request("http://localhost:20128/v1/models"));
+    const data = await response.json();
+    const direct = data.data.find((m) => m.id === "shared/deepseek-v4.1-flash");
+    const combo = data.data.find((m) => m.id === "vision-combo");
+
+    expect(direct.capabilities.vision).toBe(true);
+    expect(combo.capabilities.vision).toBe(true);
+  });
 });

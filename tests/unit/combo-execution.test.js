@@ -234,7 +234,6 @@ describe("Combo completed JSON and probe validation", () => {
   it.each([
     ["OpenAI text", completion],
     ["OpenAI tool call", { choices: [{ message: { tool_calls: [{ type: "function", function: { name: "search", arguments: "{}" } }] } }] }],
-    ["OpenAI reasoning", { choices: [{ message: { reasoning_content: "Considering the answer" } }] }],
     ["legacy text", { choices: [{ text: "OK" }] }],
     ["Claude", { type: "message", content: [{ type: "text", text: "OK" }] }],
     ["Gemini", { candidates: [{ content: { parts: [{ text: "OK" }] } }] }],
@@ -247,13 +246,31 @@ describe("Combo completed JSON and probe validation", () => {
     expect(health.freeze).not.toHaveBeenCalled();
   });
 
-  it.each([
-    {}, { choices: [] }, { choices: [{ message: { content: "  " } }] },
-    { ...completion, error: { message: "Partial upstream failure" } },
-  ])("rejects unusable or failed HTTP 200 JSON: %j", async (json) => {
+  it.each([{}, { choices: [] }, { ...completion, error: { message: "Partial upstream failure" } }])
+  ("rejects malformed or failed HTTP 200 JSON and opens the circuit: %j", async (json) => {
     execute.mockResolvedValue(Response.json(json));
     expect((await run()).status).toBe(502);
-    expect(health.freeze).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ status: 502, reason: "Invalid completion response" }));
+    expect(health.freeze).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ status: 502 }));
+  });
+
+  it.each([
+    [
+      { choices: [{ message: { content: "", reasoning_content: "Considering the answer" }, finish_reason: "length" }], usage: { completion_tokens: 124 } },
+      "reasoning but no final answer (finish_reason=length, output_tokens=124)",
+    ],
+    [
+      { object: "response", status: "incomplete", incomplete_details: { reason: "max_output_tokens" },
+        output: [{ type: "reasoning", summary: [{ type: "summary_text", text: "Considering the answer" }] }],
+        usage: { output_tokens: 231 } },
+      "reasoning but no final answer (reason=max_output_tokens, output_tokens=231)",
+    ],
+    [{ choices: [{ message: { content: "  " }, finish_reason: "stop" }] }, "returned no final answer"],
+  ])("rejects one unusable generation without opening a global circuit: %j", async (json, reason) => {
+    execute.mockResolvedValue(Response.json(json));
+    const response = await run();
+    expect(response.status).toBe(502);
+    expect(await response.text()).toContain(reason);
+    expect(health.freeze).not.toHaveBeenCalled();
   });
 
   it("rejects a malformed completed JSON body", async () => {

@@ -53,7 +53,7 @@ describe("persistent Combo provider/model health", () => {
   it("freezes the exact pair and never reopens simply because cooldown elapsed", async () => {
     const record = await freeze();
     expect(record).toMatchObject({ ...pair, state: "open", failureCount: 1, openedAt: timestamp,
-      lastFailureAt: timestamp, nextProbeAt: timestamp + 60_000, probeToken: null });
+      lastFailureAt: timestamp, nextProbeAt: timestamp + 10_000, probeToken: null });
     expect(await service.getComboHealth(otherPair.provider, otherPair.model)).toBeNull();
     expect(await service.claimDueComboProbe()).toBeNull();
     timestamp += 24 * 60 * 60 * 1_000;
@@ -148,17 +148,17 @@ describe("persistent Combo provider/model health", () => {
     expect(await repository.list()).toEqual([]);
   });
 
-  it("waits 1, 2, 4, 8, 16, 30 minutes between failed recovery cycles", async () => {
+  it("starts recovery within ten seconds and backs off to thirty minutes", async () => {
     let record = await freeze();
     const waits = [record.nextProbeAt - timestamp];
-    for (let attempt = 0; attempt < 6; attempt++) {
+    for (let attempt = 0; attempt < 9; attempt++) {
       const probe = await claim();
       expect(await service.finishComboProbe({ ...pair, probeToken: probe.probeToken, success: false, status: 504, reason: "Probe timeout" })).toBe(true);
       record = await service.getComboHealth(pair.provider, pair.model);
       waits.push(record.nextProbeAt - timestamp);
     }
-    expect(waits).toEqual([1, 2, 4, 8, 16, 30, 30].map((minutes) => minutes * 60_000));
-    expect(record.failureCount).toBe(7);
+    expect(waits).toEqual([10, 20, 40, 80, 160, 320, 640, 1280, 1800, 1800].map((seconds) => seconds * 1000));
+    expect(record.failureCount).toBe(10);
   });
 
   it("respects an absolute provider Retry-After deadline up to the existing six-hour cap", async () => {
@@ -176,14 +176,14 @@ describe("persistent Combo provider/model health", () => {
     expect(record.nextProbeAt).toBe(timestamp + COMBO_HEALTH_CONFIG.baseCooldownMs);
     const probe = await claim();
     await service.finishComboProbe({ ...pair, probeToken: probe.probeToken, success: false, retryAfterMs: Infinity });
-    expect((await service.getComboHealth(pair.provider, pair.model)).nextProbeAt).toBe(timestamp + 120_000);
+    expect((await service.getComboHealth(pair.provider, pair.model)).nextProbeAt).toBe(timestamp + 20_000);
   });
 
   it("coalesces concurrent foreground failures instead of inflating the recovery counter", async () => {
     await Promise.all(Array.from({ length: 20 }, () => freeze()));
     const record = await service.getComboHealth(pair.provider, pair.model);
     expect(record.failureCount).toBe(1);
-    expect(record.nextProbeAt).toBe(timestamp + 60_000);
+    expect(record.nextProbeAt).toBe(timestamp + 10_000);
   });
 
   it("only reopens after a matching unexpired probe succeeds; the next incident starts at one", async () => {
@@ -283,7 +283,7 @@ describe("Combo health environment configuration", () => {
   it("preserves defaults and only accepts positive bounded integer overrides", () => {
     const defaults = loadComboHealthConfig({});
     expect(defaults).toMatchObject({ firstResponseTimeoutMs: 45_000, requestTimeoutMs: 120_000,
-      streamIdleTimeoutMs: 45_000, probeTimeoutMs: 45_000, baseCooldownMs: 60_000,
+      streamIdleTimeoutMs: 45_000, probeTimeoutMs: 45_000, baseCooldownMs: 10_000,
       maxCooldownMs: 1_800_000, probeIntervalMs: 5_000, probeLeaseGraceMs: 5_000,
       probeMaxTokens: 1_024, maxBufferedBytes: 1_048_576, probePrompt: "Reply with exactly OK." });
     for (const invalid of ["0", "-1", "1.5", "Infinity", "60seconds", "", " "]) {

@@ -43,6 +43,11 @@ node "$HOME/.codex/9router-chatgpt/bridge.mjs" sync
 
 Restart Codex after syncing; the model catalog is loaded at startup.
 
+Each manifest refresh keeps the saved model IDs but recalculates image input and
+context metadata from the current `/v1/models` catalog. Combo edits, provider
+catalog updates and capability overrides therefore take effect on the next
+`sync`; selecting and saving the same models again is not required.
+
 ```sh
 node "$HOME/.codex/9router-chatgpt/bridge.mjs" status
 node "$HOME/.codex/9router-chatgpt/bridge.mjs" disable
@@ -162,6 +167,23 @@ fragments (at most four levels) and retried. Provider HTTP errors, persistent
 incomplete output and non-reducing summaries abort the entire operation without
 replacing history. The selected route and its ordinary Combo fallback apply to
 every part; native subscription routes are unaffected.
+
+Chat providers returning `finish_reason: "length"` are represented as a valid
+Responses envelope with `status: "incomplete"` and
+`incomplete_details.reason: "max_output_tokens"`; structured text blocks are
+retained as ordinary `output_text`. A completed HTTP response containing only
+reasoning and no final text or tool call fails that one Combo attempt but does
+not open the provider/model circuit, because the result depends on that request's
+context and output budget. Transport failures, upstream HTTP health failures,
+explicit failed completions and malformed response shapes still open the circuit.
+The first automatic recovery check is due after ten seconds unless an upstream
+`Retry-After` requires a later time; repeated failed probes back off to 30 minutes.
+
+`response.incomplete` is a terminal Responses event on equal footing with
+`response.completed`: the stream finalizes on it, no `response.failed` is
+synthesized after it, and its usage is billed. Translated back to a Chat client
+it becomes `finish_reason: "length"` (or `"content_filter"`), so a truncated
+answer is never delivered as a finished one.
 
 For large streaming v2 requests, SSE heartbeats keep the bridge and Codex
 connection alive while summaries are generated (bounded to 20 minutes). A

@@ -163,3 +163,32 @@ describe("output coercion stays fail-soft on unstringifiable values", () => {
     expect(out).toContain("ok");
   });
 });
+
+// A Responses upstream capped by its output budget must not reach a Chat client
+// labelled "stop": the client would treat a truncated answer as a finished one.
+describe("incomplete Responses upstream keeps its truncation visible to Chat clients", () => {
+  it("maps max_output_tokens to finish_reason length and keeps usage", () => {
+    const state = {};
+    const chunk = openaiResponsesToOpenAIResponse({
+      type: "response.incomplete",
+      response: {
+        status: "incomplete",
+        incomplete_details: { reason: "max_output_tokens" },
+        usage: { input_tokens: 40, output_tokens: 7 },
+      },
+    }, state);
+
+    expect(chunk.choices[0].finish_reason).toBe("length");
+    expect(chunk.usage).toMatchObject({ prompt_tokens: 40, completion_tokens: 7 });
+  });
+
+  it("still reports stop for an ordinary completed response", () => {
+    const state = {};
+    const chunk = openaiResponsesToOpenAIResponse({
+      type: "response.completed",
+      response: { status: "completed", usage: { input_tokens: 40, output_tokens: 7 } },
+    }, state);
+
+    expect(chunk.choices[0].finish_reason).toBe("stop");
+  });
+});

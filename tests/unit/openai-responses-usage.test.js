@@ -31,4 +31,19 @@ describe("Responses usage for Codex auto-compaction", () => {
     expect(completed).toHaveLength(1);
     expect(completed[0].data.response.usage).toMatchObject({ input_tokens: 100, output_tokens: 10, total_tokens: 110 });
   });
+
+  it("emits response.incomplete when Chat exhausts the combined reasoning and output budget", () => {
+    const state = initState(FORMATS.OPENAI_RESPONSES);
+    const send = chunk => translateResponse(FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, chunk, state);
+    send({ id: "qa", choices: [{ index: 0, delta: { reasoning_content: "One token" }, finish_reason: null }] });
+    send({ choices: [{ index: 0, delta: {}, finish_reason: "length" }],
+      usage: { prompt_tokens: 20, completion_tokens: 1, total_tokens: 21 } });
+    const events = send(null);
+    expect(events.some(event => event.event === "response.completed")).toBe(false);
+    expect(events.find(event => event.event === "response.incomplete")?.data.response).toMatchObject({
+      status: "incomplete",
+      incomplete_details: { reason: "max_output_tokens" },
+      usage: { input_tokens: 20, output_tokens: 1, total_tokens: 21 },
+    });
+  });
 });
