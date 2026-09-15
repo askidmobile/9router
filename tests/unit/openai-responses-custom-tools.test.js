@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   openaiResponsesToOpenAIRequest,
 } from "../../open-sse/translator/request/openai-responses.js";
+import { translateRequest } from "../../open-sse/translator/index.js";
 import { openaiToOpenAIResponsesResponse } from "../../open-sse/translator/response/openai-responses.js";
 import { initState } from "../../open-sse/translator/index.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
@@ -117,6 +118,40 @@ describe("Codex Responses Lite custom tools → OpenAI Chat", () => {
     }, true, null);
 
     expect(out._toolNamespaces).toEqual([["spawn_agent", "multi_agent_v1"]]);
+  });
+
+  it("preserves namespace metadata when pivoting Responses requests through OpenAI to Ollama", () => {
+    const out = translateRequest(FORMATS.OPENAI_RESPONSES, FORMATS.OLLAMA, "glm/glm-5.3", {
+      input: [
+        {
+          type: "additional_tools",
+          tools: [{
+            type: "namespace",
+            name: "multi_agent_v1",
+            tools: [{ type: "function", name: "spawn_agent", description: "Spawn", parameters: { type: "object", properties: {} } }],
+          }],
+        },
+      ],
+    }, true, null);
+
+    expect(out.model).toBe("glm/glm-5.3");
+    expect(out._customToolNames).toBeUndefined();
+    expect(out._toolNameMap).toBeUndefined();
+    expect(out._toolNamespaces).toEqual([["spawn_agent", "multi_agent_v1"]]);
+  });
+
+  it("converts completed hosted web_search history into Chat-visible context", () => {
+    const out = openaiResponsesToOpenAIRequest("cx/gpt-5.6-sol", {
+      input: [
+        { type: "web_search_call", status: "completed", action: { type: "search", query: "codex responses api" }, results: [{ title: "Docs", url: "https://example.com", snippet: "Use SSE" }] },
+        { type: "message", role: "assistant", content: [{ type: "output_text", text: "Use SSE." }] },
+      ],
+    }, true, null);
+
+    const context = out.messages.find(message => message.role === "user");
+    expect(context.content).toContain("codex responses api");
+    expect(context.content).toContain("https://example.com");
+    expect(out.input).toBeUndefined();
   });
 
   it("merges additional_tools with normal top-level function tools", () => {

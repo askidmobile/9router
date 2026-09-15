@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const db = vi.hoisted(() => ({ getSettings: vi.fn(), getCombos: vi.fn(), getModelAliases: vi.fn(), updateSettings: vi.fn(), validateApiKey: vi.fn(), buildModelsList: vi.fn() }));
+const search = vi.hoisted(() => ({ handleSearch: vi.fn() }));
 vi.mock("@/lib/localDb", () => db);
 vi.mock("@/app/api/v1/models/route", () => ({ buildModelsList: db.buildModelsList }));
+vi.mock("@/sse/handlers/search.js", () => search);
 const { GET, PUT } = await import("../../src/app/api/chatgpt/route.js");
 const { getChatGPTManifest, routeChatGPTResponse } = await import("../../src/lib/chatgpt/endpoint.js");
 const { selectChatGPTModels } = await import("../../src/lib/chatgpt/models.js");
@@ -26,7 +28,10 @@ beforeEach(() => {
   db.getSettings.mockResolvedValue({ chatgptIntegration: { models: selected } });
   db.getCombos.mockResolvedValue([]);
   db.getModelAliases.mockResolvedValue({});
-  db.buildModelsList.mockResolvedValue(available);
+  db.buildModelsList.mockImplementation(async kind => kind?.[0] === "webSearch"
+    ? [{ id: "brave-search/search", kind: "webSearch" }, { id: "glm/search", kind: "webSearch" }]
+    : available);
+  search.handleSearch.mockReset();
   db.validateApiKey.mockImplementation(async key => key === "router-key");
 });
 
@@ -34,7 +39,7 @@ describe("ChatGPT integration settings and catalog", () => {
   it("persists validated model IDs and limits, including combos", async () => {
     const result = await PUT(request({ models: ["Coding", "glm/glm-5.3"] }));
     expect(result.status).toBe(200);
-    expect(db.updateSettings).toHaveBeenCalledWith({ chatgptIntegration: { models: [selected[2], selected[0]] } });
+    expect(db.updateSettings).toHaveBeenCalledWith({ chatgptIntegration: { models: [selected[2], selected[0]], webSearchModel: "" } });
     expect((await (await GET()).json()).limit).toBe(5);
   });
   it.each([["missing"], ["Coding", "Coding"], Array(6).fill("Coding"), ["no-tools"], null])("rejects invalid selection %j", async models => {
@@ -101,6 +106,55 @@ describe("ChatGPT Responses production adapter", () => {
     const result = await routeChatGPTResponse(request({ model: "9router/Coding", input: [] }), async () => Response.json(completion), true);
     expect(result.status).toBe(502);
   });
+  it("saves an explicit web-search backend for Codex's hosted web_search tool", async () => {
+    const result = await PUT(request({ models: ["Coding"], webSearchModel: "glm/search" }));
+    expect(result.status).toBe(200);
+    expect(db.updateSettings).toHaveBeenCalledWith({ chatgptIntegration: { models: [selected[2]], webSearchModel: "glm/search" } });
+    expect((await PUT(request({ models: ["Coding"], webSearchModel: "not/search" }))).status).toBe(400);
+  });
+
+  it("executes hosted web_search through 9router and returns a Responses SSE result", async () => {
+    const payloads = [];
+    let searchRequest;
+    const handler = vi.fn(async req => {
+      payloads.push(await req.json());
+      if (payloads.length === 1) {
+        return Response.json({
+          id: "resp_search", object: "response", status: "completed",
+          output: [{ id: "fc_search", type: "function_call", call_id: "call_search", name: "web_search", arguments: JSON.stringify({ query: "codex web search" }) }],
+        });
+      }
+      return Response.json({
+        id: "resp_answer", object: "response", status: "completed",
+        output: [{ id: "msg_answer", type: "message", role: "assistant", content: [{ type: "output_text", text: "Found current docs." }] }],
+      });
+    });
+    search.handleSearch.mockResolvedValue(Response.json({
+      provider: "brave-search", query: "codex web search",
+      results: [{ title: "Codex", url: "https://example.com/codex", snippet: "Responses API" }],
+    }));
+
+    const result = await routeChatGPTResponse(request({
+      model: "9router/Coding", input: [{ role: "user", content: [{ type: "input_text", text: "Search current docs" }] }],
+      tools: [{ type: "web_search", search_context_size: "medium" }], stream: true,
+    }), handler);
+
+    expect(result.headers.get("content-type")).toContain("text/event-stream");
+    expect(handler).toHaveBeenCalledTimes(2);
+    expect(payloads[0]).toMatchObject({ stream: false, tools: [{ type: "function", name: "web_search" }] });
+    expect(payloads[1].input.at(-1)).toMatchObject({ type: "function_call_output", call_id: "call_search" });
+    expect(search.handleSearch).toHaveBeenCalledTimes(1);
+    searchRequest = search.handleSearch.mock.calls[0][0];
+    expect(searchRequest.url).toBe("http://router/v1/search");
+    expect(searchRequest.headers.get("authorization")).toBe("Bearer router-key");
+    expect(await searchRequest.json()).toMatchObject({ provider: "brave-search/search", query: "codex web search" });
+    const text = await result.text();
+    expect(text).toContain("response.output_item.added");
+    expect(text).toContain("\"type\":\"web_search_call\"");
+    expect(text).toContain("Found current docs.");
+    expect(text).toContain("response.completed");
+  });
+
   it.each(["gpt-6-astra", "9router/missing", null])("does not route disabled or unprefixed models: %s", async model => {
     const handler = vi.fn();
     expect((await routeChatGPTResponse(request({ model }), handler)).status).toBe(404);
