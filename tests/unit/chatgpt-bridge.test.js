@@ -69,7 +69,11 @@ describe("catalog and endpoint validation", () => {
   it("keeps native model metadata byte-for-byte and namespaces added models", () => {
     const combined = mergeCatalog(native, manifest);
     expect(combined.models[1]).toEqual(native[0]);
-    expect(combined.models[0]).toMatchObject({ slug: "9router/Coding", context_window: 128000, input_modalities: ["text", "image"], service_tiers: [], model_messages: null });
+    expect(combined.models[0]).toMatchObject({
+      slug: "9router/Coding", context_window: 128000, input_modalities: ["text", "image"], service_tiers: [],
+      multi_agent_version: "v2", supports_search_tool: true,
+      model_messages: { multi_agent: expect.any(Object) },
+    });
     expect(mergeCatalog(combined.models, manifest).models).toEqual(combined.models);
   });
   it.each(["http://example.com/api/chatgpt/v1", "https://user:password@example.com/api/chatgpt/v1", "https://example.com/v1", "https://example.com/api/chatgpt/v1?key=secret"])('rejects unsafe or wrong endpoint %s', url => {

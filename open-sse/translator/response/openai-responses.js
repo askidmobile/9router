@@ -296,7 +296,8 @@ function emitToolCall(state, emit, tc) {
         type: custom ? RESPONSES_ITEM.CUSTOM_TOOL_CALL : RESPONSES_ITEM.FUNCTION_CALL,
         ...(custom ? { input: "" } : { arguments: "" }),
         call_id: callId,
-        name: state.funcNames[tcIdx] || ""
+        name: state.funcNames[tcIdx] || "",
+        ...(state.toolNamespaces?.get(state.funcNames[tcIdx]) ? { namespace: state.toolNamespaces.get(state.funcNames[tcIdx]) } : {})
       }
     });
   }
@@ -357,7 +358,8 @@ function closeToolCall(state, emit, idx) {
         type: custom ? RESPONSES_ITEM.CUSTOM_TOOL_CALL : RESPONSES_ITEM.FUNCTION_CALL,
         ...(custom ? { input: extractCustomToolInput(args) } : { arguments: args }),
         call_id: callId,
-        name: state.funcNames[idx] || ""
+        name: state.funcNames[idx] || "",
+        ...(state.toolNamespaces?.get(state.funcNames[idx]) ? { namespace: state.toolNamespaces.get(state.funcNames[idx]) } : {})
       }
     });
 

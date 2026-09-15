@@ -37,6 +37,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   let pendingReasoningEncrypted = "";
   const additionalTools = [];
   const customToolNames = new Set();
+  const toolNamespaces = new Map();
 
   const inputItems = normalizeResponsesInput(body.input);
   if (!inputItems) return body;
@@ -178,10 +179,24 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   // explicit `name` field and cannot be represented as Chat Completions function declarations.
   // Filter them out to avoid sending nameless functionDeclarations to downstream providers
   // such as Gemini, which strictly validates function names.
-  const responseTools = [
+  // Codex ≥0.151 ships tools inside the input as `additional_tools` items whose
+  // entries are namespace wrappers ({type:"namespace", name:"functions", tools:[...]}).
+  // Unwrap namespaces to the real tool declarations before mapping them to Chat format.
+  const flattenToolList = (list, namespace = null) => (list ?? []).flatMap((t) => {
+    if (t?.type === "namespace" && Array.isArray(t.tools)) {
+      const nextNamespace = t.name || namespace;
+      for (const child of t.tools) {
+        const childName = child?.name || child?.function?.name;
+        if (childName && nextNamespace) toolNamespaces.set(childName, nextNamespace);
+      }
+      return flattenToolList(t.tools, nextNamespace);
+    }
+    return [t];
+  });
+  const responseTools = flattenToolList([
     ...(Array.isArray(body.tools) ? body.tools : []),
     ...additionalTools,
-  ];
+  ]);
   if (responseTools.length > 0) {
     result.tools = responseTools
       .map(tool => {
@@ -230,6 +245,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       .filter(Boolean);
   }
   if (customToolNames.size > 0) result._customToolNames = [...customToolNames];
+  if (toolNamespaces.size > 0) result._toolNamespaces = [...toolNamespaces];
 
   // Cleanup Responses API specific fields
   // Map Responses-only max_output_tokens to Chat max_tokens (avoid leaking unknown field upstream)
