@@ -15,6 +15,9 @@ export default function ChatGPTPage() {
   const [available, setAvailable] = useState([]);
   const [models, setModels] = useState([]);
   const [saved, setSaved] = useState([]);
+  const [searchModels, setSearchModels] = useState([]);
+  const [webSearchModel, setWebSearchModel] = useState("");
+  const [savedWebSearchModel, setSavedWebSearchModel] = useState("");
   const [limit, setLimit] = useState(5);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -32,11 +35,14 @@ export default function ChatGPTPage() {
       setAvailable(data.available);
       setModels(data.models.map(model => model.id));
       setSaved(data.models.map(model => model.id));
+      setSearchModels(data.searchModels || []);
+      setWebSearchModel(data.webSearchModel || "");
+      setSavedWebSearchModel(data.webSearchModel || "");
       setLimit(data.limit);
     }).catch(error => setError(error.message)).finally(() => setLoading(false));
   }, []);
   useEffect(() => { load(); }, [load]);
-  const dirty = JSON.stringify(models) !== JSON.stringify(saved);
+  const dirty = JSON.stringify(models) !== JSON.stringify(saved) || webSearchModel !== savedWebSearchModel;
   const visible = useMemo(() => available.filter(model => `${model.id} ${model.name || ""}`.toLowerCase().includes(search.toLowerCase())), [available, search]);
   const endpoint = `${origin}/api/chatgpt/v1`;
   // Separate the closing subshell from the URL so zsh's url-quote-magic does not escape it on paste.
@@ -48,10 +54,12 @@ export default function ChatGPTPage() {
     setError("");
     setNotice("");
     try {
-      const response = await fetch("/api/chatgpt", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ models }) });
+      const response = await fetch("/api/chatgpt", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ models, webSearchModel }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Could not save models.");
       setSaved(data.models.map(model => model.id));
+      setWebSearchModel(data.webSearchModel || "");
+      setSavedWebSearchModel(data.webSearchModel || "");
       setNotice("Saved. Run sync on your computer and restart Codex to update the model picker.");
     } catch (error) { setError(error.message); }
     finally { setSaving(false); }
@@ -108,6 +116,14 @@ export default function ChatGPTPage() {
           })}
       </div>
       <p className="mt-3 text-xs text-text-muted">Router models appear as <code>9router/provider/model</code>. Tool support and reliability depend on the selected provider.</p>
+      <div className="mt-4 rounded-lg border border-border-subtle p-3">
+        <label htmlFor="chatgpt-web-search-model" className="text-sm font-medium">Codex web_search backend</label>
+        <select id="chatgpt-web-search-model" className={`${inputClass} mt-2`} value={webSearchModel} disabled={saving || searchModels.length === 0} onChange={event => { setNotice(""); setWebSearchModel(event.target.value); }}>
+          <option value="">Automatic (first active search provider)</option>
+          {searchModels.map(model => <option key={model.id} value={model.id}>{model.id}</option>)}
+        </select>
+        <p className="mt-2 text-xs leading-5 text-text-muted">Used when a selected 9router model invokes Codex's hosted web_search tool. Configure fallback providers by creating a Web Search combo and selecting it here.</p>
+      </div>
     </Card>
 
     <Card title="Connect this computer" subtitle="macOS · Node.js 24.5+ · No Codex profile required" icon="computer">

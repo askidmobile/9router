@@ -117,7 +117,8 @@ overwrite the whole live config with an old backup if other settings have change
 ## Server API and compatibility
 
 - `GET /api/chatgpt`: dashboard selection and available LLM models.
-- `PUT /api/chatgpt`: validate and save `{ "models": ["provider/model", "Combo"] }`.
+- `PUT /api/chatgpt`: validate and save `{ "models": ["provider/model", "Combo"], "webSearchModel": "provider/search" }`.
+  Omit `webSearchModel` (or pass `""`) to use the first active Web Search provider or combo automatically.
 - `GET /api/chatgpt/v1/models`: versioned integration manifest for the helper.
 - `POST /api/chatgpt/v1/responses`: allowlisted router model → existing `handleChat`.
   Codex v2 requests ending in `compaction_trigger` invoke compaction through this
@@ -179,6 +180,13 @@ use a conservative 32,768-token catalog entry; known limits come from `/v1/model
 Native catalog entries remain intact, including reasoning levels and service
 tiers. Added entries expose the provider's supported reasoning levels; Combos
 use the intersection across all members, including nested Combos and aliases.
+Added entries advertise Codex's hosted search tool. When a model invokes it,
+the ChatGPT Responses adapter replaces the nameless hosted declaration with a
+private `web_search` function, executes up to four bounded rounds through the
+existing `/v1/search` provider/Combo stack with the authenticated 9router key,
+and returns native `web_search_call` output items plus the model's final answer.
+Search history is serialized back into Chat-compatible provider context on later
+turns. The backend can be selected explicitly in the ChatGPT dashboard.
 Added entries advertise Codex's collaboration namespace and search tool support;
 the Responses translator restores a tool's original namespace after a Chat
 provider emits the bare function name, so `spawn_agent` reaches Codex as

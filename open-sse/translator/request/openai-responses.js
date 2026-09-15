@@ -150,6 +150,22 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
     else if (itemType === RESPONSES_ITEM.ADDITIONAL_TOOLS) {
       if (Array.isArray(item.tools)) additionalTools.push(...item.tools);
     }
+    else if (itemType === "web_search_call") {
+      // Chat-compatible providers have no hosted server-tool history. Preserve
+      // the completed search as plain context so later Codex turns do not lose it.
+      if (currentAssistantMsg) {
+        result.messages.push(currentAssistantMsg);
+        currentAssistantMsg = null;
+      }
+      if (pendingToolResults.length > 0) {
+        for (const tr of pendingToolResults) result.messages.push(tr);
+        pendingToolResults = [];
+      }
+      result.messages.push({
+        role: ROLE.USER,
+        content: `9router web_search results (query: ${item.action?.query || ""}):\n${JSON.stringify(item.results || [])}`
+      });
+    }
     else if (itemType === RESPONSES_ITEM.REASONING) {
       // Buffer reasoning text; attached to next assistant message/function_call.
       // Also stash encrypted_content so a later openai→responses hop can restore

@@ -3,6 +3,7 @@ import { chatGPTManifest, selectedModels, codexModelId } from "./models";
 import { prepareCompactionInput } from "./compact";
 import { runChatGPTCompaction } from "./compactionRunner";
 import { withChatGPTReasoning } from "./reasoning";
+import { hasHostedWebSearch, resolveWebSearchModel, runWebSearchLoop } from "./tools.js";
 
 const headers = { "Cache-Control": "no-store" };
 const jsonError = (message, status) => Response.json({ error: { message } }, { status, headers });
@@ -48,8 +49,17 @@ export async function routeChatGPTResponse(request, handleChat, compact = false)
   const invoke = (payload, signal) => handleChat(new Request(request.url, {
     method: "POST", headers: forwarded, body: JSON.stringify(payload), signal,
   }));
-  return compact || v2 ? runChatGPTCompaction({
-    body, contextWindow: selected.contextWindow, invoke, signal: request.signal,
-    apiKey: key, model: codexModelId(selected.id), v2, stream,
-  }) : invoke(body, request.signal);
+  if (compact || v2) {
+    return runChatGPTCompaction({
+      body, contextWindow: selected.contextWindow, invoke, signal: request.signal,
+      apiKey: key, model: codexModelId(selected.id), v2, stream,
+    });
+  }
+  if (hasHostedWebSearch(body)) {
+    const searchModel = await resolveWebSearchModel(await getSettings().then(settings => settings.chatgptIntegration?.webSearchModel));
+    return runWebSearchLoop({
+      body, invoke, requestUrl: request.url, apiKey: key, searchModel, signal: request.signal,
+    });
+  }
+  return invoke(body, request.signal);
 }
