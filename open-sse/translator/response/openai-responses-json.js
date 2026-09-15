@@ -33,6 +33,13 @@ export function openAICompletionToResponses(responseBody, customToolNames = null
   const choice = responseBody?.choices?.[0];
   if (!choice) return responseBody;
 
+  // Both arrive as serializable arrays across the OpenAI pivot; the streaming
+  // path rebuilds them in stream.js, and calling Map/Set methods on the raw
+  // arrays here threw "c?.get is not a function" for every namespaced Codex
+  // tool call on the non-streaming route.
+  const customNames = customToolNames instanceof Set ? customToolNames : new Set(customToolNames || []);
+  const namespaces = toolNamespaces instanceof Map ? toolNamespaces : new Map(toolNamespaces || []);
+
   const message = choice.message || {};
   const output = [];
   const reasoning = extractReasoningText(message);
@@ -54,13 +61,13 @@ export function openAICompletionToResponses(responseBody, customToolNames = null
 
   for (const tc of message.tool_calls || []) {
     const fn = tc.function || {};
-    const custom = customToolNames?.has(fn.name);
+    const custom = customNames.has(fn.name);
     output.push({
       type: custom ? RESPONSES_ITEM.CUSTOM_TOOL_CALL : RESPONSES_ITEM.FUNCTION_CALL,
       id: `${custom ? "ctc" : "fc"}_${tc.id || ""}`,
       call_id: tc.id || "",
       name: fn.name || "",
-      ...(toolNamespaces?.get(fn.name) ? { namespace: toolNamespaces.get(fn.name) } : {}),
+      ...(namespaces.get(fn.name) ? { namespace: namespaces.get(fn.name) } : {}),
       ...(custom
         ? { input: extractCustomToolInput(fn.arguments) }
         : { arguments: typeof fn.arguments === "string" ? fn.arguments : JSON.stringify(fn.arguments || {}) }),

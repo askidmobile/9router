@@ -235,3 +235,33 @@ describe("Chat -> Responses conversion survives ragged provider content", () => 
     expect(out.output.map((x) => x.type)).toEqual(["reasoning"]);
   });
 });
+
+// _customToolNames / _toolNamespaces cross the OpenAI pivot as serializable
+// arrays. The streaming path rebuilds them into a Set/Map; the JSON path called
+// .has()/.get() on the raw arrays, so every namespaced Codex tool call on a
+// non-streaming route died with "c?.get is not a function".
+describe("namespaced tool calls survive the non-streaming route", () => {
+  const body = {
+    id: "chatcmpl-9", model: "deepseek-flash",
+    choices: [{ finish_reason: "tool_calls", message: { role: "assistant", content: null,
+      tool_calls: [{ id: "call_1", function: { name: "spawn_agent", arguments: '{"task_name":"qa"}' } }] } }],
+  };
+
+  it("accepts the serialized array form", () => {
+    const out = openAICompletionToResponses(body, ["freeform"], [["spawn_agent", "multi_agent_v1"]]);
+    const call = out.output.find((x) => x.type === "function_call");
+    expect(call.namespace).toBe("multi_agent_v1");
+    expect(call.name).toBe("spawn_agent");
+  });
+
+  it("still accepts a ready Map/Set", () => {
+    const out = openAICompletionToResponses(body, new Set(["freeform"]),
+      new Map([["spawn_agent", "multi_agent_v1"]]));
+    expect(out.output.find((x) => x.type === "function_call").namespace).toBe("multi_agent_v1");
+  });
+
+  it("omits the namespace when none was declared", () => {
+    const out = openAICompletionToResponses(body, null, null);
+    expect(out.output.find((x) => x.type === "function_call").namespace).toBeUndefined();
+  });
+});
