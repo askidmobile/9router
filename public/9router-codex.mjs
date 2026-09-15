@@ -127,6 +127,13 @@ export function mergeCatalog(nativeModels, manifest) {
   const baseInstructions = native.find(m => m.base_instructions)?.base_instructions ||
     "You are Codex, a coding agent. You and the user share a workspace and collaborate to achieve the user's goals. Use the available tools to complete the task.";
   const minPriority = Math.min(0, ...native.map(m => Number(m.priority) || 0));
+  const multiAgentMessages = native.find(m => m.model_messages?.multi_agent)?.model_messages.multi_agent || {
+    role: {
+      root: "You are `/root`, the primary agent in a team of agents collaborating to fulfill the user's goals. Use the collaboration tools only for concrete, independently useful subtasks.",
+      subagent: "You are an agent in a team collaborating to complete a task. Use the collaboration tools only for concrete, independently useful subtasks.",
+    },
+    mode: null,
+  };
   const additions = manifest.models.map((model, index) => ({
     slug: model.slug, display_name: model.slug, description: "9router model",
     default_reasoning_level: model.defaultReasoningLevel || null,
@@ -137,17 +144,18 @@ export function mergeCatalog(nativeModels, manifest) {
     priority: minPriority - manifest.models.length + index,
     additional_speed_tiers: [], service_tiers: [], default_service_tier: null,
     availability_nux: null, upgrade: null,
-    base_instructions: baseInstructions, model_messages: null,
+    base_instructions: baseInstructions, model_messages: { multi_agent: multiAgentMessages },
     include_skills_usage_instructions: true, include_plugin_usage_instructions: true,
     include_apps_usage_instructions: true, supports_reasoning_summary_parameter: false,
     supports_reasoning_summaries: false, default_reasoning_summary: "auto",
     support_verbosity: false, default_verbosity: null, apply_patch_tool_type: null,
     web_search_tool_type: "text", truncation_policy: { mode: "tokens", limit: 10000 },
+    multi_agent_version: "v2",
     supports_parallel_tool_calls: true, supports_image_detail_original: false,
     context_window: model.contextWindow, max_context_window: model.contextWindow,
     auto_compact_token_limit: null, effective_context_window_percent: 95,
     experimental_supported_tools: [], input_modalities: model.imageInput ? ["text", "image"] : ["text"],
-    supports_search_tool: false,
+    supports_search_tool: true,
   }));
   return { models: [...additions, ...native] };
 }

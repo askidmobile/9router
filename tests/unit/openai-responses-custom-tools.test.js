@@ -102,6 +102,23 @@ describe("Codex Responses Lite custom tools → OpenAI Chat", () => {
     });
   });
 
+  it("records the originating namespace for namespaced tool calls", () => {
+    const out = openaiResponsesToOpenAIRequest("cx/gpt-5.6-sol", {
+      input: [
+        {
+          type: "additional_tools",
+          tools: [{
+            type: "namespace",
+            name: "multi_agent_v1",
+            tools: [{ type: "function", name: "spawn_agent", description: "Spawn", parameters: { type: "object", properties: {} } }],
+          }],
+        },
+      ],
+    }, true, null);
+
+    expect(out._toolNamespaces).toEqual([["spawn_agent", "multi_agent_v1"]]);
+  });
+
   it("merges additional_tools with normal top-level function tools", () => {
     const out = openaiResponsesToOpenAIRequest("cx/gpt-5.6-sol", {
       input: [{ type: "additional_tools", role: "developer", tools: [EXEC_TOOL] }],
@@ -110,6 +127,27 @@ describe("Codex Responses Lite custom tools → OpenAI Chat", () => {
 
     expect(out.tools.map((tool) => tool.function.name)).toEqual(["search", "exec"]);
     expect(out._customToolNames).toEqual(["exec"]);
+  });
+});
+
+describe("OpenAI Chat stream → Codex namespaced function_call", () => {
+  it("adds the original namespace to a normal Chat tool call", () => {
+    const state = initState(FORMATS.OPENAI_RESPONSES);
+    state.toolNamespaces = new Map([["spawn_agent", "multi_agent_v1"]]);
+    const events = [
+      { id: "chatcmpl-normal", choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id: "call_spawn", type: "function", function: { name: "spawn_agent", arguments: "{}" } }] }, finish_reason: null }] },
+      { id: "chatcmpl-normal", choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] },
+    ].flatMap((chunk) => openaiToOpenAIResponsesResponse(chunk, state));
+
+    expect(events.find((event) => event.event === "response.output_item.added").data.item).toMatchObject({
+      type: "function_call",
+      call_id: "call_spawn",
+      name: "spawn_agent",
+      namespace: "multi_agent_v1",
+    });
+    expect(events.find((event) => event.event === "response.output_item.done").data.item).toMatchObject({
+      namespace: "multi_agent_v1",
+    });
   });
 });
 

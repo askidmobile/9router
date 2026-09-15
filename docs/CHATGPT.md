@@ -179,6 +179,10 @@ use a conservative 32,768-token catalog entry; known limits come from `/v1/model
 Native catalog entries remain intact, including reasoning levels and service
 tiers. Added entries expose the provider's supported reasoning levels; Combos
 use the intersection across all members, including nested Combos and aliases.
+Added entries advertise Codex's collaboration namespace and search tool support;
+the Responses translator restores a tool's original namespace after a Chat
+provider emits the bare function name, so `spawn_agent` reaches Codex as
+`multi_agent_v1.spawn_agent` instead of `unsupported call: spawn_agent`.
 Fixed reasoning suffixes and routes with no shared levels do not offer a picker.
 Binary reasoning uses `none` / `high` (off / on). The manifest refreshes metadata
 for existing selections, so another Save is not required. To upgrade an older

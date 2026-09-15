@@ -45,6 +45,7 @@ export function createSSEStream(options = {}) {
     reqLogger = null,
     toolNameMap = null,
     customToolNames = null,
+    toolNamespaces = null,
     model = null,
     connectionId = null,
     body = null,
@@ -61,7 +62,7 @@ export function createSSEStream(options = {}) {
   const decoder = new TextDecoder("utf-8", { fatal: false });
 
   const state = mode === STREAM_MODE.TRANSLATE
-    ? { ...initState(sourceFormat), provider, toolNameMap, customToolNames: new Set(customToolNames || []), model, sessionId: credentials?._clientSessionId || null }
+    ? { ...initState(sourceFormat), provider, toolNameMap, customToolNames: new Set(customToolNames || []), toolNamespaces: new Map(toolNamespaces || []), model, sessionId: credentials?._clientSessionId || null }
     : null;
 
   let totalContentLength = 0;
@@ -538,7 +539,7 @@ export function createSSEStream(options = {}) {
   });
 }
 
-export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null, customToolNames = null, credentials = null, trackDone = null) {
+export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null, customToolNames = null, toolNamespaces = null, credentials = null, trackDone = null) {
   return createSSEStream({
     mode: STREAM_MODE.TRANSLATE,
     targetFormat,
@@ -547,6 +548,7 @@ export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, p
     reqLogger,
     toolNameMap,
     customToolNames,
+    toolNamespaces,
     model,
     connectionId,
     body,

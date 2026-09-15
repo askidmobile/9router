@@ -270,6 +270,7 @@ export function initState(sourceFormat) {
       funcArgsDone: {},
       funcItemDone: {},
       customToolNames: new Set(),
+      toolNamespaces: new Map(),
       completedSent: false
     };
   }
