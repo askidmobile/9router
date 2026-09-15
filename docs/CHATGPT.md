@@ -151,8 +151,10 @@ from the reported context usage.
 Large histories are summarized in chronological parts, then those summaries are
 reduced to a single handoff. Each part uses a conservative UTF-8 byte budget
 within the saved model context limit (at most 256 KiB), with at most two requests
-in flight and up to 8,192 output tokens for supported contexts. This also handles
-a single oversized tool result; it does not discard the oldest turns. Opaque
+in flight and up to 8,192 output tokens for supported contexts. Compaction gives
+each Combo member at least five minutes for response headers and the complete
+non-streaming result; ordinary Combo requests retain their shorter deadlines.
+This also handles a single oversized tool result; it does not discard the oldest turns. Opaque
 reasoning and binary attachment payloads are replaced by explicit placeholders
 while surrounding text is retained. If an HTTP 200 response is truncated or has
 no complete assistant text, only that part is split into smaller chronological

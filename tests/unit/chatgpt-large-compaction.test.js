@@ -111,7 +111,9 @@ describe("large Codex history compaction", () => {
       if (failure === "empty") return completion("");
       return completion("Part one summary");
     });
-    const response = await routeChatGPTResponse(request([{ role: "user", content: "history ".repeat(100000) }]), handler);
+    const response = await routeChatGPTResponse(
+      request([{ role: "user", content: "history ".repeat(100000) }]), handler,
+    );
     const output = events(await response.text());
     expect(output.some(event => event.type === "response.output_item.done" || event.type === "response.completed")).toBe(false);
     expect(output.at(-1)).toMatchObject({ type: "response.failed", response: { status: "failed", output: [], error: { message: expect.any(String) } } });
@@ -137,6 +139,17 @@ describe("large Codex history compaction", () => {
     const response = await routeChatGPTResponse(request([{ role: "user", content: "history ".repeat(100000) }], undefined, false), async () => completion("Complete summary"));
     expect(response.status).toBe(200);
     expect((await response.json()).output[0].type).toBe("compaction");
+  });
+
+  it("gives every compaction part a longer Combo response budget", async () => {
+    const handler = vi.fn(async (_req, raw, options) => {
+      expect(raw).toBeNull();
+      expect(options).toEqual({ comboRequestTimeoutFloorMs: 5 * 60 * 1000 });
+      return completion("Complete summary");
+    });
+    const response = await routeChatGPTResponse(request([{ role: "user", content: "history ".repeat(100000) }]), handler);
+    expect(events(await response.text()).at(-1).type).toBe("response.completed");
+    expect(handler.mock.calls.length).toBeGreaterThan(1);
   });
 
   it("ends with an error at the deadline even if an upstream ignores cancellation", async () => {

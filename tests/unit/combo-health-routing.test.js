@@ -205,6 +205,29 @@ describe("Combo health through the public chat route", () => {
     expect(mocks.pending.mock.calls.map((args) => args[3])).toEqual([true, false, true, false]);
   });
 
+  it("honors the longer Combo deadline supplied by the internal compaction path", async () => {
+    mocks.transport.mockImplementationOnce(async (_, options) => {
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(resolve, 150_000);
+        options.signal.addEventListener("abort", () => {
+          clearTimeout(timer);
+          reject(options.signal.reason);
+        }, { once: true });
+      });
+      return success(options);
+    });
+    const task = handleChat(request(), null, { comboRequestTimeoutFloorMs: 180_000 });
+    await pumpUntil(() => mocks.transport.mock.calls.length === 1);
+    await vi.advanceTimersByTimeAsync(150_001);
+    expect((await task).status).toBe(200);
+    expect(mocks.transport).toHaveBeenCalledTimes(1);
+    expect(mocks.transport.mock.calls[0][1].headersTimeout).toBe(180_000);
+    expect(mocks.freeze).not.toHaveBeenCalled();
+
+    expect((await handleChat(request())).status).toBe(200);
+    expect(mocks.transport.mock.calls[1][1].headersTimeout).toBeUndefined();
+  });
+
   it("keeps manual direct requests and their executor retries working while leaving the Combo circuit frozen", async () => {
     const frozen = { state: "open", nextProbeAt: NOW + 60_000 };
     mocks.circuits.set(key("commandcode", MODEL), frozen);

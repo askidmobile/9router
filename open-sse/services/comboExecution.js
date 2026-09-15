@@ -94,6 +94,7 @@ export function createComboStreamInspector(maxBufferedBytes = COMBO_HEALTH_CONFI
  */
 export async function runComboModelExecution({
   provider, model, body, signal, execute, flex = false, probe = false, log,
+  requestTimeoutFloorMs,
   config = COMBO_HEALTH_CONFIG,
   health = { get: getComboHealth, freeze: freezeComboModel },
 }) {
@@ -157,17 +158,23 @@ export async function runComboModelExecution({
     pendingCancel?.catch(() => {});
   };
   const probeMs = getComboProbeTimeoutMs(provider, model, config);
-  const firstMs = probe ? probeMs : flex ? GEMINI_FLEX_TIMEOUT_MS : config.firstResponseTimeoutMs;
-  const fullMs = probe ? probeMs : flex ? GEMINI_FLEX_TIMEOUT_MS : config.requestTimeoutMs;
+  const timeoutFloorMs = Number.isSafeInteger(requestTimeoutFloorMs) && requestTimeoutFloorMs > 0
+    ? requestTimeoutFloorMs : 0;
+  const firstMs = probe ? probeMs
+    : Math.max(flex ? GEMINI_FLEX_TIMEOUT_MS : config.firstResponseTimeoutMs, timeoutFloorMs);
+  const fullMs = probe ? probeMs
+    : Math.max(flex ? GEMINI_FLEX_TIMEOUT_MS : config.requestTimeoutMs, timeoutFloorMs);
   const wantsStream = body.stream === true || Array.isArray(body.contents) || !!body.request?.contents;
   arm(wantsStream ? firstMs : fullMs, wantsStream ? "First response timeout" : "Response deadline exceeded");
 
   try {
-    const task = Promise.resolve().then(() => execute(controller.signal, {
+    const requestPolicy = {
       maxRetries: 0,
       headersTimeoutMs: firstMs,
       strictCompletion: true,
-    }));
+      ...(timeoutFloorMs ? { headersTimeoutFloorMs: timeoutFloorMs } : {}),
+    };
+    const task = Promise.resolve().then(() => execute(controller.signal, requestPolicy));
     task.then((late) => {
       if (controller.signal.aborted && late?.body && !late.body.locked) late.body.cancel().catch(() => {});
     }, () => {});

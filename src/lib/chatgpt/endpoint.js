@@ -1,7 +1,7 @@
 import { getSettings, getCombos, getModelAliases, validateApiKey } from "@/lib/localDb";
 import { chatGPTManifest, selectedModels, codexModelId } from "./models";
 import { prepareCompactionInput } from "./compact";
-import { runChatGPTCompaction } from "./compactionRunner";
+import { COMPACTION_PART_TIMEOUT_MS, runChatGPTCompaction } from "./compactionRunner";
 import { withChatGPTReasoning } from "./reasoning";
 import { hasHostedWebSearch, resolveWebSearchModel, runWebSearchLoop } from "./tools.js";
 
@@ -46,12 +46,19 @@ export async function routeChatGPTResponse(request, handleChat, compact = false)
   body = { ...prepared.body, model: selected.id };
   const forwarded = new Headers({ "content-type": "application/json", authorization: `Bearer ${key}` });
   // Construct a fresh request; never copy account IDs, cookies or OAuth headers.
-  const invoke = (payload, signal) => handleChat(new Request(request.url, {
-    method: "POST", headers: forwarded, body: JSON.stringify(payload), signal,
-  }));
+  const invoke = (payload, signal, options) => {
+    const routed = new Request(request.url, {
+      method: "POST", headers: forwarded, body: JSON.stringify(payload), signal,
+    });
+    return options ? handleChat(routed, null, options) : handleChat(routed);
+  };
   if (compact || v2) {
     return runChatGPTCompaction({
-      body, contextWindow: selected.contextWindow, invoke, signal: request.signal,
+      body, contextWindow: selected.contextWindow,
+      invoke: (payload, signal) => invoke(payload, signal, {
+        comboRequestTimeoutFloorMs: COMPACTION_PART_TIMEOUT_MS,
+      }),
+      signal: request.signal,
       apiKey: key, model: codexModelId(selected.id), v2, stream,
     });
   }

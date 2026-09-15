@@ -34,7 +34,7 @@ import { runComboModelExecution, comboRetryAfter } from "open-sse/services/combo
  * Supports: OpenAI, Claude, Gemini, OpenAI Responses API formats
  * Format detection and translation handled by translator
  */
-export async function handleChat(request, clientRawRequest = null) {
+export async function handleChat(request, clientRawRequest = null, requestOptions = {}) {
   if (request.signal?.aborted) return errorResponse(499, "Request aborted");
   let body;
   try {
@@ -97,6 +97,9 @@ export async function handleChat(request, clientRawRequest = null) {
   if (bypassResponse) return bypassResponse.response || bypassResponse;
 
   const requiredCapabilities = detectRequiredCapabilities(body);
+  const rootExecution = Number.isSafeInteger(requestOptions?.comboRequestTimeoutFloorMs)
+    && requestOptions.comboRequestTimeoutFloorMs > 0
+    ? { comboRequestTimeoutFloorMs: requestOptions.comboRequestTimeoutFloorMs } : {};
 
   // Check if model is a combo (has multiple models with fallback)
   const comboModels = await getComboModels(modelStr);
@@ -120,7 +123,9 @@ export async function handleChat(request, clientRawRequest = null) {
             const { tools, tool_choice, ...cleanBody } = clientRawRequest.body || {};
             cleanRawReq = { ...clientRawRequest, body: cleanBody };
           }
-          return handleSingleModelChat(b, m, cleanRawReq, request, apiKey, { ...execution, combo: true, visitedCombos: [modelStr] });
+          return handleSingleModelChat(b, m, cleanRawReq, request, apiKey, {
+            ...rootExecution, ...execution, combo: true, visitedCombos: [modelStr],
+          });
         },
         log,
         comboName: modelStr,
@@ -137,7 +142,9 @@ export async function handleChat(request, clientRawRequest = null) {
       signal: request.signal,
       models: augmentedModels,
       handleSingleModel: withCapacityAdapterStripping(
-        (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, { combo: true, visitedCombos: [modelStr] }),
+        (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, {
+          ...rootExecution, combo: true, visitedCombos: [modelStr],
+        }),
         adapterAdded
       ),
       log,
@@ -161,7 +168,9 @@ export async function handleChat(request, clientRawRequest = null) {
       handleSingleModel: withCapacityAdapterStripping(
         // Only configured adapter additions belong to Combo recovery. The
         // explicitly requested original model retains its direct-request policy.
-        (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, { combo: adapterAdded.includes(m), visitedCombos: [] }),
+        (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, {
+          ...rootExecution, combo: adapterAdded.includes(m), visitedCombos: [],
+        }),
         adapterAdded
       ),
       log,
@@ -170,7 +179,7 @@ export async function handleChat(request, clientRawRequest = null) {
     });
   }
 
-  return handleSingleModelChat(body, modelStr, clientRawRequest, request, apiKey);
+  return handleSingleModelChat(body, modelStr, clientRawRequest, request, apiKey, rootExecution);
 }
 
 /**
@@ -254,6 +263,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     const healthModel = flex ? variant.baseModelId + GEMINI_FLEX_SUFFIX + variant.modelId.slice(variant.baseModelId.length) : model;
     return runComboModelExecution({
       provider, model: healthModel, body, flex, signal: request?.signal, probe: !!execution.probe, log,
+      requestTimeoutFloorMs: execution.comboRequestTimeoutFloorMs,
       execute: (signal, requestPolicy) => handleSingleModelChat(body, modelStr, clientRawRequest, request, apiKey, {
         ...execution, guarded: true, signal, requestPolicy, resolvedModelInfo: modelInfo,
       }),

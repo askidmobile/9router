@@ -90,6 +90,21 @@ describe("Combo member execution admission and deadlines", () => {
     expect(execute.mock.calls[0][0].aborted).toBe(false);
   });
 
+  it("extends both header and full-response deadlines for an internal long-running request", async () => {
+    execute.mockImplementation(async () => {
+      await new Promise(resolve => setTimeout(resolve, 180));
+      return Response.json(completion);
+    });
+    const task = run({ requestTimeoutFloorMs: 200 });
+    await vi.advanceTimersByTimeAsync(181);
+    const response = await task;
+    expect(response.status).toBe(200);
+    expect(execute).toHaveBeenCalledExactlyOnceWith(expect.any(AbortSignal), {
+      maxRetries: 0, headersTimeoutMs: 200, headersTimeoutFloorMs: 200, strictCompletion: true,
+    });
+    expect(health.freeze).not.toHaveBeenCalled();
+  });
+
   it("aborts a first-response timeout before headers and freezes once with 504", async () => {
     execute.mockImplementation(() => new Promise(() => {}));
     const task = run({ body: { stream: true } });

@@ -147,9 +147,12 @@ export class BaseExecutor {
 
       // Abort if upstream doesn't return response headers within connection timeout
       const connectCtrl = new AbortController();
-      const timeoutMs = requestPolicy?.headersTimeoutMs
+      const cappedTimeoutMs = requestPolicy?.headersTimeoutMs
         ? Math.min(this.getRequestTimeoutMs(model, transformedBody), requestPolicy.headersTimeoutMs)
         : this.getRequestTimeoutMs(model, transformedBody);
+      const timeoutFloorMs = Number.isSafeInteger(requestPolicy?.headersTimeoutFloorMs)
+        && requestPolicy.headersTimeoutFloorMs > 0 ? requestPolicy.headersTimeoutFloorMs : 0;
+      const timeoutMs = Math.max(cappedTimeoutMs, timeoutFloorMs);
       const connectTimer = setTimeout(() => connectCtrl.abort(new Error("fetch connect timeout")), timeoutMs);
       const mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
 
@@ -157,6 +160,10 @@ export class BaseExecutor {
         const bodyStr = JSON.stringify(transformedBody);
         const fetchT0 = Date.now();
         dbg("FETCH", `${this.provider.toUpperCase()} → ${url} | body=${bodyStr.length}B | connectTimeout=${timeoutMs}ms`);
+        const dispatcherTimeouts = this.getDispatcherTimeouts(model, transformedBody);
+        if (timeoutFloorMs) {
+          dispatcherTimeouts.headersTimeout = Math.max(dispatcherTimeouts.headersTimeout || 0, timeoutFloorMs);
+        }
         const response = await proxyAwareFetch(url, {
           method: "POST",
           headers,
@@ -164,7 +171,7 @@ export class BaseExecutor {
           signal: mergedSignal,
           // The dispatcher has its own timeout; a longer abort timer alone
           // cannot allow queued inference to wait beyond that limit.
-          ...this.getDispatcherTimeouts(model, transformedBody),
+          ...dispatcherTimeouts,
         }, proxyOptions);
         clearTimeout(connectTimer);
         throwIfAborted(signal);
