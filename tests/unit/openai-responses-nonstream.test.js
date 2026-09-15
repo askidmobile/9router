@@ -10,6 +10,7 @@ const { FORMATS } = await import("../../open-sse/translator/formats.js");
 const { translateNonStreamingResponse } = await import("../../open-sse/handlers/chatCore/nonStreamingHandler.js");
 const { handleForcedSSEToJson } = await import("../../open-sse/handlers/chatCore/sseToJsonHandler.js");
 const { filterUsageForFormat } = await import("../../open-sse/utils/usageTracking.js");
+const { openAICompletionToResponses } = await import("../../open-sse/translator/response/openai-responses-json.js");
 
 describe("native provider JSON for a Responses client", () => {
   it.each([FORMATS.GEMINI, FORMATS.ANTIGRAVITY, FORMATS.GEMINI_CLI, FORMATS.VERTEX])("completes both translation stages for %s", format => {
@@ -203,5 +204,34 @@ describe("forced-SSE JSON path for a Responses-API client behind a chat upstream
       incomplete_details: { reason: "max_output_tokens" },
       output: [{ type: "reasoning", summary: [{ text: "One token" }] }],
     });
+  });
+});
+
+// Providers occasionally emit a content array holding a null or bare-string block.
+// The converter used to throw on it, and Combo reported that crash as an opaque
+// "Invalid completion response" while freezing a provider that had answered.
+describe("Chat -> Responses conversion survives ragged provider content", () => {
+  it("does not throw on null or malformed content blocks", () => {
+    const out = openAICompletionToResponses({
+      id: "chatcmpl-1", model: "deepseek-flash",
+      choices: [{ finish_reason: "stop", message: {
+        role: "assistant",
+        content: [null, { type: "text", text: "hi" }, "loose", { type: "image_url" }],
+      } }],
+      usage: { prompt_tokens: 5, completion_tokens: 2 },
+    });
+
+    expect(out.status).toBe("completed");
+    const msg = out.output.find((x) => x.type === "message");
+    expect(msg.content[0].text).toBe("hi");
+  });
+
+  it("does not throw when content is null", () => {
+    const out = openAICompletionToResponses({
+      id: "chatcmpl-2", model: "deepseek-flash",
+      choices: [{ finish_reason: "stop", message: { role: "assistant", content: null,
+        reasoning_content: "thought" } }],
+    });
+    expect(out.output.map((x) => x.type)).toEqual(["reasoning"]);
   });
 });

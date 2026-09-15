@@ -501,3 +501,25 @@ describe("Combo streaming output guard", () => {
     expect(upstream.cancel).toHaveBeenCalledTimes(1);
   });
 });
+
+// A defect in our own translation layer used to surface as the opaque
+// "Invalid completion response" AND freeze a provider that was answering fine.
+describe("unexpected execution errors never freeze a working provider", () => {
+  it("reports the real error and leaves the circuit closed", async () => {
+    const frozen = [];
+    const health = {
+      freeze: async (x) => { frozen.push(x); },
+      get: async () => null,
+    };
+    const response = await runComboModelExecution({
+      provider: "ollama", model: "deepseek-v4.1-flash", body: { stream: false },
+      execute: () => { throw new TypeError("Cannot read properties of null (reading 'type')"); },
+      health, log: { warn() {}, info() {} },
+    });
+
+    expect(response.status).toBe(502);
+    const body = await response.json();
+    expect(body.error?.message || body.message || "").toContain("Cannot read properties of null");
+    expect(frozen).toHaveLength(0);
+  });
+});

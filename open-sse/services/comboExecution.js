@@ -133,8 +133,9 @@ export function createComboStreamInspector(maxBufferedBytes = COMBO_HEALTH_CONFI
     if (!data) return;
     if (data === "[DONE]") { state.terminal = true; state.definitiveTerminal = true; return; }
     let json;
-    try { json = JSON.parse(data); } catch { throw new Error("Invalid completion response"); }
-    if (hasFailure(json)) throw new Error("Upstream stream failed");
+    try { json = JSON.parse(data); }
+    catch { throw new ComboCompletionError({ reason: "Upstream stream sent malformed data", healthFailure: true }); }
+    if (hasFailure(json)) throw new ComboCompletionError({ reason: "Upstream stream reported a failure", healthFailure: true });
     const content = hasContent(json) || json.choices?.some((c) => hasContent(c.delta || c.message || c.text)) ||
       json.candidates?.some((c) => hasContent(c.content)) || json.output?.some(hasContent);
     if (content) { state.meaningful = true; state.progress++; }
@@ -154,7 +155,9 @@ export function createComboStreamInspector(maxBufferedBytes = COMBO_HEALTH_CONFI
         frame(pending.slice(0, index));
         pending = pending.slice(index + 2);
       }
-      if (pending.length > maxBufferedBytes) throw new Error("Invalid completion response");
+      if (pending.length > maxBufferedBytes) {
+        throw new ComboCompletionError({ reason: "Upstream stream frame exceeded the buffer limit", healthFailure: true });
+      }
       if (done && pending.trim()) { frame(pending); pending = ""; }
       return state;
     },
@@ -272,7 +275,7 @@ export async function runComboModelExecution({
       return new Response(text, { status: response.status, headers: response.headers });
     }
 
-    if (!response.body) throw new Error("Invalid completion response");
+    if (!response.body) throw new ComboCompletionError({ reason: "Upstream stream had no body", healthFailure: true });
     reader = response.body.getReader();
     const inspector = createComboStreamInspector(config.maxBufferedBytes);
     const prefix = [];
@@ -284,15 +287,17 @@ export async function runComboModelExecution({
       const { value, done } = await wait(reader.read());
       inspector.push(value, done);
       if (value) { prefix.push(value); bufferedBytes += value.byteLength; }
-      if (bufferedBytes > config.maxBufferedBytes) throw new Error("Invalid completion response");
+      if (bufferedBytes > config.maxBufferedBytes) {
+        throw new ComboCompletionError({ reason: "Upstream sent no usable output within the buffer limit", healthFailure: true });
+      }
       if (inspector.state.definitiveTerminal) {
-        if (!inspector.state.meaningful) throw new Error("Stream ended without completion");
+        if (!inspector.state.meaningful) throw new ComboCompletionError({ reason: "Stream ended without completion", healthFailure: true });
         upstreamDone = true;
         break;
       }
       if (done) {
         upstreamDone = true;
-        if (!inspector.state.meaningful || !inspector.state.terminal) throw new Error("Stream ended without completion");
+        if (!inspector.state.meaningful || !inspector.state.terminal) throw new ComboCompletionError({ reason: "Stream ended without completion", healthFailure: true });
         break;
       }
     }
@@ -314,7 +319,7 @@ export async function runComboModelExecution({
           clearTimeout(timer);
           inspector.push(value, done);
           if (done) {
-            if (!inspector.state.terminal) throw new Error("Stream ended without completion");
+            if (!inspector.state.terminal) throw new ComboCompletionError({ reason: "Stream ended without completion", healthFailure: true });
             cleanup();
             out.close();
             return;
@@ -336,11 +341,17 @@ export async function runComboModelExecution({
   } catch (error) {
     const status = signal?.aborted && !isComboDeadlineError(signal.reason) ? 499 : timeoutReason ? 504 : 502;
     const completionError = error instanceof ComboCompletionError;
+    // Anything else escaping here is our own defect, not evidence about the
+    // provider: report what actually failed and leave its circuit closed.
     const reason = status === 499 ? "Request aborted" : timeoutReason ||
-      (completionError ? error.message : "Invalid completion response");
+      (completionError ? error.message : `Combo execution error: ${error?.message || error}`);
     try {
-      if (!completionError || error.healthFailure) await fail(status, reason);
+      // Timeouts and named upstream failures still open the circuit; a defect of
+      // ours is request-scoped and must not take a working provider offline.
+      const providerFailure = completionError ? error.healthFailure : !!timeoutReason;
+      if (providerFailure) await fail(status, reason);
       else log?.warn?.("COMBO", `Rejected ${provider}/${model} response without opening its circuit: ${reason}`);
+      if (!completionError && !timeoutReason && status !== 499) log?.warn?.("COMBO", `Unexpected ${provider}/${model} failure`, { stack: error?.stack });
     } finally { cancel(); cleanup(); }
     return errorResponse(status, reason);
   }
