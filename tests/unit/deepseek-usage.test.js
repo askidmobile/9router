@@ -76,20 +76,19 @@ describe("getUsageForProvider(deepseek)", () => {
       apiKey: "sk-ds-test",
     });
 
-    // Balance rows are unlimited-style: used = current balance (the headline
-    // number), total = 0 so the UI renders "N used · Unlimited" (6ad8bd83).
     expect(usage.quotas["Balance (USD)"]).toMatchObject({
-      used: 12.5,
-      total: 0,
+      used: 0,
+      total: 12.5,
       remainingPercentage: 100,
-      unlimited: true,
+      isCreditBalance: true,
+      currency: "USD",
     });
     expect(usage.quotas["Balance (USD)"].remaining).toBeUndefined();
     // Zero CNY still listed so user sees currency row
     expect(usage.quotas["Balance (CNY)"]).toMatchObject({
       used: 0,
       total: 0,
-      remainingPercentage: 100,
+      remainingPercentage: 0,
     });
   });
 
@@ -114,8 +113,7 @@ describe("getUsageForProvider(deepseek)", () => {
     });
 
     expect(usage.plan).toMatch(/insufficient|unavailable/i);
-    // Unavailability surfaces via plan; the balance row stays unlimited-style.
-    expect(usage.quotas["Balance (USD)"]).toMatchObject({ used: 0, unlimited: true });
+    expect(usage.quotas["Balance (USD)"].remainingPercentage).toBe(0);
   });
 
   it("returns message on missing key / 401", async () => {

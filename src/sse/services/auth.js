@@ -263,7 +263,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   }
   if (!shouldFallback) return { shouldFallback: false, cooldownMs: 0 };
 
-  const reason = typeof errorText === "string" ? errorText.slice(0, 100) : "Provider error";
+  const reason = typeof errorText === "string" ? errorText.slice(0, 200) : "Provider error";
   // 402 (credits/quota exhausted) is account-wide — the failed model is not
   // the culprit. Lock the whole connection (__all) so the router skips every
   // model on it until the credits situation changes.

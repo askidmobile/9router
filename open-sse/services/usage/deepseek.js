@@ -91,16 +91,15 @@ export async function getDeepseekUsage(apiKey = null, proxyOptions = null) {
     const quotas = {};
     for (const b of balances) {
       const total = Math.max(0, b.totalBalance);
-      // Credit pot: show full remaining against current balance; never set absolute
-      // `remaining` — QuotaTable treats it as a 0–100 percentage.
+      // Credit balance: show as "Credit: $X.XX USD" not a usage quota
       quotas[`Balance (${b.currency})`] = {
-        // used = current balance shown as an unlimited row (no denominator) —
-        // the number itself is what the user wants to see.
-        used: total,
-        total: 0,
-        remainingPercentage: 100,
+        used: 0,
+        total,
+        remainingPercentage: total > 0 ? 100 : 0,
         resetAt: null,
-        unlimited: true,
+        unlimited: false,
+        isCreditBalance: true,
+        currency: b.currency,
       };
     }
 
