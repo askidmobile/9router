@@ -73,6 +73,18 @@ describe("ChatGPT integration settings and catalog", () => {
 });
 
 describe("ChatGPT Responses production adapter", () => {
+  it.each([false, true])("forwards string input without requiring hosted search (stream=%s)", async stream => {
+    const response = Response.json({ status: "completed" });
+    const handler = vi.fn(async routed => {
+      expect(await routed.json()).toMatchObject({ model: "Coding", input: "Reply with OK.", stream });
+      return response;
+    });
+    expect(await routeChatGPTResponse(request({ model: "9router/Coding", input: "Reply with OK.", stream }), handler))
+      .toBe(response);
+    expect(handler).toHaveBeenCalledOnce();
+    expect(search.handleSearch).not.toHaveBeenCalled();
+  });
+
   it("routes to handleChat with only router auth and propagates the original stream", async () => {
     const source = new ReadableStream({ start(controller) {
       controller.enqueue(new TextEncoder().encode('event: response.output_text.delta\ndata: {"delta":"hello"}\n\n'));

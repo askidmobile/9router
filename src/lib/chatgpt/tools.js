@@ -30,7 +30,8 @@ function findHostedSearchTool(tools) {
 
 export function hasHostedWebSearch(body) {
   if (findHostedSearchTool(body?.tools)) return true;
-  return (body?.input || []).some(item => item?.type === "additional_tools" && findHostedSearchTool(item.tools));
+  return Array.isArray(body?.input)
+    && body.input.some(item => item?.type === "additional_tools" && findHostedSearchTool(item.tools));
 }
 
 export function prepareWebSearchRequest(body) {

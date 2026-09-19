@@ -125,6 +125,10 @@ try {
     assert.equal(result.status, 200, text.slice(0, 1500));
     return text;
   }
+  for (const stream of [false, true]) {
+    const simple = await completion("/responses", { input: "Reply with OK.", stream });
+    assert.match(simple, /QA_OK|QA_SUMMARY/, "Text input must reach the provider without a hosted-search error");
+  }
   const first = await completion("/responses", {
     input: [{ role: "user", content: "Read hello.txt" }], stream: true, reasoning: { effort: "max" },
     tools: [{ type: "function", name: "read_file", parameters: { type: "object", properties: { path: { type: "string" } }, required: ["path"] } }],
