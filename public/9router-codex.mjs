@@ -191,15 +191,75 @@ async function readConfig(filename) {
   catch (error) { if (error.code === "ENOENT") return ""; throw error; }
 }
 
-async function nativeCatalog(codexHome) {
-  const cached = await optionalJson(path.join(codexHome, "models_cache.json"));
-  if (cached?.models?.some(m => m.visibility === "list" && !m.slug.startsWith(PREFIX))) return cached.models.filter(m => !m.slug.startsWith(PREFIX));
-  for (const executable of ["/Applications/Codex.app/Contents/Resources/codex", "codex"]) {
+const CODEX_EXECUTABLES = [
+  "/Applications/ChatGPT.app/Contents/Resources/codex",
+  "/Applications/Codex.app/Contents/Resources/codex",
+  "codex",
+];
+
+// A custom model_catalog_json stops Codex refreshing models_cache.json. Read
+// the signed-in account's catalog directly instead of freezing native models
+// at the date the integration was enabled. Credentials never reach 9router,
+// redirects are not followed, and Codex remains responsible for token refresh.
+export async function fetchNativeCatalog(auth, clientVersion, { proxyEnv = {}, get = https.get } = {}) {
+  const target = new URL("https://chatgpt.com/backend-api/codex/models");
+  target.searchParams.set("client_version", clientVersion);
+  const agent = new https.Agent({ proxyEnv });
+  try {
+    return await new Promise((resolve, reject) => {
+      const request = get(target, { agent, signal: AbortSignal.timeout(15000), headers: {
+        accept: "application/json",
+        authorization: `Bearer ${auth.tokens.access_token}`,
+        "chatgpt-account-id": auth.tokens.account_id,
+        originator: "codex_cli_rs",
+        version: clientVersion,
+        "user-agent": `codex_cli_rs/${clientVersion}`,
+      } }, async response => {
+        if (response.statusCode !== 200) { response.resume(); reject(new Error("Native catalog refresh failed.")); return; }
+        try {
+          let size = 0; const chunks = [];
+          for await (const chunk of response) {
+            size += chunk.length;
+            if (size > 16 * 1024 * 1024) throw new Error("Native catalog is too large.");
+            chunks.push(Buffer.from(chunk));
+          }
+          resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+        } catch { reject(new Error("Invalid native catalog response.")); }
+      });
+      request.on("error", () => reject(new Error("Native catalog connection failed.")));
+    });
+  } finally { agent.destroy(); }
+}
+
+export async function nativeCatalog(codexHome, { proxyEnv = {}, run = exec, read = optionalJson, fetchCatalog = fetchNativeCatalog, warn = console.warn } = {}) {
+  const onlyNative = data => (Array.isArray(data) ? data : Array.isArray(data?.models) ? data.models : [])
+    .filter(m => typeof m?.slug === "string" && !m.slug.startsWith(PREFIX));
+  const usable = models => models.some(m => m.visibility === "list");
+  const cached = await read(path.join(codexHome, "models_cache.json")).catch(() => null);
+  const auth = await read(path.join(codexHome, "auth.json")).catch(() => null);
+  if (auth?.tokens?.access_token && auth?.tokens?.account_id) {
+    let version = cached?.client_version || "0.154.0";
+    for (const executable of CODEX_EXECUTABLES) {
+      try {
+        const { stdout } = await run(executable, ["--version"], { timeout: 5000, cwd: os.tmpdir() });
+        const match = stdout.match(/codex-cli ([\d][\w.+-]*)/);
+        if (match) { version = match[1]; break; }
+      } catch { /* Try the next installed Codex distribution. */ }
+    }
     try {
-      const { stdout } = await exec(executable, ["debug", "models", "--bundled"], { timeout: 15000, maxBuffer: 16 * 1024 * 1024, cwd: os.tmpdir() });
+      const models = onlyNative(await fetchCatalog(auth, version, { proxyEnv }));
+      if (usable(models)) return models;
+    } catch { /* An expired login or offline account must not destroy the existing catalog. */ }
+    warn("Could not refresh native Codex models from OpenAI; using the local catalog. Sign in to Codex and run sync again.");
+  }
+  const models = onlyNative(cached);
+  if (usable(models)) return models;
+  for (const executable of CODEX_EXECUTABLES) {
+    try {
+      const { stdout } = await run(executable, ["debug", "models", "--bundled"], { timeout: 15000, maxBuffer: 16 * 1024 * 1024, cwd: os.tmpdir() });
       const data = JSON.parse(stdout);
-      const models = Array.isArray(data) ? data : data.models;
-      if (models?.length) return models;
+      const models = onlyNative(data);
+      if (usable(models)) return models;
     } catch { /* Older Codex versions may not have this command. */ }
   }
   throw new Error("Native model catalog unavailable. Update Codex, sign in normally, open its model picker, then retry.");
@@ -237,10 +297,10 @@ function proxyEnvironment(previous) {
 function endpointFor(state) { return `http://127.0.0.1:${state.port}/${state.token}/v1`; }
 async function syncCatalog(state) {
   const manifest = await fetchManifest(state);
-  const native = await nativeCatalog(state.codexHome);
+  const native = await nativeCatalog(state.codexHome, { proxyEnv: state.proxyEnv });
   await atomicWrite(path.join(state.directory, "catalog.json"), json(mergeCatalog(native, manifest)));
   await atomicWrite(path.join(state.directory, "models.json"), json(manifest));
-  return manifest;
+  return { ...manifest, nativeModelCount: native.filter(m => m.visibility === "list").length };
 }
 
 const HOP_HEADERS = new Set(["host", "connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade", "content-length"]);
@@ -521,7 +581,7 @@ async function runMain(args) {
     if (!previous?.active) throw new Error("Enable the integration first.");
     assertOwnership(await readConfig(configPath), previous);
     const manifest = await syncCatalog(previous);
-    console.log(`Synced ${manifest.models.length} router models. Restart Codex to refresh its model picker.`);
+    console.log(`Synced ${manifest.models.length} router models and ${manifest.nativeModelCount} native models. Restart Codex to refresh its model picker.`);
     return;
   }
   if (process.platform !== "darwin") throw new Error("Automatic installation currently supports macOS only.");
@@ -541,7 +601,7 @@ async function runMain(args) {
     token: previous?.token || randomBytes(24).toString("hex"),
     plist: path.join(os.homedir(), "Library", "LaunchAgents", `${label}.plist`) };
   const manifest = await fetchManifest(state);
-  const native = await nativeCatalog(codexHome);
+  const native = await nativeCatalog(codexHome, { proxyEnv: state.proxyEnv });
   const text = await readConfig(configPath);
   const config = enableConfig(text, endpointFor(state), path.join(directory, "catalog.json"), native, previous);
   Object.assign(state, { original: config.original, applied: config.applied, nativeDefault: config.nativeDefault });
