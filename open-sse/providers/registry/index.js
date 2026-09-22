@@ -125,7 +125,12 @@ import p119 from "./selfhosted-embedding.js";
 import p120 from "./fish-audio.js";
 import p121 from "./alitp-intl.js";
 import p122 from "./xquik.js";
+import p126 from "./opencode-zen.js";
+import p127 from "./qoder-cn.js";
 export default [
+  p126,
+  p127,
+
   p0,
   p1,
   p2,

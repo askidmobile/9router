@@ -15,6 +15,7 @@ import { ROLE } from "../../translator/schema/index.js";
 import { openAICompletionToResponses } from "../../translator/response/openai-responses-json.js";
 import { throwIfAborted } from "../../utils/abort.js";
 import { isFailedComboCompletion } from "../../utils/comboUpstream.js";
+import { restoreToolNames } from "../../utils/opencodeFingerprint.js";
 
 function parseToolArguments(value) {
   if (!value) return {};
@@ -366,7 +367,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
 
   return {
     success: true,
-    response: new Response(JSON.stringify(translatedResponse), {
+    response: new Response(JSON.stringify(restoreToolNames(translatedResponse, toolNameMap)), {
       headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
     })
   };
