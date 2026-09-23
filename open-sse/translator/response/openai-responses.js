@@ -21,7 +21,7 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
   // Chat Completions may send usage in a choices: [] chunk after finish_reason.
   if (chunk.usage) state.responsesUsage = { ...state.responsesUsage, ...chunk.usage };
   if (!chunk.choices?.length) return [];
-  
+
   const events = [];
   const nextSeq = () => ++state.seq;
   
