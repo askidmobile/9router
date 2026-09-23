@@ -58,6 +58,7 @@ const PATTERN_THINKING = [
   // TokenRouter free-tier qwen rejects "high"/"max" — upstream enum is low/medium/xhigh
   // (400: "reasoning_effort must be low, medium, or xhigh").
   { provider: "tokenrouter", pattern: "*qwen3.8-max-free*", levels: ["low", "medium", "xhigh"] },
+  { pattern: "*mimo*v2.6*", levels: ["none", "low", "medium", "high", "xhigh"] },
   // codebuddy-cn per-model effort sets — the server's product-config payload
   // publishes `reasoning.supportedEfforts` per model. NOTE: the chat endpoint
   // accepts any level you send (probed none/minimal/low/medium/high/xhigh/max

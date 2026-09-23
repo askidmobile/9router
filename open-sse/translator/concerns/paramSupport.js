@@ -14,8 +14,6 @@ const STRIP_RULES = [
   { provider: "github", match: (m) => /claude/i.test(m) && !/claude.*(opus|sonnet).*4\.6/i.test(m), drop: ["thinking", "reasoning_effort"] },
   // Cloudflare Workers AI: content must be plain string, rejects OpenAI content-part array (#1926)
   { provider: "cloudflare-ai", flattenContent: true },
-  // MiMo Desktop preview accepts plain text; cloud models keep multimodal parts.
-  { provider: "xiaomi-mimo", match: /preview/i, flattenContent: true },
   // Ark enforces a lower ceiling than the advertised GLM-5.x capability.
   { provider: "volcengine-ark", match: /glm-5/i, maxOutputCap: 128000, clampToModelMaxOutput: true },
   // VolcEngine Ark caps the Kimi family at max_tokens <= 32768, but the model's
