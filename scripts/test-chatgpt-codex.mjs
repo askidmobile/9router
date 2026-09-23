@@ -60,7 +60,7 @@ export async function checkCodexCompaction(endpoint, manifest) {
       '[analytics]', 'enabled = false',
     ].join("\n") + "\n");
     const launch = async () => {
-      child = spawn(executable, ["app-server", "--stdio"], { env, cwd: directory, stdio: ["pipe", "pipe", "pipe"] });
+      child = spawn(executable, ["app-server", "--listen", "stdio://"], { env, cwd: directory, stdio: ["pipe", "pipe", "pipe"] });
       child.stderr.on("data", () => {});
       createInterface({ input: child.stdout }).on("line", line => {
         let message;

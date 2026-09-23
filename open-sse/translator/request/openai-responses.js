@@ -82,7 +82,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       }
 
       // Convert content: input_text → text, output_text → text, input_image → image_url
-      const content = Array.isArray(item.content)
+      let content = Array.isArray(item.content)
         ? item.content.map(c => {
           if (c.type === RESPONSES_ITEM.INPUT_TEXT) return { type: OPENAI_BLOCK.TEXT, text: c.text };
           if (c.type === RESPONSES_ITEM.OUTPUT_TEXT) return { type: OPENAI_BLOCK.TEXT, text: c.text };
@@ -93,6 +93,13 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
           return c;
         })
         : item.content;
+      // Codex replays compacted assistant summaries as output_text arrays.
+      // Chat providers that expect assistant strings must still receive the text;
+      // retain multimodal arrays without dropping their non-text parts.
+      if (item.role === ROLE.ASSISTANT && Array.isArray(content) && content.length > 0 &&
+          content.every(part => part?.type === OPENAI_BLOCK.TEXT && typeof part.text === "string")) {
+        content = content.map(part => part.text).join("\n");
+      }
       const msg = { role: item.role, content };
       // Attach buffered reasoning to assistant turn (required by xiaomi-mimo + store=false continuity)
       if (item.role === ROLE.ASSISTANT) attachPendingReasoning(msg);

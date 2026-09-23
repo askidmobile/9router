@@ -61,7 +61,7 @@ const fixture = http.createServer(async (req, res) => {
   const toolResult = body.messages?.some(message => message.role === "tool");
   const tool = !toolResult && body.tools?.some(item => item.function?.name === "read_file");
   // Codex adds environment/user context before the current user message.
-  const largeSeed = body.stream === true && /\bLARGE_COMPACT_SEED\b/.test(latestUserText);
+  const largeSeed = !largeSeedSent && /\bLARGE_COMPACT_SEED\b/.test(latestUserText);
   if (largeSeed) largeSeedSent = true;
   const summaryMarkers = [...new Set(userText.match(/(?:LARGE|RETRY)_FACT_(?:START|MIDDLE|END)/g) || [])];
   const truncateSummary = body.stream === false && userText.includes("RETRY_FACT_START") && Buffer.byteLength(userText) > 130000;
@@ -72,19 +72,20 @@ const fixture = http.createServer(async (req, res) => {
       ? "LARGE_FACT_START\n" + "Build log: checked app.js successfully.\n".repeat(15000) + "\nLARGE_FACT_MIDDLE\n" + "Test log: confirmed unchanged behavior.\n".repeat(15000) + "\nLARGE_FACT_END"
       : body.stream === false ? "QA_SUMMARY: read hello.txt; continue the task. " + summaryMarkers.join(" ") : "QA_OK" };
   const choice = { index: 0, message, finish_reason: truncateSummary ? "length" : tool ? "tool_calls" : "stop" };
+  const autoSeed = !autoHighTokensSent && body.messages?.some(message => message.role === "user" && JSON.stringify(message.content).includes("AUTO_COMPACT_SEED"));
+  if (autoSeed) autoHighTokensSent = true;
+  const usage = { prompt_tokens: autoSeed ? 300000 : 20, completion_tokens: 10, total_tokens: autoSeed ? 300010 : 30 };
   if (body.stream) {
-    const autoSeed = !autoHighTokensSent && body.messages?.some(message => message.role === "user" && JSON.stringify(message.content).includes("AUTO_COMPACT_SEED"));
-    if (autoSeed) autoHighTokensSent = true;
     res.writeHead(200, { "content-type": "text/event-stream" });
     const delta = { ...message };
     if (delta.tool_calls) delta.tool_calls[0].index = 0;
     res.write(`data: ${JSON.stringify({ id: "chatcmpl-qa", object: "chat.completion.chunk", model: body.model, choices: [{ index: 0, delta, finish_reason: null }] })}\n\n`);
     res.write(`data: ${JSON.stringify({ id: "chatcmpl-qa", object: "chat.completion.chunk", choices: [{ index: 0, delta: {}, finish_reason: choice.finish_reason }] })}\n\n`);
-    res.write(`data: ${JSON.stringify({ id: "chatcmpl-qa", object: "chat.completion.chunk", choices: [], usage: { prompt_tokens: autoSeed ? 300000 : 20, completion_tokens: 10, total_tokens: autoSeed ? 300010 : 30 } })}\n\n`);
+    res.write(`data: ${JSON.stringify({ id: "chatcmpl-qa", object: "chat.completion.chunk", choices: [], usage })}\n\n`);
     return res.end("data: [DONE]\n\n");
   }
   res.setHeader("content-type", "application/json");
-  res.end(JSON.stringify({ id: "chatcmpl-qa", object: "chat.completion", model: body.model, choices: [choice], usage: { prompt_tokens: 20, completion_tokens: 10, total_tokens: 30 } }));
+  res.end(JSON.stringify({ id: "chatcmpl-qa", object: "chat.completion", model: body.model, choices: [choice], usage }));
 });
 fixture.listen(0, "127.0.0.1");
 await once(fixture, "listening");

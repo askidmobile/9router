@@ -224,3 +224,19 @@ describe("OpenAI Chat stream → Codex custom_tool_call", () => {
     });
   });
 });
+
+// Real Codex replays portable summaries as assistant output_text blocks.
+describe("Codex assistant history replay", () => {
+  it("retains text from compacted assistant arrays for Chat providers", () => {
+    const result = openaiResponsesToOpenAIRequest("test", { input: [
+      { type: "message", role: "assistant", content: [{ type: "output_text", text: "QA_SUMMARY" }, { type: "output_text", text: "continue here" }] },
+    ] });
+    expect(result.messages[0]).toEqual({ role: "assistant", content: "QA_SUMMARY\ncontinue here" });
+  });
+  it("retains non-text assistant blocks", () => {
+    const result = openaiResponsesToOpenAIRequest("test", { input: [
+      { type: "message", role: "assistant", content: [{ type: "output_text", text: "Image" }, { type: "input_image", image_url: "https://example.invalid/image.png" }] },
+    ] });
+    expect(result.messages[0].content).toEqual([{ type: "text", text: "Image" }, { type: "image_url", image_url: { url: "https://example.invalid/image.png", detail: "auto" } }]);
+  });
+});
