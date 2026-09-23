@@ -1,5 +1,6 @@
 import { getSettings, getCombos, getModelAliases, validateApiKey } from "@/lib/localDb";
-import { chatGPTManifest, selectedModels, codexModelId } from "./models";
+import { buildModelsList } from "@/app/api/v1/models/route";
+import { chatGPTManifest, selectedModels, refreshSelectedModels, codexModelId } from "./models";
 import { prepareCompactionInput } from "./compact";
 import { runChatGPTCompaction } from "./compactionRunner";
 import { withChatGPTReasoning } from "./reasoning";
@@ -19,8 +20,11 @@ export async function authorizeChatGPT(request) {
 
 export async function getChatGPTManifest(request) {
   if (!await authorizeChatGPT(request)) return jsonError("A valid 9router API key is required.", 401);
-  const [settings, combos, aliases] = await Promise.all([getSettings(), getCombos(), getModelAliases()]);
-  const models = await withChatGPTReasoning(selectedModels(settings), combos, aliases);
+  const [settings, combos, aliases, available] = await Promise.all([
+    getSettings(), getCombos(), getModelAliases(), buildModelsList(["llm"]),
+  ]);
+  const current = refreshSelectedModels(selectedModels(settings), available);
+  const models = await withChatGPTReasoning(current, combos, aliases);
   return Response.json(chatGPTManifest(models), { headers });
 }
 

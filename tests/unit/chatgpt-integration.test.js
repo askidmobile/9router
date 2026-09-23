@@ -64,6 +64,26 @@ describe("ChatGPT integration settings and catalog", () => {
     expect(second.models[2].reasoningLevels).toEqual(["low", "high", "max"]);
     expect(db.updateSettings).not.toHaveBeenCalled();
   });
+  it("refreshes vision and context for saved selections from the live catalog", async () => {
+    db.getSettings.mockResolvedValue({ chatgptIntegration: { models: [{
+      id: "gpt-6-astra", name: "old name", contextWindow: 32768, imageInput: false,
+    }, {
+      id: "temporarily-missing", name: "Missing", contextWindow: 65536, imageInput: true,
+    }] } });
+    db.buildModelsList.mockImplementation(async kind => kind?.[0] === "webSearch" ? [] : [{
+      id: "gpt-6-astra", name: "Astra", context_length: 400000,
+      capabilities: { tools: true, vision: true },
+    }]);
+
+    const data = await (await getChatGPTManifest(request({}))).json();
+    expect(data.models[0]).toMatchObject({
+      id: "gpt-6-astra", name: "Astra", contextWindow: 400000, imageInput: true,
+    });
+    expect(data.models[1]).toMatchObject({
+      id: "temporarily-missing", contextWindow: 65536, imageInput: true,
+    });
+    expect(db.updateSettings).not.toHaveBeenCalled();
+  });
   it.each([{ authorization: "Bearer invalid" }, { authorization: "" }, { "chatgpt-account-id": "account" }])("rejects non-router credentials %j", async headers => {
     expect((await getChatGPTManifest(request({}, headers))).status).toBe(401);
     const handler = vi.fn();

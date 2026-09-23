@@ -169,16 +169,25 @@ compaction uses more inference calls and its quality still depends on the model;
 the non-streaming legacy endpoint remains subject to client/proxy timeouts.
 Returning an ordinary assistant message causes `expected exactly one compaction
 output item, got 0`. A summary that remains empty or incomplete after bounded
-retries returns an error before replacing history. A new task is recommended when changing providers:
-encrypted reasoning and opaque response IDs
-from one backend are not portable to another. Requests containing
-`previous_response_id` or `item_reference` are rejected with an actionable error.
+retries returns an error before replacing history. The current helper transfers inline conversation history when switching between
+native and router models. It removes backend-owned item IDs from the outgoing
+copy while preserving messages, tool call IDs, arguments and results; saved
+Codex history is not rewritten. Router compaction summaries are opened locally
+using the same router API key. Native encrypted summaries are exported to
+portable text by the original OpenAI backend using the existing native account;
+only that text reaches 9router. Export has a two-minute deadline and requires a
+completed response. An unreadable or incomplete summary fails closed with HTTP
+409 instead of discarding history. Standalone `previous_response_id` and
+`item_reference` values still require their original backend and are rejected
+on the router route.
 Model quality and tool reliability still depend on the selected upstream. Models
 explicitly declaring no tool support cannot be selected. Unknown context limits
 use a conservative 32,768-token catalog entry; known limits come from `/v1/models`.
 
 Native catalog entries remain intact, including reasoning levels and service
-tiers. Added entries expose the provider's supported reasoning levels; Combos
+tiers. Catalog refresh reads the current native Codex catalog independently of
+the merged integration catalog, so newly available native models are discovered
+without freezing the picker at the installation-time list. Added entries expose the provider's supported reasoning levels; Combos
 use the intersection across all members, including nested Combos and aliases.
 Added entries advertise Codex's hosted search tool. When a model invokes it,
 the ChatGPT Responses adapter replaces the nameless hosted declaration with a
@@ -198,7 +207,7 @@ helper, run the dashboard install command again; it keeps the saved key and
 original configuration backup and refreshes the catalog. `sync` alone refreshes
 models without upgrading the installed helper. Restart Codex after the update.
 Entries retain generic tool metadata
-and no native-only speed tiers or built-in search capability.
+without advertising native-only speed tiers.
 
 GLM-5.3 and GLM-5.3-FLASH support `low`, `high`, and `max`; disabling reasoning is
 not supported by the native Z.AI API. See [Z.AI thinking documentation](https://docs.z.ai/guides/capabilities/thinking).
@@ -238,3 +247,13 @@ do not establish generation quality for every real provider or production deploy
 - [Codex 0.154 compact response parser](https://github.com/openai/codex/blob/rust-v0.154.0/codex-rs/codex-api/src/endpoint/compact.rs)
 - [Codex 0.154 compaction v2 validation](https://github.com/openai/codex/blob/rust-v0.154.0/codex-rs/core/src/compact_remote_v2.rs)
 - [Node.js HTTP proxy support](https://nodejs.org/api/http.html#built-in-proxy-support)
+
+## Dashboard language
+
+The ChatGPT page follows the language selected in the dashboard header. Russian
+copy covers instructions, controls, placeholders, accessibility labels, save
+notifications and known API validation errors; English remains the fallback for
+untranslated strings. Language changes keep unsaved model selections and search
+text. Model IDs, shell commands, environment variables and installer prompts
+remain verbatim. React renders the translated content and interpolated links;
+the legacy DOM translator skips this page to avoid rewriting React-owned text.

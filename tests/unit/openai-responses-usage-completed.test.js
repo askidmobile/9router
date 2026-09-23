@@ -99,11 +99,11 @@ const EXPECTED_USAGE = {
   output_tokens: 37,
   total_tokens: 921,
   input_tokens_details: { cached_tokens: 256 },
+  output_tokens_details: { reasoning_tokens: 0 },
 };
 
 // Claude-shaped stream with NO usage anywhere: the only way the client gets a
-// terminal event is the finish_reason branch, because the pivot never reaches
-// flushEvents() with the terminal null chunk.
+// terminal event must also survive the pivot and its explicit Responses flush.
 const CLAUDE_CHUNKS = [
   { type: "message_start", message: { id: "msg_1", model: "claude-x" } },
   { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },

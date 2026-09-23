@@ -503,7 +503,7 @@ export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, p
     provider,
     reqLogger,
     toolNameMap,
-    customToolNames, toolNamespaces,
+    customToolNames,
     toolNamespaces,
     model,
     connectionId,

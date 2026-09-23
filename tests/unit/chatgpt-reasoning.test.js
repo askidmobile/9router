@@ -5,7 +5,7 @@ import { applyThinking } from "../../open-sse/translator/concerns/thinkingUnifie
 import { getCapabilitiesForModel } from "../../open-sse/providers/capabilities.js";
 
 describe("ChatGPT reasoning across provider routes", () => {
-  it.each(["glm/glm-5.3", "glm/glm-5.3-flash", "cmc/zai-org/GLM-5.3"])("exposes real GLM effort levels for %s", async id => {
+  it.each(["glm/glm-5.3", "glm/glm-5.3-flash", "openrouter/z-ai/glm-5.3"])("exposes real GLM effort levels for %s", async id => {
     const [model] = await withChatGPTReasoning([{ id }]);
     expect(model.reasoningLevels).toEqual(["low", "high", "max"]);
     expect(model.defaultReasoningLevel).toBe("high");
