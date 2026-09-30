@@ -1,0 +1,432 @@
+{
+  "date": "2026-09-30",
+  "upstreamRevision": "f01fb909e37189008080632ddaf404f096345cde",
+  "prRevision": "a369be29cce1f9518bef46a26382259fbab9e1e0",
+  "forkRevision": "e58eedbc865ed3ac0d33865fb35aa46c6fbcb7a0",
+  "nodeVersion": "v26.7.0",
+  "vitestVersion": "4.1.10",
+  "sameOriginalFailureNames": true,
+  "sameRepeatFailureNames": true,
+  "excludedOriginalFailure": [
+    "tests/unit/mimo-free.live.test.js",
+    "MiMo Free anti-abuse gate (live) chat WITH Chrome User-Agent → 200"
+  ],
+  "categories": [
+    {
+      "id": "stale_expectation",
+      "label": "Устаревшее ожидание контракта или политики",
+      "count": 63
+    },
+    {
+      "id": "invalid_mock",
+      "label": "Мок не соответствует действительному пути выполнения",
+      "count": 8
+    },
+    {
+      "id": "retired_transport",
+      "label": "Тест удалённого в fork транспорта CommandCode",
+      "count": 4
+    },
+    {
+      "id": "inverted_expected_failure",
+      "label": "it.fails стал красным после исправления поведения",
+      "count": 2
+    },
+    {
+      "id": "fixed_upstream_defect",
+      "label": "Реальный дефект upstream уже исправлен в fork",
+      "count": 3
+    },
+    {
+      "id": "usage_collision",
+      "label": "Потеря самостоятельных событий usage остаётся в fork",
+      "count": 3
+    },
+    {
+      "id": "disabled_feature",
+      "label": "Автоподбор Combo по web_search явно отключён",
+      "count": 1
+    },
+    {
+      "id": "external_live_failure",
+      "label": "Нестабильный внешний live endpoint MiMo",
+      "count": 1
+    }
+  ],
+  "original": {
+    "upstream": {
+      "total": 2889,
+      "passedIncludingExpectedFailures": 2745,
+      "failedAssertions": 85,
+      "skipped": 59,
+      "files": 294,
+      "success": false
+    },
+    "pr": {
+      "total": 3046,
+      "passedIncludingExpectedFailures": 2902,
+      "failedAssertions": 85,
+      "skipped": 59,
+      "files": 304,
+      "success": false
+    },
+    "fork": {
+      "total": 3501,
+      "passedIncludingExpectedFailures": 3445,
+      "failedAssertions": 0,
+      "skipped": 56,
+      "files": 336,
+      "success": true
+    }
+  },
+  "repeat": {
+    "upstream": {
+      "total": 2887,
+      "passedIncludingExpectedFailures": 2744,
+      "failedAssertions": 84,
+      "skipped": 59,
+      "files": 293,
+      "success": false
+    },
+    "pr": {
+      "total": 3044,
+      "passedIncludingExpectedFailures": 2901,
+      "failedAssertions": 84,
+      "skipped": 59,
+      "files": 303,
+      "success": false
+    },
+    "fork": {
+      "total": 3499,
+      "passedIncludingExpectedFailures": 3445,
+      "failedAssertions": 0,
+      "skipped": 54,
+      "files": 335,
+      "success": true
+    }
+  },
+  "sources": [
+    {
+      "filename": "upstream-tests.json",
+      "sha256": "b70dcfe05b40b3ac2f7ebe2f8f5d53d09a2cade83c89f255f228ecf53ecbc101"
+    },
+    {
+      "filename": "pr-tests-final.json",
+      "sha256": "6cdd7b1c5e068e0d4df660d24d4d00b8c63f7dd6769ca7c9fa586f3bde60840f"
+    },
+    {
+      "filename": "verified-tests.json",
+      "sha256": "7e30d84a1198a403e88cb7ee80d5585f8e8d705ae99c47e5f2d4715f93a708e4"
+    },
+    {
+      "filename": "upstream.json",
+      "sha256": "90347265ab0728bd7f96387781742ea4428742a625e350f855df6823f22c843f"
+    },
+    {
+      "filename": "pr.json",
+      "sha256": "ffef8a39e5a8b6b72ab6f958abae1d87b855b02c27881b03e4852fb28b82003a"
+    },
+    {
+      "filename": "fork.json",
+      "sha256": "33220f230462aa6d1bb81232e5859f9ae02548f9f9e5fb61001e6774d6a92049"
+    }
+  ],
+  "suiteErrorsBeyond85": [
+    {
+      "file": "tests/auth/saml.test.js",
+      "error": "No test suite found in file /private/tmp/9router-upstream-baseline-20260930/tests/auth/saml.test.js"
+    },
+    {
+      "file": "tests/unit/cline-auth.test.js",
+      "error": "No test suite found in file /private/tmp/9router-upstream-baseline-20260930/tests/unit/cline-auth.test.js"
+    },
+    {
+      "file": "tests/unit/db-benchmark.test.js",
+      "error": "Cannot find package 'lowdb' imported from /private/tmp/9router-upstream-baseline-20260930/tests/unit/db-benchmark.test.js"
+    },
+    {
+      "file": "tests/unit/embeddings.cloud.test.js",
+      "error": "Cannot find module '/cloud/src/handlers/embeddings.js' imported from /private/tmp/9router-upstream-baseline-20260930/tests/unit/embeddings.cloud.test.js"
+    },
+    {
+      "file": "tests/unit/kimchi-strip-reasoning.test.js",
+      "error": "No test suite found in file /private/tmp/9router-upstream-baseline-20260930/tests/unit/kimchi-strip-reasoning.test.js"
+    },
+    {
+      "file": "tests/unit/kimchi.test.js",
+      "error": "No test suite found in file /private/tmp/9router-upstream-baseline-20260930/tests/unit/kimchi.test.js"
+    }
+  ],
+  "nativeNodeTestWithAliases": {
+    "tests": 38,
+    "passed": 37,
+    "failed": 1,
+    "failure": "kimchi.category expects oauth, actual freeTier"
+  },
+  "forkExpectedFailureCases": 13,
+  "runtimeProbes": {
+    "upstream": {
+      "root": "/private/tmp/9router-upstream-baseline-20260930",
+      "dataDir": "/var/folders/gl/2__5nbtj72d05h5zxlcsyb9m0000gn/T/9router-usage-audit-MJ2Jj3",
+      "nodeVersion": "v26.7.0",
+      "sqliteDriver": "node:sqlite",
+      "scenarios": [
+        {
+          "label": "different_requests_same_millisecond",
+          "submittedIndependentRequests": 2,
+          "stored": 1,
+          "lost": 1
+        },
+        {
+          "label": "100_different_requests_same_millisecond",
+          "submittedIndependentRequests": 100,
+          "stored": 1,
+          "lost": 99
+        },
+        {
+          "label": "different_milliseconds_control",
+          "submittedIndependentRequests": 100,
+          "stored": 100,
+          "lost": 0
+        },
+        {
+          "label": "production_saveUsageStats_same_millisecond",
+          "submittedIndependentRequests": 2,
+          "stored": 1,
+          "lost": 1
+        }
+      ],
+      "privacy": [
+        {
+          "period": "24h",
+          "exposesFakeRawKey": true
+        },
+        {
+          "period": "today",
+          "exposesFakeRawKey": true
+        },
+        {
+          "period": "7d",
+          "exposesFakeRawKey": true
+        },
+        {
+          "period": "all",
+          "exposesFakeRawKey": true
+        }
+      ],
+      "translation": {
+        "preservesAssistantReasoning": false,
+        "glm52RequestedEffort": "low",
+        "glm52TransmittedEffort": null,
+        "comboDetectsWebSearch": false
+      }
+    },
+    "fork": {
+      "root": "/Volumes/Askid Dev/Projects/Routers/9router",
+      "dataDir": "/var/folders/gl/2__5nbtj72d05h5zxlcsyb9m0000gn/T/9router-usage-audit-T9HEee",
+      "nodeVersion": "v26.7.0",
+      "sqliteDriver": "node:sqlite",
+      "scenarios": [
+        {
+          "label": "different_requests_same_millisecond",
+          "submittedIndependentRequests": 2,
+          "stored": 1,
+          "lost": 1
+        },
+        {
+          "label": "100_different_requests_same_millisecond",
+          "submittedIndependentRequests": 100,
+          "stored": 1,
+          "lost": 99
+        },
+        {
+          "label": "different_milliseconds_control",
+          "submittedIndependentRequests": 100,
+          "stored": 100,
+          "lost": 0
+        },
+        {
+          "label": "production_saveUsageStats_same_millisecond",
+          "submittedIndependentRequests": 2,
+          "stored": 1,
+          "lost": 1
+        }
+      ],
+      "privacy": [
+        {
+          "period": "24h",
+          "exposesFakeRawKey": false
+        },
+        {
+          "period": "today",
+          "exposesFakeRawKey": false
+        },
+        {
+          "period": "7d",
+          "exposesFakeRawKey": false
+        },
+        {
+          "period": "all",
+          "exposesFakeRawKey": false
+        }
+      ],
+      "translation": {
+        "preservesAssistantReasoning": true,
+        "glm52RequestedEffort": "low",
+        "glm52TransmittedEffort": "low",
+        "comboDetectsWebSearch": false
+      }
+    }
+  },
+  "runs": [
+    {
+      "label": "upstream",
+      "root": "/private/tmp/9router-upstream-baseline-20260930",
+      "revision": "f01fb909e37189008080632ddaf404f096345cde",
+      "command": [
+        "/opt/homebrew/bin/node",
+        "/Volumes/Askid Dev/Projects/Routers/9router/tests/node_modules/vitest/vitest.mjs",
+        "run",
+        "--config",
+        "tests/vitest.config.js",
+        "--exclude",
+        "**/*.live.test.js",
+        "--reporter=json",
+        "--outputFile",
+        "/private/tmp/9router-test-audit-20260930/upstream.json"
+      ],
+      "env": {
+        "DATA_DIR": "/private/tmp/9router-test-audit-20260930/upstream-data",
+        "RUN_REAL": "0",
+        "RUN_LIVE_TESTS": "0"
+      },
+      "exitCode": 1,
+      "seconds": 11.11,
+      "counts": {
+        "numTotalTests": 2887,
+        "numPassedTests": 2744,
+        "numFailedTests": 84,
+        "numPendingTests": 59,
+        "success": false
+      },
+      "testFiles": 293,
+      "suiteErrors": [
+        {
+          "file": "tests/auth/saml.test.js",
+          "message": "No test suite found in file /private/tmp/9router-upstream-baseline-20260930/tests/auth/saml.test.js"
+        },
+        {
+          "file": "tests/unit/cline-auth.test.js",
+          "message": "No test suite found in file /private/tmp/9router-upstream-baseline-20260930/tests/unit/cline-auth.test.js"
+        },
+        {
+          "file": "tests/unit/db-benchmark.test.js",
+          "message": "Cannot find package 'lowdb' imported from /private/tmp/9router-upstream-baseline-20260930/tests/unit/db-benchmark.test.js"
+        },
+        {
+          "file": "tests/unit/embeddings.cloud.test.js",
+          "message": "Cannot find module '/cloud/src/handlers/embeddings.js' imported from /private/tmp/9router-upstream-baseline-20260930/tests/unit/embeddings.cloud.test.js"
+        },
+        {
+          "file": "tests/unit/kimchi-strip-reasoning.test.js",
+          "message": "No test suite found in file /private/tmp/9router-upstream-baseline-20260930/tests/unit/kimchi-strip-reasoning.test.js"
+        },
+        {
+          "file": "tests/unit/kimchi.test.js",
+          "message": "No test suite found in file /private/tmp/9router-upstream-baseline-20260930/tests/unit/kimchi.test.js"
+        }
+      ]
+    },
+    {
+      "label": "fork",
+      "root": "/Volumes/Askid Dev/Projects/Routers/9router",
+      "revision": "e58eedbc865ed3ac0d33865fb35aa46c6fbcb7a0",
+      "command": [
+        "/opt/homebrew/bin/node",
+        "/Volumes/Askid Dev/Projects/Routers/9router/tests/node_modules/vitest/vitest.mjs",
+        "run",
+        "--config",
+        "tests/vitest.config.js",
+        "--exclude",
+        "**/*.live.test.js",
+        "--reporter=json",
+        "--outputFile",
+        "/private/tmp/9router-test-audit-20260930/fork.json"
+      ],
+      "env": {
+        "DATA_DIR": "/private/tmp/9router-test-audit-20260930/fork-data",
+        "RUN_REAL": "0",
+        "RUN_LIVE_TESTS": "0"
+      },
+      "exitCode": 0,
+      "seconds": 7.96,
+      "counts": {
+        "numTotalTests": 3499,
+        "numPassedTests": 3445,
+        "numFailedTests": 0,
+        "numPendingTests": 54,
+        "success": true
+      },
+      "testFiles": 335,
+      "suiteErrors": []
+    },
+    {
+      "label": "pr",
+      "root": "/private/tmp/9router-pr3989-20260930",
+      "revision": "a369be29cce1f9518bef46a26382259fbab9e1e0",
+      "command": [
+        "/opt/homebrew/bin/node",
+        "/Volumes/Askid Dev/Projects/Routers/9router/tests/node_modules/vitest/vitest.mjs",
+        "run",
+        "--config",
+        "tests/vitest.config.js",
+        "--exclude",
+        "**/*.live.test.js",
+        "--reporter=json",
+        "--outputFile",
+        "/private/tmp/9router-test-audit-20260930/pr.json"
+      ],
+      "env": {
+        "DATA_DIR": "/private/tmp/9router-test-audit-20260930/pr-data",
+        "RUN_REAL": "0",
+        "RUN_LIVE_TESTS": "0"
+      },
+      "exitCode": 1,
+      "seconds": 11.83,
+      "counts": {
+        "numTotalTests": 3044,
+        "numPassedTests": 2901,
+        "numFailedTests": 84,
+        "numPendingTests": 59,
+        "success": false
+      },
+      "testFiles": 303,
+      "suiteErrors": [
+        {
+          "file": "tests/auth/saml.test.js",
+          "message": "No test suite found in file /private/tmp/9router-pr3989-20260930/tests/auth/saml.test.js"
+        },
+        {
+          "file": "tests/unit/cline-auth.test.js",
+          "message": "No test suite found in file /private/tmp/9router-pr3989-20260930/tests/unit/cline-auth.test.js"
+        },
+        {
+          "file": "tests/unit/db-benchmark.test.js",
+          "message": "Cannot find package 'lowdb' imported from /private/tmp/9router-pr3989-20260930/tests/unit/db-benchmark.test.js"
+        },
+        {
+          "file": "tests/unit/embeddings.cloud.test.js",
+          "message": "Cannot find module '/cloud/src/handlers/embeddings.js' imported from /private/tmp/9router-pr3989-20260930/tests/unit/embeddings.cloud.test.js"
+        },
+        {
+          "file": "tests/unit/kimchi-strip-reasoning.test.js",
+          "message": "No test suite found in file /private/tmp/9router-pr3989-20260930/tests/unit/kimchi-strip-reasoning.test.js"
+        },
+        {
+          "file": "tests/unit/kimchi.test.js",
+          "message": "No test suite found in file /private/tmp/9router-pr3989-20260930/tests/unit/kimchi.test.js"
+        }
+      ]
+    }
+  ]
+}
