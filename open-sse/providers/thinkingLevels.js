@@ -4,6 +4,7 @@ import { getCapabilitiesForModel } from "./capabilities.js";
 import { matchPattern } from "./pricing.js";
 import { resolveKiroEffortPath } from "../config/kiroConstants.js";
 import PROVIDERS from "./registry/index.js";
+import { getProviderModels } from "../config/providerModels.js";
 
 // Shared level sets (deduped) — verified against provider docs + wire in thinkingUnified.applyFormat.
 const L = {
@@ -59,6 +60,8 @@ const PATTERN_THINKING = [
   // (400: "reasoning_effort must be low, medium, or xhigh").
   { provider: "tokenrouter", pattern: "*qwen3.8-max-free*", levels: ["low", "medium", "xhigh"] },
   { pattern: "*mimo*v2.6*", levels: ["none", "low", "medium", "high", "xhigh"] },
+  // mimo-v2.5-pro on opencode-go rejects reasoning_effort "max" (probed live); v2.5 accepts it.
+  { pattern: "*mimo*v2.5-pro*", levels: ["none", "low", "medium", "high", "xhigh"] },
   // codebuddy-cn per-model effort sets — the server's product-config payload
   // publishes `reasoning.supportedEfforts` per model. NOTE: the chat endpoint
   // accepts any level you send (probed none/minimal/low/medium/high/xhigh/max
@@ -84,13 +87,17 @@ export function getThinkingLevels(provider, model) {
   if (provider === "kiro" && resolveKiroEffortPath(model) === null) return null;
   const caps = getCapabilitiesForModel(provider, model);
   if (!caps.reasoning) return null;
+  const baseId = String(model || "").replace(/\([^()]+\)\s*$/, "");
+  const modelLevels = provider === "codex"
+    ? getProviderModels("cx").find((entry) => entry.id === baseId)?.thinkingLevels
+    : null;
   const hit = PATTERN_THINKING.find((entry) =>
     (!entry.provider || entry.provider === provider) && matchPattern(entry.pattern, model)
   );
   const providerFmt = PROVIDERS.find((p) => p.id === provider)?.transport?.thinkingFormat;
-  const modelLevels = caps.thinkingFormat === "zai" && caps.thinkingEffortSupported
+  const formatLevels = caps.thinkingFormat === "zai" && caps.thinkingEffortSupported
     ? L.zaiEffort : FORMAT_LEVELS[caps.thinkingFormat];
-  let levels = hit?.levels || PROVIDER_THINKING_LEVELS[provider] || PROVIDER_FORMAT_LEVELS[providerFmt] || modelLevels || L.base;
+  let levels = modelLevels || hit?.levels || PROVIDER_THINKING_LEVELS[provider] || PROVIDER_FORMAT_LEVELS[providerFmt] || formatLevels || L.base;
   if (caps.thinkingCanDisable === false) levels = levels.filter((l) => l !== "none");
   return levels;
 }

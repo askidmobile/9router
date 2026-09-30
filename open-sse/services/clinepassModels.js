@@ -78,6 +78,7 @@ export async function resolveClinepassModels(credentials) {
 }
 
 export async function resolveClineModels(credentials) {
+  let catalogModels = [];
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
@@ -98,20 +99,25 @@ export async function resolveClineModels(credentials) {
             return out?.trim() === "text" && typeof m?.id === "string" && !m.id.startsWith(CLINE_PASS_ID_PREFIX);
           })
           .map((m) => ({ id: m.id, name: m.name || m.id }));
-        if (models.length) return { models };
+        catalogModels = models;
       }
     }
   } catch { /* fall through to recommended-models */ }
   finally { clearTimeout(timer); }
 
-  return fetchClineCatalog((b) => {
+  const supplement = await fetchClineCatalog((b) => {
     const seen = new Set();
     const models = [];
-    for (const m of [...b.recommended, ...b.free]) {
+    for (const m of [...(catalogModels.length ? [] : b.recommended), ...b.free]) {
       if (seen.has(m.id) || m.id.startsWith(CLINE_PASS_ID_PREFIX)) continue;
       seen.add(m.id);
       models.push(m);
     }
     return models;
-  }, credentials);
+  });
+  const byId = new Map(catalogModels.map((m) => [m.id, m]));
+  for (const m of supplement?.models || []) {
+    if (!byId.has(m.id)) byId.set(m.id, m);
+  }
+  return byId.size ? { models: [...byId.values()] } : null;
 }

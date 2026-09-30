@@ -33,7 +33,10 @@ describe.each([
     const result = await resolveModels(credentials);
 
     expect(result?.models).toHaveLength(1);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(resolveModels === resolveClineModels ? 2 : 1);
+    if (resolveModels === resolveClineModels) {
+      expect(fetchMock.mock.calls[1][1].headers).not.toHaveProperty("Authorization");
+    }
     expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe(expected);
     expect(fetchMock.mock.calls[0][1].headers.Accept).toBe("application/json");
   });
