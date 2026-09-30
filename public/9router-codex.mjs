@@ -192,7 +192,9 @@ async function readConfig(filename) {
 }
 
 const CODEX_EXECUTABLES = [
+  "/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex",
   "/Applications/ChatGPT.app/Contents/Resources/codex",
+  "/Applications/Codex.app/Contents/Resources/codex-cli/bin/codex",
   "/Applications/Codex.app/Contents/Resources/codex",
   "codex",
 ];
@@ -252,8 +254,13 @@ export async function nativeCatalog(codexHome, { proxyEnv = {}, run = exec, read
     } catch { /* An expired login or offline account must not destroy the existing catalog. */ }
     warn("Could not refresh native Codex models from OpenAI; using the local catalog. Sign in to Codex and run sync again.");
   }
-  const models = onlyNative(cached);
-  if (usable(models)) return models;
+  // Codex stops updating its own cache while model_catalog_json is configured.
+  // Our last successful refresh can therefore be much newer than that cache.
+  const previous = await read(path.join(codexHome, "9router-chatgpt", "catalog.json")).catch(() => null);
+  for (const data of [previous, cached]) {
+    const models = onlyNative(data);
+    if (usable(models)) return models;
+  }
   for (const executable of CODEX_EXECUTABLES) {
     try {
       const { stdout } = await run(executable, ["debug", "models", "--bundled"], { timeout: 15000, maxBuffer: 16 * 1024 * 1024, cwd: os.tmpdir() });
@@ -301,6 +308,83 @@ async function syncCatalog(state) {
   await atomicWrite(path.join(state.directory, "catalog.json"), json(mergeCatalog(native, manifest)));
   await atomicWrite(path.join(state.directory, "models.json"), json(manifest));
   return { ...manifest, nativeModelCount: native.filter(m => m.visibility === "list").length };
+}
+
+async function withOperationLock(directory, operation, { skipIfLocked = false } = {}) {
+  await fs.mkdir(directory, { recursive: true, mode: 0o700 });
+  const lockPath = path.join(directory, "operation.lock");
+  let lock;
+  try { lock = await fs.open(lockPath, "wx", 0o600); }
+  catch (error) {
+    if (error.code !== "EEXIST") throw error;
+    // A launchd restart can interrupt a background refresh. Recover only locks
+    // whose recorded owner is gone; legacy/unknown locks still require care.
+    const owner = await optionalJson(lockPath).catch(() => null);
+    let stale = false;
+    if (Number.isSafeInteger(owner?.pid) && owner.pid > 0) {
+      try { process.kill(owner.pid, 0); }
+      catch (failure) { stale = failure.code === "ESRCH"; }
+    }
+    if (stale) {
+      await fs.rm(lockPath, { force: true });
+      try { lock = await fs.open(lockPath, "wx", 0o600); }
+      catch (failure) { if (failure.code !== "EEXIST") throw failure; }
+    }
+    if (!lock) {
+      if (skipIfLocked) return;
+      throw new Error(`Another setup operation may be running. If none is running, remove ${lockPath} and retry.`);
+    }
+  }
+  try { await lock.writeFile(json({ pid: process.pid })); return await operation(); }
+  finally { await lock.close(); await fs.rm(lockPath, { force: true }); }
+}
+
+// Refresh native models independently of the router's availability/selection.
+// Serialize with setup and leave router metadata and account credentials intact.
+export async function refreshNativeCatalog(state, { discover = nativeCatalog } = {}) {
+  return withOperationLock(state.directory, async () => {
+    const current = await optionalJson(path.join(state.directory, "state.json"));
+    if (!current?.active || current.token !== state.token) return;
+    assertOwnership(await readConfig(path.join(current.codexHome, "config.toml")), current);
+    const filename = path.join(current.directory, "catalog.json");
+    const previous = await readJson(filename);
+    const native = await discover(current.codexHome, { proxyEnv: current.proxyEnv });
+    const next = { ...previous, models: [
+      ...previous.models.filter(model => model.slug.startsWith(PREFIX)),
+      ...native,
+    ] };
+    const changed = JSON.stringify(previous) !== JSON.stringify(next);
+    if (changed) {
+      assertOwnership(await readConfig(path.join(current.codexHome, "config.toml")), current);
+      await atomicWrite(filename, json(next));
+    }
+    return { changed, nativeModelCount: native.filter(model => model.visibility === "list").length };
+  }, { skipIfLocked: true });
+}
+
+export function serveIntegration(state, { refresh = refreshNativeCatalog, refreshIntervalMs = 5 * 60 * 1000,
+  warn = console.warn, log = console.log, ...bridgeOptions } = {}) {
+  const server = createBridge(state, bridgeOptions);
+  let timer, refreshing = false;
+  const refreshOnce = async () => {
+    if (refreshing) return;
+    refreshing = true;
+    try {
+      const result = await refresh(state);
+      if (result?.changed) log(`Refreshed ${result.nativeModelCount} native Codex models. Restart Codex to refresh its model picker.`);
+    } catch {
+      warn("Could not refresh native Codex models; the existing catalog is unchanged. The bridge will retry automatically.");
+    } finally { refreshing = false; }
+  };
+  server.once("listening", () => {
+    void refreshOnce();
+    timer = setInterval(refreshOnce, refreshIntervalMs);
+    timer.unref();
+  });
+  server.once("close", () => clearInterval(timer));
+  server.on("error", () => { console.error("Cannot start bridge; check the configured port."); process.exitCode = 1; });
+  server.listen(state.port, "127.0.0.1");
+  return server;
 }
 
 const HOP_HEADERS = new Set(["host", "connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade", "content-length"]);
@@ -693,9 +777,7 @@ async function runMain(args) {
   }
   if (command === "serve") {
     if (!previous?.active) throw new Error("Integration is disabled.");
-    const server = createBridge(previous);
-    server.on("error", () => { console.error("Cannot start bridge; check the configured port."); process.exitCode = 1; });
-    server.listen(previous.port, "127.0.0.1");
+    serveIntegration(previous);
     return;
   }
   if (command === "sync") {
@@ -745,16 +827,7 @@ export async function main(args) {
   const index = args.indexOf("--codex-home");
   const codexHome = path.resolve((index >= 0 ? args[index + 1] : undefined) || process.env.CODEX_HOME || path.join(os.homedir(), ".codex"));
   const directory = path.join(codexHome, "9router-chatgpt");
-  await fs.mkdir(directory, { recursive: true, mode: 0o700 });
-  const lockPath = path.join(directory, "operation.lock");
-  let lock;
-  try { lock = await fs.open(lockPath, "wx", 0o600); }
-  catch (error) {
-    if (error.code !== "EEXIST") throw error;
-    throw new Error(`Another setup operation may be running. If none is running, remove ${lockPath} and retry.`);
-  }
-  try { return await runMain(args); }
-  finally { await lock.close(); await fs.rm(lockPath, { force: true }); }
+  return withOperationLock(directory, () => runMain(args));
 }
 
 if (process.argv[1] && await fs.realpath(process.argv[1]).catch(() => "") === fileURLToPath(import.meta.url)) {
