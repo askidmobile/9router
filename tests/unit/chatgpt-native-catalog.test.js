@@ -4,7 +4,7 @@ import { Readable } from "node:stream";
 import { fetchNativeCatalog, nativeCatalog, mergeCatalog } from "../../public/9router-codex.mjs";
 
 const oldModel = { slug: "gpt-5.6-sol", visibility: "list", priority: 0 };
-const newModel = { slug: "gpt-6-sol", display_name: "GPT-6-Sol", visibility: "list", supported_reasoning_levels: [{ effort: "high" }] };
+const newModel = { slug: "gpt-6.1-sol", display_name: "GPT-6.1-Sol", visibility: "list", supported_reasoning_levels: [{ effort: "high" }] };
 const auth = { auth_mode: "chatgpt", tokens: { access_token: "native-secret", account_id: "native-account" } };
 const cached = { client_version: "0.154.0", models: [oldModel] };
 const run = vi.fn(async () => ({ stdout: "codex-cli 0.155.0-alpha.16\n" }));
@@ -16,7 +16,8 @@ describe("native Codex catalog refresh", () => {
     const models = await nativeCatalog("/codex", { read, run, fetchCatalog, proxyEnv: { HTTPS_PROXY: "http://proxy.test:3128" } });
     expect(models).toEqual([newModel, oldModel]);
     expect(fetchCatalog).toHaveBeenCalledWith(auth, "0.155.0-alpha.16", { proxyEnv: { HTTPS_PROXY: "http://proxy.test:3128" } });
-    expect(run).toHaveBeenCalledWith("/Applications/ChatGPT.app/Contents/Resources/codex", ["--version"], expect.any(Object));
+    expect(run).toHaveBeenCalledWith("/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex", ["--version"], expect.any(Object));
+    expect(run).not.toHaveBeenCalledWith("codex", expect.anything(), expect.anything());
     const merged = mergeCatalog(models, { version: 1, models: [{ id: "external", slug: "9router/external" }] });
     expect(merged.models.find(m => m.slug === newModel.slug)).toEqual(newModel);
     expect(JSON.stringify(merged)).not.toContain("native-secret");
@@ -49,10 +50,31 @@ describe("native Codex catalog refresh", () => {
     expect(fetchCatalog).not.toHaveBeenCalled();
   });
 
+  it("keeps the newer merged native catalog when OpenAI is offline instead of reverting to models_cache.json", async () => {
+    const models = await nativeCatalog("/codex", { run, warn: vi.fn(), fetchCatalog: async () => { throw new Error("offline"); }, read: async filename => {
+      if (filename.endsWith("auth.json")) return auth;
+      if (filename.endsWith("/9router-chatgpt/catalog.json")) return { models: [newModel, { slug: "9router/external", visibility: "list" }] };
+      return cached;
+    } });
+    expect(models).toEqual([newModel]);
+  });
+
+  it("still discovers the desktop CLI in an older app layout before the PATH CLI", async () => {
+    const legacyRun = vi.fn(async executable => {
+      if (executable.endsWith("/codex-cli/bin/codex")) throw new Error("ENOENT");
+      if (executable === "codex") return { stdout: "codex-cli 0.144.1\n" };
+      return { stdout: "codex-cli 0.159.2\n" };
+    });
+    const fetchCatalog = vi.fn(async () => ({ models: [newModel] }));
+    await nativeCatalog("/codex", { read, run: legacyRun, fetchCatalog });
+    expect(fetchCatalog).toHaveBeenCalledWith(auth, "0.159.2", { proxyEnv: {} });
+    expect(legacyRun).not.toHaveBeenCalledWith("codex", expect.anything(), expect.anything());
+  });
+
   it("supports the bundled catalog in the current ChatGPT desktop installation", async () => {
     const bundledRun = vi.fn(async () => ({ stdout: JSON.stringify({ models: [newModel] }) }));
     expect(await nativeCatalog("/codex", { read: async () => null, run: bundledRun })).toEqual([newModel]);
-    expect(bundledRun).toHaveBeenCalledWith("/Applications/ChatGPT.app/Contents/Resources/codex", ["debug", "models", "--bundled"], expect.any(Object));
+    expect(bundledRun).toHaveBeenCalledWith("/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex", ["debug", "models", "--bundled"], expect.any(Object));
   });
 });
 

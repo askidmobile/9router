@@ -43,6 +43,20 @@ node "$HOME/.codex/9router-chatgpt/bridge.mjs" sync
 
 Restart Codex after syncing; the model catalog is loaded at startup.
 
+The running helper also refreshes native OpenAI models at bridge startup and
+every five minutes, using the installed desktop Codex version. This refresh is
+independent of the remote router and preserves the saved router entries. New
+native models become selectable when Codex next loads its catalog; an already
+running Codex app still needs to be restarted. If the account is offline or its
+login has expired, the helper retains the last working combined catalog and
+retries automatically. Re-run `enable` with an updated installer to update an
+older installed helper.
+
+Each manifest refresh keeps the saved model IDs but recalculates image input and
+context metadata from the current `/v1/models` catalog. Combo edits, provider
+catalog updates and capability overrides therefore take effect on the next
+`sync`; selecting and saving the same models again is not required.
+
 ```sh
 node "$HOME/.codex/9router-chatgpt/bridge.mjs" status
 node "$HOME/.codex/9router-chatgpt/bridge.mjs" disable
@@ -70,7 +84,9 @@ Codex → local 127.0.0.1 helper
 The remote router receives only its own API key. The helper constructs fresh
 headers for that route. Native Authorization and ChatGPT-Account-ID headers go
 only to the fixed OpenAI endpoints, and redirects are not followed. Incoming
-cookies are discarded. No native token is read from or written to `auth.json`.
+cookies are discarded. Catalog refresh reads the existing native token from
+`auth.json` only to contact the fixed OpenAI endpoint. The helper never writes
+`auth.json`; Codex remains responsible for refreshing the login.
 
 `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY` and their lowercase counterparts are
 captured when enabling the helper, so it can use the same explicit HTTP proxies
