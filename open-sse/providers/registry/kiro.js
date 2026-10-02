@@ -42,11 +42,18 @@ export default {
   },
   models: [
     // Base id "auto" = Kiro server-side model picker. Full live catalog
-    // (ListAvailableModels) is fetched per account at runtime — experimental
-    // rollouts (gpt-5.6 tiers, new Claude) appear there first and must NOT be
-    // hardcoded here: accounts outside the rollout get INVALID_MODEL_ID 400.
+    // (ListAvailableModels) is fetched per account at runtime and takes priority
+    // over this fallback catalog: accounts outside an experimental rollout can
+    // otherwise get INVALID_MODEL_ID 400 for preview models.
     { id: "auto", name: "Auto (Recommended)" },
     // Opus (added per kiro.dev/changelog/models and kiro.dev/docs/models)
+    // Opus 5.5 — experimental preview, 1M context, 2x credits (#4410)
+    // Announced 2026-09-22; confirmed in kiro.dev session UI.
+    { id: "claude-opus-5.5", name: "Claude Opus 5.5" },
+    { id: "claude-opus-5.5-thinking", name: "Claude Opus 5.5 (Thinking)" },
+    { id: "claude-opus-5.5-agentic", name: "Claude Opus 5.5 (Agentic)" },
+    { id: "claude-opus-5.5-thinking-agentic", name: "Claude Opus 5.5 (Thinking + Agentic)" },
+    // Opus 5
     { id: "claude-opus-5", name: "Claude Opus 5" },
     { id: "claude-opus-4.8", name: "Claude Opus 4.8" },
     { id: "claude-sonnet-4.5", name: "Claude Sonnet 4.5" },

@@ -2,10 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   updateProviderConnection: vi.fn(),
+  getProviderConnectionById: vi.fn(),
 }));
 
 vi.mock("../../src/lib/localDb.js", () => ({
   updateProviderConnection: mocks.updateProviderConnection,
+  getProviderConnectionById: mocks.getProviderConnectionById,
 }));
 vi.mock("../../src/sse/utils/logger.js", () => ({
   debug: vi.fn(),
@@ -71,6 +73,7 @@ describe("ClinePass OAuth refresh", () => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
     mocks.updateProviderConnection.mockResolvedValue({ id: "clinepass-connection" });
+    mocks.getProviderConnectionById.mockResolvedValue(connection());
   });
 
   afterEach(() => {

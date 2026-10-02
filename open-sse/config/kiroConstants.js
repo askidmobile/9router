@@ -179,7 +179,22 @@ export function resolveKiroThinkingBudget(body, headers, model) {
   return null;
 }
 
-export function extractKiroEffortLevel(body) {
+function parseClaudeVersion(model) {
+  if (typeof model !== "string") return null;
+  const normalized = model.toLowerCase().replace(/-/g, ".");
+  const match = normalized.match(/(?:^|[/.])claude(?:[/.][a-z]+)*[/.](\d+)(?:[/.](\d+))?(?:[/.]|$)/);
+  if (!match) return null;
+  return { major: Number(match[1]), minor: match[2] === undefined ? null : Number(match[2]) };
+}
+
+// Kiro effort tiers per model (kiro.dev docs + live additionalModelRequestFieldsSchema):
+// 4.6 Claude models cap at low|medium|high|max; 4.7+ add xhigh. Unknown models stay conservative.
+function kiroModelLacksXhigh(model) {
+  const v = parseClaudeVersion(model);
+  return !v || (v.major === 4 && v.minor !== null && v.minor <= 6);
+}
+
+export function extractKiroEffortLevel(body, model) {
   const effort =
     body?.reasoning_effort ??
     (typeof body?.reasoning === "object" ? body.reasoning?.effort : null) ??
@@ -187,7 +202,8 @@ export function extractKiroEffortLevel(body) {
   if (typeof effort !== "string") return null;
   const normalized = effort.toLowerCase();
   if (normalized === "none" || normalized === "off" || normalized === "disabled") return null;
-  if (normalized === "xhigh" || normalized === "max") return "high";
+  if (normalized === "xhigh") return kiroModelLacksXhigh(model) ? "high" : "xhigh";
+  if (normalized === "max") return "max";
   if (["low", "medium", "high"].includes(normalized)) return normalized;
   return null;
 }
@@ -207,10 +223,10 @@ function extractKiroGptEffortLevel(body) {
   return null;
 }
 
-export function buildKiroAdditionalModelRequestFields(body, effortPath = "output_config") {
+export function buildKiroAdditionalModelRequestFields(body, effortPath = "output_config", model) {
   const effort = effortPath === "reasoning"
     ? extractKiroGptEffortLevel(body)
-    : extractKiroEffortLevel(body);
+    : extractKiroEffortLevel(body, model);
   if (!effort) return undefined;
   if (effortPath === "reasoning") {
     // Mirrors Kiro CLI/KAS buildEffortRequestFields("reasoning") for GPT.
@@ -230,18 +246,16 @@ export function resolveKiroEffortPath(model) {
     return "reasoning";
   }
   if (!normalized.includes("claude")) return null;
-  const match = normalized.match(/(?:^|[/.])claude(?:[/.][a-z]+)*[/.](\d+)(?:[/.](\d+))?(?:[/.]|$)/);
-  if (!match) return null;
-  const [, majorText, minorText] = match;
-  const major = Number(majorText);
-  const minor = minorText === undefined ? null : Number(minorText);
-  // Claude 4.6+ supports native additionalModelRequestFields (output_config.effort).
-  // Claude 4.5 and below neither accept the native fields nor the legacy
-  // <thinking_mode> tag anymore (Kiro rejects both with REQUEST_BODY_INVALID),
-  // so thinking cannot be delivered for them — resolveKiroThinkingBudget
-  // returns null to ship a plain request.
-  if (major < 4 || (major === 4 && (minor === null || minor < 6))) return null;
-  return "output_config";
+  const v = parseClaudeVersion(model);
+  if (!v) return null;
+  const { major, minor } = v;
+  const dateSuffixMinor = minor !== null && minor >= 1000;
+  // Kiro rejected additionalModelRequestFields on legacy 4.5 models in live smoke.
+  // Default future Claude/Kiro models to supported so new model releases do not
+  // need a code allowlist update.
+  return major < 4 || (major === 4 && (minor === null || minor <= 5 || dateSuffixMinor))
+    ? null
+    : "output_config";
 }
 
 export function supportsKiroAdditionalModelRequestFields(model) {
@@ -256,7 +270,7 @@ export function usesKiroNativeGptEffort(body, model) {
 export function buildKiroAdditionalModelRequestFieldsForModel(body, model) {
   const effortPath = resolveKiroEffortPath(model);
   if (!effortPath) return undefined;
-  return buildKiroAdditionalModelRequestFields(body, effortPath);
+  return buildKiroAdditionalModelRequestFields(body, effortPath, model);
 }
 
 /**

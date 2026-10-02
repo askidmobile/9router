@@ -452,7 +452,7 @@ describe("openaiToKiroRequest", () => {
       });
     });
 
-    it("sends native additionalModelRequestFields for date-suffixed Claude 4 model ids", () => {
+    it("omits unsupported native effort fields for legacy date-suffixed Claude 4 model ids", () => {
       const body = {
         reasoning_effort: "high",
         messages: [{ role: "user", content: "Date-suffixed Claude 4 uses native effort now" }]
@@ -460,8 +460,7 @@ describe("openaiToKiroRequest", () => {
 
       const result = openaiToKiroRequest("claude-sonnet-4-20250514", body, true, {});
 
-      expect(result.additionalModelRequestFields).toBeDefined();
-      expect(result.additionalModelRequestFields.output_config.effort).toBe("high");
+      expect(result.additionalModelRequestFields).toBeUndefined();
       expect(instructionContentOf(result)).not.toContain("<thinking_mode>");
     });
 
@@ -527,7 +526,7 @@ describe("openaiToKiroRequest", () => {
       });
     });
 
-    it("clamps reasoning_effort max to Kiro max_thinking_length 32000", () => {
+    it("uses the supported native max effort on Kiro Claude 4.6", () => {
       const body = {
         reasoning_effort: "max",
         messages: [{ role: "user", content: "Think as much as possible" }]
@@ -535,7 +534,7 @@ describe("openaiToKiroRequest", () => {
 
       const result = openaiToKiroRequest("claude-sonnet-4.6", body, true, {});
 
-      expect(result.additionalModelRequestFields?.output_config?.effort).toBe("high");
+      expect(result.additionalModelRequestFields?.output_config?.effort).toBe("max");
       expect(instructionContentOf(result)).not.toContain("<thinking_mode>");
     });
 

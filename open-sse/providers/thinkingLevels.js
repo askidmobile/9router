@@ -12,8 +12,8 @@ const L = {
   onOff: ["none", "thinking"],                                      // zai (binary), minimax (adaptive)
   zaiEffort: ["none", "low", "high", "max"],                        // newer GLM models accept explicit effort
   openai: ["none", "minimal", "low", "medium", "high", "xhigh"],    // GPT-5.x / o-series (no "max")
-  levelMax: ["none", "low", "medium", "high", "max"],               // claude-adaptive, kimi
-  budgetX: ["none", "low", "medium", "high", "xhigh", "max"],       // claude-budget
+  levelMax: ["none", "low", "medium", "high", "max"],               // kimi
+  budgetX: ["none", "low", "medium", "high", "xhigh", "max"],       // claude-budget, claude-adaptive
   gemini: ["minimal", "low", "medium", "high"],                     // gemini-3 thinkingLevel (no disable)
   hiMax: ["none", "high", "max"],                                   // deepseek (low/med→high, xhigh→max)
 };
@@ -21,7 +21,7 @@ const L = {
 // thinkingFormat → valid selectable levels (source of truth for UI options).
 const FORMAT_LEVELS = {
   openai: L.openai,
-  "claude-adaptive": L.levelMax,
+  "claude-adaptive": L.budgetX,
   "claude-budget": L.budgetX,
   "gemini-level": L.gemini,
   "gemini-budget": L.base,
@@ -48,9 +48,13 @@ const PROVIDER_THINKING_LEVELS = {
 const PROVIDER_FORMAT_LEVELS = {
   tokenrouter: ["low", "medium", "high", "xhigh", "max"],
 };
+// Opus/Sonnet 4.6 lack xhigh (Anthropic + Kiro docs) — keep the 4-level+max set.
+const CLAUDE_NO_XHIGH = ["none", "low", "medium", "high", "max"];
 
 // Model-name pattern overrides (glob, first match wins) — more precise than format default.
 const PATTERN_THINKING = [
+  { pattern: "*claude*4.6*", levels: CLAUDE_NO_XHIGH },
+  { pattern: "*claude*4-6*", levels: CLAUDE_NO_XHIGH },
   { provider: "codex", pattern: "*gpt-6*", levels: CODEX_GPT_5_6_LEVELS },
   { provider: "codex", pattern: "*gpt-5.6-sol*", levels: [...CODEX_GPT_5_6_LEVELS, "ultra"] },
   { provider: "codex", pattern: "*gpt-5.6-terra*", levels: [...CODEX_GPT_5_6_LEVELS, "ultra"] },

@@ -18,16 +18,18 @@ export function getQuotaCooldown(backoffLevel = 0) {
  * @param {number} status - HTTP status code
  * @param {string} errorText - Error message text
  * @param {number} backoffLevel - Current backoff level for exponential backoff
- * @param {{ modelFallback?: boolean }} options - Combo may try another model without cooling an account.
+ * @param {{ modelFallback?: boolean, provider?: string }|string} options - Provider id or Combo options.
  * @returns {{ shouldFallback: boolean, cooldownMs: number, newBackoffLevel?: number }}
  */
-export function checkFallbackError(status, errorText, backoffLevel = 0, { modelFallback = false } = {}) {
+export function checkFallbackError(status, errorText, backoffLevel = 0, options = {}) {
+  const { modelFallback = false, provider = null } = typeof options === "string" ? { provider: options } : (options || {});
   if (status === 499) return { shouldFallback: false, cooldownMs: 0 };
   const lowerError = errorText
     ? (typeof errorText === "string" ? errorText : JSON.stringify(errorText)).toLowerCase()
     : "";
 
   for (const rule of ERROR_RULES) {
+    if (rule.provider && rule.provider !== provider) continue;
     const matchesText = rule.text && lowerError && lowerError.includes(rule.text);
     const matchesStatus = rule.status && rule.status === status;
     if (!matchesText && !matchesStatus) continue;

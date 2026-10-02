@@ -180,7 +180,7 @@ export async function handleChat(request, clientRawRequest = null, requestOption
     });
   }
 
-  return handleSingleModelChat(body, modelStr, clientRawRequest, request, apiKey, rootExecution);
+  return handleSingleModelChat(body, modelStr, clientRawRequest, request, apiKey, { ...rootExecution, requestedModel: contextMarker ? `${modelStr.slice(modelStr.indexOf("/") + 1)}[${contextMarker}]` : null });
 }
 
 /**
@@ -284,7 +284,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
   while (true) {
     if (request?.signal?.aborted) return errorResponse(499, "Request aborted");
-    const credentials = await getProviderCredentials(provider, excludeConnectionIds, model);
+    const credentials = await getProviderCredentials(provider, excludeConnectionIds, model, { requestedModel: execution.requestedModel || model });
     if (request?.signal?.aborted) return errorResponse(499, "Request aborted");
 
     // All accounts unavailable
@@ -348,6 +348,8 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       pxpipeTransform: chatSettings.pxpipeEnabled ? await getPxpipeTransform() : null,
       onPxpipeEvent: appendPxpipeEvent,
       providerThinking,
+      // Per-provider user overrides (custom headers / connect timeout) from settings
+      providerOverrides: (chatSettings.providerOverrides || {})[provider] || null,
       // Detect source format by endpoint + body
       sourceFormatOverride: request?.url ? detectFormatByEndpoint(new URL(request.url).pathname, body) : null,
       onCredentialsRefreshed: async (newCreds) => {

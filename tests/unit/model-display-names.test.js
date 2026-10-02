@@ -27,20 +27,20 @@ afterAll(() => {
 
 describe("display names for every model source", () => {
   it("renames a built-in model without registering a custom model or changing routing", async () => {
-    await db.setModelAlias("coding", "codex/gpt-5.4");
-    await db.setCapsOverride("cx", "gpt-5.4", { contextWindow: 400000 });
-    const before = (await modelsRoute.GET()).body.models.find((m) => m.routedModel === "cx/gpt-5.4");
-    const res = await namesRoute.PUT(request({ provider: "codex", model: "gpt-5.4", name: "  Основная модель  " }));
+    await db.setModelAlias("coding", "codex/gpt-5.5");
+    await db.setCapsOverride("cx", "gpt-5.5", { contextWindow: 400000 });
+    const before = (await modelsRoute.GET()).body.models.find((m) => m.routedModel === "cx/gpt-5.5");
+    const res = await namesRoute.PUT(request({ provider: "codex", model: "gpt-5.5", name: "  Основная модель  " }));
     expect(res.status).toBe(200);
     const names = (await namesRoute.GET()).body.overrides;
-    expect(names).toEqual({ "cx|gpt-5.4": "Основная модель" });
+    expect(names).toEqual({ "cx|gpt-5.5": "Основная модель" });
     expect(await db.getCustomModels()).toEqual([]);
-    expect(await db.getModelAliases()).toEqual({ coding: "codex/gpt-5.4" });
-    expect(await db.getCapsOverrides()).toEqual({ "cx|gpt-5.4": { contextWindow: 400000 } });
-    const model = (await modelsRoute.GET()).body.models.find((m) => m.routedModel === "cx/gpt-5.4");
+    expect(await db.getModelAliases()).toEqual({ coding: "codex/gpt-5.5" });
+    expect(await db.getCapsOverrides()).toEqual({ "cx|gpt-5.5": { contextWindow: 400000 } });
+    const model = (await modelsRoute.GET()).body.models.find((m) => m.routedModel === "cx/gpt-5.5");
     expect(model).toEqual({ ...before, name: "Основная модель" });
-    const editor = buildEditModel({ id: "gpt-5.4", providerId: "codex", providerAlias: "cx", name: "GPT 5.4", alias: "coding", nameOverrides: names });
-    expect(editor).toMatchObject({ name: "Основная модель", defaultName: "GPT 5.4", alias: "coding", aliasKey: "codex/gpt-5.4", isCustom: false });
+    const editor = buildEditModel({ id: "gpt-5.5", providerId: "codex", providerAlias: "cx", name: "GPT 5.5", alias: "coding", nameOverrides: names });
+    expect(editor).toMatchObject({ name: "Основная модель", defaultName: "GPT 5.5", alias: "coding", aliasKey: "codex/gpt-5.5", isCustom: false });
   });
 
   it("keeps separate names for the same model ID at different providers and supports media IDs", async () => {
@@ -65,9 +65,9 @@ describe("display names for every model source", () => {
     await namesRoute.PUT(request({ provider: "cx", model: "gpt-6-astra", name: " " }));
     row = (await modelsRoute.GET()).body.models.find((m) => m.routedModel === "cx/gpt-6-astra");
     expect(row.name).toBe("Моя Astra");
-    await namesRoute.PUT(request({ provider: "cx", model: "gpt-5.4", name: "" }));
-    row = (await modelsRoute.GET()).body.models.find((m) => m.routedModel === "cx/gpt-5.4");
-    expect(row.name).toBe("GPT 5.4");
+    await namesRoute.PUT(request({ provider: "cx", model: "gpt-5.5", name: "" }));
+    row = (await modelsRoute.GET()).body.models.find((m) => m.routedModel === "cx/gpt-5.5");
+    expect(row.name).toBe("GPT 5.5");
   });
 
   it("rejects invalid values without writing them", async () => {

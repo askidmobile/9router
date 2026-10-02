@@ -9,8 +9,8 @@ describe("Responses usage for Codex auto-compaction", () => {
     const first = send({ id: "qa", choices: [{ index: 0, delta: { content: "OK" }, finish_reason: null }] });
     const finished = send({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] });
     expect([...first, ...finished].some(event => event.event === "response.completed")).toBe(false);
-    send({ choices: [], usage: { prompt_tokens: 300000, completion_tokens: 10, prompt_tokens_details: { cached_tokens: 120000 }, completion_tokens_details: { reasoning_tokens: 5 } } });
-    const completed = send(null).filter(event => event.event === "response.completed");
+    const trailer = send({ choices: [], usage: { prompt_tokens: 300000, completion_tokens: 10, prompt_tokens_details: { cached_tokens: 120000 }, completion_tokens_details: { reasoning_tokens: 5 } } });
+    const completed = [...trailer, ...send(null)].filter(event => event.event === "response.completed");
     expect(completed).toHaveLength(1);
     expect(completed[0].data.response.usage).toEqual({ input_tokens: 300000, output_tokens: 10, total_tokens: 300010, input_tokens_details: { cached_tokens: 120000 }, output_tokens_details: { reasoning_tokens: 5 } });
     expect(send(null)).toEqual([]);
@@ -36,9 +36,9 @@ describe("Responses usage for Codex auto-compaction", () => {
     const state = initState(FORMATS.OPENAI_RESPONSES);
     const send = chunk => translateResponse(FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, chunk, state);
     send({ id: "qa", choices: [{ index: 0, delta: { reasoning_content: "One token" }, finish_reason: null }] });
-    send({ choices: [{ index: 0, delta: {}, finish_reason: "length" }],
+    const finish = send({ choices: [{ index: 0, delta: {}, finish_reason: "length" }],
       usage: { prompt_tokens: 20, completion_tokens: 1, total_tokens: 21 } });
-    const events = send(null);
+    const events = [...finish, ...send(null)];
     expect(events.some(event => event.event === "response.completed")).toBe(false);
     expect(events.find(event => event.event === "response.incomplete")?.data.response).toMatchObject({
       status: "incomplete",

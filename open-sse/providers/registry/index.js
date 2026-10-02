@@ -1,5 +1,5 @@
-// Auto-generated: static imports for enabled registry entries
-// Preserve hidden devin-cli, trae, windsurf and zcode entries.
+// Auto-generated: static imports for active registry entries
+// Excluded: devin-cli, trae, windsurf, zcode.
 import p0 from "./agnes.js";
 import p1 from "./alicode-intl.js";
 import p2 from "./alicode.js";
@@ -77,56 +77,59 @@ import p73 from "./minimax.js";
 import p74 from "./mistral.js";
 import p75 from "./mmf.js";
 import p76 from "./morph.js";
-import p77 from "./nanobanana.js";
-import p78 from "./nebius.js";
-import p79 from "./nvidia.js";
-import p80 from "./ollama-local.js";
-import p81 from "./ollama-search.js";
-import p82 from "./ollama.js";
-import p83 from "./openai.js";
-import p84 from "./opencode-go.js";
-import p85 from "./opencode-zen.js";
-import p86 from "./opencode.js";
-import p87 from "./openrouter.js";
-import p88 from "./perplexity-agent.js";
-import p89 from "./perplexity-web.js";
-import p90 from "./perplexity.js";
-import p91 from "./playht.js";
-import p92 from "./poolside.js";
-import p93 from "./qoder-cn.js";
-import p94 from "./qoder.js";
-import p95 from "./recraft.js";
-import p96 from "./runwayml.js";
-import p97 from "./sambanova.js";
-import p98 from "./sdwebui.js";
-import p99 from "./searchapi.js";
-import p100 from "./searxng.js";
-import p101 from "./selfhosted-embedding.js";
-import p102 from "./selfhosted-stt.js";
-import p103 from "./selfhosted-tts.js";
-import p104 from "./serper.js";
-import p105 from "./siliconflow.js";
-import p106 from "./stability-ai.js";
-import p107 from "./tavily.js";
-import p108 from "./tencent.js";
-import p109 from "./together.js";
-import p110 from "./tokenharbor.js";
-import p111 from "./tokenrouter.js";
-import p112 from "./topaz.js";
-import p113 from "./tortoise.js";
-import p114 from "./venice.js";
-import p115 from "./vercel-ai-gateway.js";
-import p116 from "./vertex-partner.js";
-import p117 from "./vertex.js";
-import p118 from "./volcengine-ark.js";
-import p119 from "./voyage-ai.js";
-import p120 from "./xai.js";
-import p121 from "./xiaomi-mimo.js";
-import p122 from "./xiaomi-tokenplan.js";
-import p123 from "./xquik.js";
-import p124 from "./youcom.js";
-import p125 from "./zai.js";
-import p126 from "./zed.js";
+import p77 from "./muse.js";
+import p78 from "./nanobanana.js";
+import p79 from "./nebius.js";
+import p80 from "./nvidia.js";
+import p81 from "./ollama-local.js";
+import p82 from "./ollama-search.js";
+import p83 from "./ollama.js";
+import p84 from "./openai.js";
+import p85 from "./opencode-go.js";
+import p86 from "./opencode-zen.js";
+import p87 from "./opencode.js";
+import p88 from "./openrouter.js";
+import p89 from "./perplexity-agent.js";
+import p90 from "./perplexity-web.js";
+import p91 from "./perplexity.js";
+import p92 from "./playht.js";
+import p93 from "./poolside.js";
+import p94 from "./qoder-cn.js";
+import p95 from "./qoder.js";
+import p96 from "./recraft.js";
+import p97 from "./runwayml.js";
+import p98 from "./sambanova.js";
+import p99 from "./sdwebui.js";
+import p100 from "./searchapi.js";
+import p101 from "./searxng.js";
+import p102 from "./selfhosted-embedding.js";
+import p103 from "./selfhosted-stt.js";
+import p104 from "./selfhosted-tts.js";
+import p105 from "./serper.js";
+import p106 from "./siliconflow.js";
+import p107 from "./stability-ai.js";
+import p108 from "./tavily.js";
+import p109 from "./tencent.js";
+import p110 from "./tinyfish.js";
+import p111 from "./together.js";
+import p112 from "./tokenharbor.js";
+import p113 from "./tokenrouter.js";
+import p114 from "./topaz.js";
+import p115 from "./tortoise.js";
+import p116 from "./v1m.js";
+import p117 from "./venice.js";
+import p118 from "./vercel-ai-gateway.js";
+import p119 from "./vertex-partner.js";
+import p120 from "./vertex.js";
+import p121 from "./volcengine-ark.js";
+import p122 from "./voyage-ai.js";
+import p123 from "./xai.js";
+import p124 from "./xiaomi-mimo.js";
+import p125 from "./xiaomi-tokenplan.js";
+import p126 from "./xquik.js";
+import p127 from "./youcom.js";
+import p128 from "./zai.js";
+import p129 from "./zed.js";
 
 export default [
   p0,
@@ -256,4 +259,7 @@ export default [
   p124,
   p125,
   p126,
+  p127,
+  p128,
+  p129,
 ];
