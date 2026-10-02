@@ -137,8 +137,10 @@ describe("OpenAI Responses usage on response.completed", () => {
 
   it("maps usage reported on a trailing usage-only chunk with empty choices", async () => {
     const output = await runTransform([TEXT_CHUNK, FINISH_CHUNK, USAGE_ONLY_CHUNK]);
-
-    expect(completedResponse(output).usage).toEqual(EXPECTED_USAGE);
+    // Missing optional reasoning details remain unknown; the normalized usage
+    // still carries all required counts and the reported cache count.
+    const { output_tokens_details, ...reportedUsage } = EXPECTED_USAGE;
+    expect(completedResponse(output).usage).toEqual(reportedUsage);
   });
 
   it("still completes when the upstream reports no usage at all", async () => {

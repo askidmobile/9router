@@ -15,13 +15,52 @@ import { responsesStatusFromFinishReason, finishReasonFromIncompleteReason } fro
  * Translate OpenAI chunk to Responses API events
  * @returns {Array} Array of events with { event, data } structure
  */
+// Upstream Chat Completions usage -> Responses API usage shape.
+// Without this, /v1/responses never reports usage: Responses clients (Codex CLI)
+// keep their "context used" gauge pinned at 0 and never auto-compact, so a long
+// session grows until the upstream context limit rejects it (9router issue #3432).
+//
+// Note this is stored under state.responsesUsage, NOT state.usage: state.usage is
+// owned by the stream layer, which fills it with normalizeUsage()-shaped counts
+// (prompt_tokens/prompt_tokens_details) and hands it to finalizeStream() for
+// logging and cost accounting. Overwriting it with this shape silently drops
+// cached/reasoning tokens from those stats.
+function toResponsesUsage(usage) {
+  if (!usage || typeof usage !== "object") return null;
+
+  const inputTokens = [usage.input_tokens, usage.prompt_tokens].find(Number.isInteger);
+  const outputTokens = [usage.output_tokens, usage.completion_tokens].find(Number.isInteger);
+  // Some upstreams attach zeroed placeholders to every chunk. Wait for real counts
+  // so response.completed cannot freeze the placeholder before the usage trailer.
+  if (inputTokens === undefined || outputTokens === undefined || inputTokens + outputTokens <= 0) {
+    return null;
+  }
+  const responseUsage = {
+    input_tokens: inputTokens,
+    output_tokens: outputTokens,
+    total_tokens: inputTokens + outputTokens
+  };
+  const cachedTokens = [usage.input_tokens_details?.cached_tokens, usage.prompt_tokens_details?.cached_tokens].find(Number.isInteger);
+  const reasoningTokens = [usage.output_tokens_details?.reasoning_tokens, usage.completion_tokens_details?.reasoning_tokens].find(Number.isInteger);
+  if (Number.isInteger(cachedTokens)) responseUsage.input_tokens_details = { cached_tokens: cachedTokens };
+  if (Number.isInteger(reasoningTokens)) responseUsage.output_tokens_details = { reasoning_tokens: reasoningTokens };
+
+  return responseUsage;
+}
+
 export function openaiToOpenAIResponsesResponse(chunk, state) {
   if (!chunk) {
     return flushEvents(state);
   }
-  // Chat Completions may send usage in a choices: [] chunk after finish_reason.
-  if (chunk.usage) state.responsesUsage = { ...state.responsesUsage, ...chunk.usage };
-  if (!chunk.choices?.length) return [];
+
+  // Capture usage before the choices guard: OpenAI may send it in a trailer
+  // whose choices array is empty.
+  const responseUsage = toResponsesUsage(chunk.usage);
+  if (responseUsage) state.responsesUsage = responseUsage;
+
+  if (!chunk.choices?.length) {
+    return state.completionPending && state.responsesUsage ? flushEvents(state) : [];
+  }
 
   const events = [];
   const nextSeq = () => ++state.seq;
@@ -119,7 +158,10 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
     for (const i in state.msgItemAdded) closeMessage(state, emit, i);
     closeReasoning(state, emit);
     for (const i in state.funcCallIds) closeToolCall(state, emit, i);
-    // Complete on stream flush so Codex receives trailing token usage as well.
+    // Every pivot forwards the terminal flush so trailing usage reaches completion.
+    // The stream watchdog also bounds completion when upstream holds the connection open.
+    if (state.responsesUsage) sendCompleted(state, emit);
+    else state.completionPending = true;
   }
 
   return events;
@@ -419,9 +461,7 @@ function collectCompletedOutputItems(state) {
 function sendCompleted(state, emit) {
   if (!state.completedSent) {
     state.completedSent = true;
-    const usage = state.responsesUsage || state.usage;
-    const inputTokens = usage?.input_tokens ?? usage?.prompt_tokens ?? 0;
-    const outputTokens = usage?.output_tokens ?? usage?.completion_tokens ?? 0;
+    const usage = toResponsesUsage(state.responsesUsage) || toResponsesUsage(state.usage);
     const completion = responsesStatusFromFinishReason(state.responsesFinishReason);
     const eventType = completion.status === "incomplete" ? "response.incomplete" : "response.completed";
     emit(eventType, {
@@ -434,13 +474,7 @@ function sendCompleted(state, emit) {
         background: false,
         error: null,
         output: collectCompletedOutputItems(state),
-        ...(usage ? { usage: {
-          input_tokens: inputTokens,
-          output_tokens: outputTokens,
-          total_tokens: usage.total_tokens ?? inputTokens + outputTokens,
-          input_tokens_details: { cached_tokens: usage.input_tokens_details?.cached_tokens ?? usage.prompt_tokens_details?.cached_tokens ?? usage.cached_tokens ?? 0 },
-          output_tokens_details: { reasoning_tokens: usage.output_tokens_details?.reasoning_tokens ?? usage.completion_tokens_details?.reasoning_tokens ?? usage.reasoning_tokens ?? 0 },
-        } } : {}),
+        ...(usage ? { usage } : {}),
       }
     });
   }
