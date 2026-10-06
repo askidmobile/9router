@@ -3,16 +3,9 @@
  */
 
 import { CLIENT_METADATA } from "../../config/appConstants.js";
-import { ANTIGRAVITY_IDE_USER_AGENT, ANTIGRAVITY_IDE_VERSION, ANTIGRAVITY_OAUTH_CLIENT } from "../../providers/shared.js";
+import { fetchAntigravityModelCatalog } from "../antigravityModels.js";
 import { U, parseResetTime, normalizeCloudCodeProjectId, fetchWithTimeout } from "./shared.js";
 import { fetchAntigravityWeeklyQuota } from "./antigravity-weekly.js";
-
-// Antigravity API config (from Quotio) — urls from registry, oauth client + dynamic UA kept here
-const ANTIGRAVITY_CONFIG = {
-  ...U("antigravity"),
-  ...ANTIGRAVITY_OAUTH_CLIENT,
-  userAgent: ANTIGRAVITY_IDE_USER_AGENT,
-};
 
 /**
  * Gemini CLI Usage — fetch per-model quota via Cloud Code Assist API.
@@ -120,22 +113,7 @@ async function getGeminiSubscriptionInfo(accessToken, proxyOptions = null) {
 export async function getAntigravityUsage(accessToken, providerSpecificData, proxyOptions = null) {
   try {
     // Fetch subscription info once — reuse for both projectId and plan
-    const subscriptionInfo = await getAntigravitySubscriptionInfo(accessToken, proxyOptions);
-    const projectId = subscriptionInfo?.cloudaicompanionProject || null;
-
-    const response = await fetchWithTimeout(ANTIGRAVITY_CONFIG.quotaApiUrl, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${accessToken}`,
-        "User-Agent": ANTIGRAVITY_CONFIG.userAgent,
-        "Content-Type": "application/json",
-        "X-Client-Name": "antigravity",
-        "X-Client-Version": ANTIGRAVITY_IDE_VERSION,
-      },
-      body: JSON.stringify({
-        ...(projectId ? { project: projectId } : {})
-      }),
-    }, 10000, proxyOptions);
+    const { response, subscriptionInfo, projectId } = await fetchAntigravityModelCatalog(accessToken, providerSpecificData, proxyOptions);
 
     if (response.status === 403) {
       return {
@@ -182,6 +160,14 @@ export async function getAntigravityUsage(accessToken, providerSpecificData, pro
         'gemini-3.5-flash-extra-low',
         'gemini-pro-agent',
         'gemini-3.1-pro-low',
+        'claude-sonnet-5-5-high',
+        'claude-sonnet-5-5-medium',
+        'claude-sonnet-5-5-low',
+        'claude-sonnet-5-5',
+        'claude-opus-5-5-high',
+        'claude-opus-5-5-medium',
+        'claude-opus-5-5-low',
+        'claude-opus-5-5',
         'claude-sonnet-4-6',
         'claude-opus-4-6-thinking',
         'gpt-oss-120b-medium',
@@ -276,28 +262,5 @@ export async function getAntigravityUsage(accessToken, providerSpecificData, pro
   } catch (error) {
     console.error("[Antigravity Usage] Error:", error.message, error.cause);
     return { message: `Antigravity error: ${error.message}` };
-  }
-}
-
-/**
- * Get Antigravity subscription info
- */
-async function getAntigravitySubscriptionInfo(accessToken, proxyOptions = null) {
-  try {
-    const response = await fetchWithTimeout(ANTIGRAVITY_CONFIG.loadProjectApiUrl, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${accessToken}`,
-        "User-Agent": ANTIGRAVITY_CONFIG.userAgent,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ metadata: CLIENT_METADATA, mode: 1 }),
-    }, 10000, proxyOptions);
-
-    if (!response.ok) return null;
-    return await response.json();
-  } catch (error) {
-    console.error("[Antigravity Subscription] Error:", error.message);
-    return null;
   }
 }

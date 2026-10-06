@@ -13,6 +13,7 @@ import { resolveCursorModels } from "open-sse/services/cursorModels.js";
 import { resolveClinepassModels, resolveClineModels } from "open-sse/services/clinepassModels.js";
 import { getRegistryEntry, deriveModelsEndpoint, fetchViaDerivedEndpoint, parseOpenAIStyleModels, getStaticProviderModels } from "@/lib/providerModels/deriveModelsEndpoint.js";
 import { resolveGeminiModels } from "@/lib/providerModels/geminiModels.js";
+import { resolveAntigravityModels } from "@/lib/providerModels/antigravityModels.js";
 import { resolveZedModels } from "open-sse/shared/zedAuth.js";
 import codexProvider from "open-sse/providers/registry/codex.js";
 
@@ -196,13 +197,7 @@ const PROVIDER_MODELS_CONFIG = {
     })
   },
   antigravity: {
-    url: "https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:models",
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    authHeader: "Authorization",
-    authPrefix: "Bearer ",
-    body: {},
-    parseResponse: (data) => data.models || []
+    customResolver: resolveAntigravityModels,
   },
   github: {
     url: "https://api.githubcopilot.com/models",

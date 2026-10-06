@@ -115,6 +115,39 @@ export class AntigravityExecutor extends BaseExecutor {
     super("antigravity", PROVIDERS.antigravity);
   }
 
+  // Parse Antigravity quota error to extract precise resetsAtMs from ErrorInfo/RetryInfo
+  parseError(response, bodyText) {
+    if ((response.status === 429 || response.status === 409) && bodyText) {
+      try {
+        const json = JSON.parse(bodyText);
+        const err = json?.error;
+        let resetsAtMs = null;
+        const details = Array.isArray(err?.details) ? err.details : [];
+        for (const d of details) {
+          if (d?.metadata?.quotaResetTimeStamp) {
+            const ms = new Date(d.metadata.quotaResetTimeStamp).getTime();
+            if (!isNaN(ms) && ms > Date.now()) {
+              resetsAtMs = Math.max(resetsAtMs || 0, ms);
+            }
+          }
+          if (typeof d?.retryDelay === "string" && /^\d+(?:\.\d+)?s$/.test(d.retryDelay)) {
+            const sec = parseFloat(d.retryDelay);
+            if (!isNaN(sec) && sec > 0) {
+              const ms = Date.now() + Math.round(sec * 1000);
+              if (ms > Date.now()) {
+                resetsAtMs = Math.max(resetsAtMs || 0, ms);
+              }
+            }
+          }
+        }
+        if (resetsAtMs) {
+          return { ...super.parseError(response, bodyText), resetsAtMs };
+        }
+      } catch { /* fall through to default */ }
+    }
+    return super.parseError(response, bodyText);
+  }
+
   buildUrl(model, stream, urlIndex = 0) {
     const baseUrls = this.getBaseUrls();
     const baseUrl = baseUrls[urlIndex] || baseUrls[0];

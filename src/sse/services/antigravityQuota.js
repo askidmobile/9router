@@ -6,6 +6,7 @@
 
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { getAntigravityUsage } from "open-sse/services/usage/google.js";
+import { getModelUpstreamId } from "open-sse/config/providerModels.js";
 import * as log from "../utils/logger.js";
 
 // In-memory cache: connectionId → { [modelId]: { remainingPercentage, resetAt } }
@@ -47,6 +48,95 @@ function applyActiveStrikeBlocks(connectionId, quotas) {
     };
   }
   return quotas;
+}
+
+/**
+ * Get model family for Antigravity models ("claude_gpt" or "gemini").
+ */
+export function getAntigravityModelFamily(model) {
+  if (!model || typeof model !== "string") return null;
+  const clean = (model.includes("/") ? model.slice(model.indexOf("/") + 1) : model).toLowerCase();
+  if (clean.startsWith("claude-") || clean.startsWith("gpt-") || clean === "claude") {
+    return "claude_gpt";
+  }
+  if ((clean.startsWith("gemini-") && !clean.includes("image")) || clean === "gemini") {
+    return "gemini";
+  }
+  return null;
+}
+
+/**
+ * Resolve quota info for a given model from the connection quotas map.
+ * Checks direct model entry, tier aliases, and shared family summary buckets
+ * (session 5h and weekly limits).
+ */
+export function getAntigravityModelQuota(quotas, model) {
+  if (!quotas || typeof quotas !== "object" || typeof model !== "string" || !model) return null;
+
+  const cleanModel = typeof model === "string"
+    ? (model.includes("/") ? model.slice(model.indexOf("/") + 1) : model).replace(/\([^()]+\)\s*$/, "").trim()
+    : "";
+
+  const family = getAntigravityModelFamily(cleanModel);
+  const candidates = [];
+
+  // 1. Direct entry in quotas map (e.g. per-model quota if present)
+  if (quotas[cleanModel]) {
+    candidates.push(quotas[cleanModel]);
+  }
+
+  // 2. Registry aliases share their upstream model's quota.
+  const upstreamModel = getModelUpstreamId("ag", cleanModel).replace(/\([^()]+\)\s*$/, "");
+  if (upstreamModel !== cleanModel && quotas[upstreamModel]) {
+    candidates.push(quotas[upstreamModel]);
+  }
+
+  // 3. Shared family summary buckets (5h session & Weekly)
+  if (family === "claude_gpt") {
+    if (quotas.claude_gpt_session) candidates.push(quotas.claude_gpt_session);
+    if (quotas.claude_gpt_weekly) candidates.push(quotas.claude_gpt_weekly);
+  } else if (family === "gemini") {
+    if (quotas.gemini_session) candidates.push(quotas.gemini_session);
+    if (quotas.gemini_weekly) candidates.push(quotas.gemini_weekly);
+  }
+
+  if (candidates.length === 0) return null;
+
+  const now = Date.now();
+  const exhausted = [];
+
+  for (const c of candidates) {
+    if (c && typeof c === "object" && Number.isFinite(c.remainingPercentage) && c.remainingPercentage <= 0) {
+      if (c.resetAt) {
+        const resetMs = new Date(c.resetAt).getTime();
+        if (resetMs > now) {
+          exhausted.push({ ...c, resetMs });
+        }
+      }
+    }
+  }
+
+  // If any bucket is exhausted (0%), the model is exhausted.
+  // Use the longest (latest) resetAt so we do not unblock prematurely.
+  if (exhausted.length > 0) {
+    exhausted.sort((a, b) => b.resetMs - a.resetMs);
+    const primary = exhausted[0];
+    return {
+      used: primary.used ?? 1000,
+      total: primary.total ?? 1000,
+      remainingPercentage: 0,
+      resetAt: primary.resetAt,
+      displayName: primary.displayName || cleanModel,
+    };
+  }
+
+  // If none exhausted, return the most constrained available bucket
+  // Expired/unknown zero-percent readings cannot mask a current bucket or
+  // disable the strike breaker when there is no trustworthy reset deadline.
+  const valid = candidates.filter(c => c && Number.isFinite(c.remainingPercentage) && c.remainingPercentage > 0);
+  if (valid.length === 0) return null;
+  valid.sort((a, b) => a.remainingPercentage - b.remainingPercentage);
+  return valid[0];
 }
 
 /**
@@ -140,7 +230,8 @@ export async function handleAntigravityQuotaError(connectionId, status, model, a
 
   // Throttle applies to error paths too: one quota request per account/30s.
   // The first 409/429 populates cache; concurrent or repeated errors reuse it.
-  const quota = (await refreshAntigravityQuota(connectionId, accessToken, providerSpecificData))?.[model];
+  const quotas = await refreshAntigravityQuota(connectionId, accessToken, providerSpecificData);
+  const quota = getAntigravityModelQuota(quotas, model);
 
   // Strike breaker: count every 429 whose quota reading is either optimistic
   // (remaining > 0) or unavailable (quota API 403/error). 3 within the window
@@ -180,7 +271,12 @@ export async function handleAntigravityQuotaError(connectionId, status, model, a
   if (!quota.resetAt) return null;
 
   const resetMs = new Date(quota.resetAt).getTime();
-  if (resetMs <= Date.now()) return null;
+  if (!Number.isFinite(resetMs) || resetMs <= Date.now()) return null;
+
+  // Cache-block the requested model under its model name
+  const cached = quotaCache.get(connectionId) || {};
+  cached[model] = { remainingPercentage: 0, resetAt: quota.resetAt };
+  quotaCache.set(connectionId, cached);
 
   log.warn("AG_QUOTA", `${connectionId.slice(0, 8)} | UPSTREAM_${status} ${model} — quota exhausted; CACHE_BLOCK until ${quota.resetAt}`);
   return resetMs;

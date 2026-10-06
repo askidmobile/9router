@@ -137,6 +137,8 @@ export const ANTIGRAVITY_HEADERS = {
   "User-Agent": ANTIGRAVITY_IDE_USER_AGENT
 };
 
+export const ANTIGRAVITY_CATALOG_TIMEOUT_MS = 10000;
+
 // Cloud Code Assist API endpoints differ by client ecosystem.
 export const CLOUD_CODE_API = {
   "gemini-cli": {

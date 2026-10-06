@@ -27,7 +27,7 @@ vi.mock("open-sse/services/usage/google.js", () => ({
 }));
 vi.mock("@/sse/utils/logger.js", () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn() }));
 
-const { getAntigravityQuotaCache, handleAntigravityQuotaError, refreshAntigravityQuota, clearAntigravityStrikes } = await import("@/sse/services/antigravityQuota.js");
+const { getAntigravityQuotaCache, getAntigravityModelQuota, handleAntigravityQuotaError, refreshAntigravityQuota, clearAntigravityStrikes } = await import("@/sse/services/antigravityQuota.js");
 const { getProviderCredentials } = await import("@/sse/services/auth.js");
 
 const MODEL = "claude-opus-4-6-thinking";
@@ -307,5 +307,98 @@ describe("Antigravity quota-aware routing", () => {
     // Optimistic reading must NOT poison the shared cache (auth pre-filter
     // treats cached 0% as exhausted).
     expect(getAntigravityQuotaCache().get("ag-optimistic")?.[MODEL]?.remainingPercentage).toBe(90);
+  });
+});
+
+describe("Antigravity shared family quotas", () => {
+  it("checks shared family summary quota (claude_gpt_session / weekly)", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-26T00:00:00.000Z"));
+    mocks.getAntigravityUsage.mockResolvedValue({
+      quotas: {
+        claude_gpt_session: { remainingPercentage: 0, resetAt: FUTURE_RESET },
+        claude_gpt_weekly: { remainingPercentage: 50, resetAt: "2026-09-02T00:00:00.000Z" },
+      }
+    });
+
+    try {
+      const reset = await handleAntigravityQuotaError("ag-family", 429, "claude-sonnet-5-5", "token", {});
+      expect(reset).toBe(Date.parse(FUTURE_RESET));
+      expect(getAntigravityQuotaCache().get("ag-family")["claude-sonnet-5-5"]).toMatchObject({
+        remainingPercentage: 0,
+        resetAt: FUTURE_RESET,
+      });
+
+      // auth pre-filter should skip this account for claude-sonnet-5-5 based on cache
+      mocks.getProviderConnections.mockResolvedValue([
+        { id: "ag-family", email: "family@example.com", isActive: true },
+        { id: "ag-other", email: "other@example.com", isActive: true },
+      ]);
+      const creds = await getProviderCredentials("antigravity", null, "claude-sonnet-5-5");
+      expect(creds.connectionId).toBe("ag-other");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("checks shared family summary quota for gemini models", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-26T00:00:00.000Z"));
+    mocks.getAntigravityUsage.mockResolvedValue({
+      quotas: {
+        gemini_weekly: { remainingPercentage: 0, resetAt: FUTURE_RESET },
+      }
+    });
+
+    try {
+      const reset = await handleAntigravityQuotaError("ag-gem", 429, "gemini-3.8-flash-high", "token", {});
+      expect(reset).toBe(Date.parse(FUTURE_RESET));
+      expect(getAntigravityQuotaCache().get("ag-gem")["gemini-3.8-flash-high"]).toMatchObject({
+        remainingPercentage: 0,
+        resetAt: FUTURE_RESET,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("uses the latest active reset when both model and weekly limits are exhausted", () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date("2026-08-26T00:00:00Z"));
+    const weeklyReset = "2026-09-02T00:00:00Z";
+    expect(getAntigravityModelQuota({
+      "claude-sonnet-5-5-medium": { remainingPercentage: 0, resetAt: FUTURE_RESET },
+      claude_gpt_weekly: { remainingPercentage: 0, resetAt: weeklyReset },
+    }, "ag/claude-sonnet-5-5-medium(medium)").resetAt).toBe(weeklyReset);
+    vi.useRealTimers();
+  });
+
+  it("uses the registry alias's quota and keeps family limits away from images", () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date("2026-08-26T00:00:00Z"));
+    const quotas = { "claude-opus-5-5-high": { remainingPercentage: 0, resetAt: FUTURE_RESET } };
+    expect(getAntigravityModelQuota(quotas, "claude-opus-5-5").remainingPercentage).toBe(0);
+    expect(getAntigravityModelQuota({ gemini_weekly: quotas["claude-opus-5-5-high"] }, "gemini-3.1-flash-image")).toBeNull();
+    vi.useRealTimers();
+  });
+
+  it("does not let expired or invalid zero-percent readings mask a current quota", async () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date("2026-08-26T00:00:00Z"));
+    const quotas = {
+      "claude-sonnet-5-5-medium": { remainingPercentage: 0, resetAt: "2026-08-25T00:00:00Z" },
+      claude_gpt_session: { remainingPercentage: 0, resetAt: "invalid" },
+      claude_gpt_weekly: { remainingPercentage: 50, resetAt: FUTURE_RESET },
+    };
+    expect(getAntigravityModelQuota(quotas, "claude-sonnet-5-5-medium").remainingPercentage).toBe(50);
+    getAntigravityQuotaCache().set("ag-stale", quotas);
+    mocks.getProviderConnections.mockResolvedValue([{ id: "ag-stale", isActive: true }]);
+    expect((await getProviderCredentials("antigravity", null, "claude-sonnet-5-5-medium")).connectionId).toBe("ag-stale");
+    vi.useRealTimers();
+  });
+
+  it("keeps the strike breaker working when all zero-percent deadlines are stale", async () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date("2026-08-26T00:00:00Z"));
+    mocks.getAntigravityUsage.mockResolvedValue({ quotas: { claude_gpt_session: { remainingPercentage: 0, resetAt: "invalid" } } });
+    for (let i = 0; i < 2; i++) expect(await handleAntigravityQuotaError("ag-no-deadline", 429, "claude-opus-5-5-medium", "token", {})).toBeNull();
+    expect(await handleAntigravityQuotaError("ag-no-deadline", 429, "claude-opus-5-5-medium", "token", {})).toBe(Date.now() + 15 * 60_000);
+    vi.useRealTimers();
   });
 });
