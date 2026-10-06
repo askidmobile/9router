@@ -49,6 +49,7 @@ vi.mock("../../src/sse/services/antigravityQuota.js", () => ({
 }));
 vi.mock("../../src/sse/utils/logger.js", () => mocks.logger);
 vi.mock("@/lib/localDb", () => ({ getSettings: async () => ({}) }));
+vi.mock("@/lib/db/index.js", () => ({ getCapsOverrides: async () => ({}), getCustomModels: async () => [] }));
 vi.mock("@/lib/pxpipe/loader.js", () => ({ getTransform: async () => null }));
 vi.mock("@/lib/pxpipe/events.js", () => ({ appendPxpipeEvent: vi.fn() }));
 vi.mock("@/lib/usageDb.js", () => ({

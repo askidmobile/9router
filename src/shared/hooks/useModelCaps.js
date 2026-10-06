@@ -59,6 +59,7 @@ const pickCaps = (c) => ({
   vision: c.vision,
   search: c.search,
   reasoning: c.reasoning,
+  reasoningLevels: c.reasoningLevels,
   tools: c.tools,
   pdf: c.pdf,
   imageOutput: c.imageOutput,

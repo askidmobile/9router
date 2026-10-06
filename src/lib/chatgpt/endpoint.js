@@ -24,7 +24,7 @@ export async function getChatGPTManifest(request) {
     getSettings(), getCombos(), getModelAliases(), buildModelsList(["llm"]),
   ]);
   const current = refreshSelectedModels(selectedModels(settings), available);
-  const models = await withChatGPTReasoning(current, combos, aliases);
+  const models = await withChatGPTReasoning(current, combos, aliases, available);
   return Response.json(chatGPTManifest(models), { headers });
 }
 

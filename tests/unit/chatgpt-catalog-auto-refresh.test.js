@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { once } from "node:events";
 import { spawn } from "node:child_process";
-import { enableConfig, refreshNativeCatalog, serveIntegration } from "../../public/9router-codex.mjs";
+import { enableConfig, refreshNativeCatalog, refreshRouterCatalog, serveIntegration } from "../../public/9router-codex.mjs";
 
 const oldModel = { slug: "gpt-6-sol", visibility: "list" };
 const newModel = { slug: "gpt-6.1-sol", visibility: "list", supported_reasoning_levels: [{ effort: "max" }] };
@@ -95,7 +95,7 @@ describe("automatic native catalog writes", () => {
 describe("running bridge catalog lifecycle", () => {
   async function start(refresh, options = {}) {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
-    const server = serveIntegration({ port: 0, token: "fixture-token" }, { refresh, warn: vi.fn(), log: vi.fn(), ...options });
+    const server = serveIntegration({ port: 0, token: "fixture-token" }, { refresh, refreshRouter: vi.fn(), warn: vi.fn(), log: vi.fn(), ...options });
     servers.push(server);
     await once(server, "listening");
     return server;
@@ -128,5 +128,34 @@ describe("running bridge catalog lifecycle", () => {
     expect(refresh).toHaveBeenCalledTimes(2);
     expect(warn).toHaveBeenCalledOnce();
     expect(warn.mock.calls.flat().join()).not.toContain("native-secret");
+  });
+});
+
+describe("automatic router reasoning metadata", () => {
+  const manifest = { version: 1, models: [{
+    id: "external", slug: "9router/external", contextWindow: 200000,
+    reasoningLevels: ["low", "medium", "high", "xhigh", "max"], defaultReasoningLevel: "medium",
+  }] };
+
+  it("updates effort choices while preserving native entries, config and credentials", async () => {
+    const { state, catalogPath, config } = await fixture();
+    const getManifest = vi.fn(async () => manifest);
+    expect(await refreshRouterCatalog(state, { getManifest })).toEqual({ changed: true, routerModelCount: 1 });
+    const models = JSON.parse(await fs.readFile(catalogPath, "utf8")).models;
+    expect(models.filter(model => !model.slug.startsWith("9router/"))).toEqual([oldModel]);
+    expect(models[0].supported_reasoning_levels.map(level => level.effort)).toEqual(manifest.models[0].reasoningLevels);
+    expect(await fs.readFile(path.join(state.codexHome, "config.toml"), "utf8")).toBe(config);
+    expect(await fs.readFile(path.join(state.codexHome, "auth.json"), "utf8")).toBe("account-credentials-must-not-change");
+    expect(JSON.parse(await fs.readFile(path.join(state.directory, "models.json"), "utf8"))).toEqual(manifest);
+    expect(await refreshRouterCatalog(state, { getManifest })).toEqual({ changed: false, routerModelCount: 1 });
+  });
+
+  it("retains the previous catalog and releases the lock on invalid metadata or outage", async () => {
+    const { state, catalogPath } = await fixture();
+    const before = await fs.readFile(catalogPath, "utf8");
+    await expect(refreshRouterCatalog(state, { getManifest: async () => ({ ...manifest, models: [{ ...manifest.models[0], reasoningLevels: ["typo"] }] }) })).rejects.toThrow("Invalid 9router model catalog");
+    await expect(refreshRouterCatalog(state, { getManifest: async () => { throw new Error("offline"); } })).rejects.toThrow("offline");
+    expect(await fs.readFile(catalogPath, "utf8")).toBe(before);
+    await expect(fs.stat(path.join(state.directory, "operation.lock"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 });

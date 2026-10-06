@@ -6,6 +6,8 @@ import { resolveKiroEffortPath } from "../config/kiroConstants.js";
 import PROVIDERS from "./registry/index.js";
 import { getProviderModels } from "../config/providerModels.js";
 
+export const REASONING_EFFORT_LEVELS = ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
+
 // Shared level sets (deduped) — verified against provider docs + wire in thinkingUnified.applyFormat.
 const L = {
   base: ["none", "low", "medium", "high"],                          // qwen, step, hunyuan, gemini-budget
@@ -87,10 +89,13 @@ const PATTERN_THINKING = [
 ];
 
 // Returns valid thinking levels for a model, or null when the model has no reasoning.
-export function getThinkingLevels(provider, model) {
+export function getThinkingLevels(provider, model, capsOverride = null) {
   if (provider === "kiro" && resolveKiroEffortPath(model) === null) return null;
-  const caps = getCapabilitiesForModel(provider, model);
+  const caps = { ...getCapabilitiesForModel(provider, model), ...(capsOverride || {}) };
   if (!caps.reasoning) return null;
+  if (Array.isArray(caps.reasoningLevels)) {
+    return REASONING_EFFORT_LEVELS.filter((level) => caps.reasoningLevels.includes(level));
+  }
   const baseId = String(model || "").replace(/\([^()]+\)\s*$/, "");
   const modelLevels = provider === "codex"
     ? getProviderModels("cx").find((entry) => entry.id === baseId)?.thinkingLevels

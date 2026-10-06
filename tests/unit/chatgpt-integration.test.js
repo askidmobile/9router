@@ -36,6 +36,18 @@ beforeEach(() => {
 });
 
 describe("ChatGPT integration settings and catalog", () => {
+  it("refreshes reasoning settings from the live catalog without saving the selection again", async () => {
+    const id = "ocg/space-bunny";
+    db.getSettings.mockResolvedValue({ chatgptIntegration: { models: [{ id, name: "Bunny", contextWindow: 32768 }] } });
+    db.buildModelsList.mockResolvedValue([{ id, capabilities: { reasoning: true, reasoningLevels: ["low", "medium", "high", "xhigh", "max"] } }]);
+    const first = await (await getChatGPTManifest(request({}))).json();
+    expect(first.models[0].reasoningLevels).toEqual(["low", "medium", "high", "xhigh", "max"]);
+    expect(first.models[0].defaultReasoningLevel).toBe("medium");
+    db.buildModelsList.mockResolvedValue([{ id, capabilities: { reasoning: true, reasoningLevels: ["high", "max"] } }]);
+    const second = await (await getChatGPTManifest(request({}))).json();
+    expect(second.models[0].reasoningLevels).toEqual(["high", "max"]);
+    expect(db.updateSettings).not.toHaveBeenCalled();
+  });
   it("persists validated model IDs and limits, including combos", async () => {
     const result = await PUT(request({ models: ["Coding", "glm/glm-5.3"] }));
     expect(result.status).toBe(200);

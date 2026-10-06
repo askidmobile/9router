@@ -6,6 +6,7 @@ import { Modal, Button } from "@/shared/components";
 import { invalidateModelCapsCache } from "@/shared/hooks/useModelCaps";
 import { invalidatePricingCache } from "@/shared/hooks/usePricing";
 import { saveModelName } from "@/shared/hooks/useModelNames";
+import { getThinkingLevels, REASONING_EFFORT_LEVELS } from "open-sse/providers/thinkingLevels.js";
 
 const BOOL_CAPS = [
   ["vision", "Vision (image input)"],
@@ -32,11 +33,20 @@ export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
   const [contextWindow, setContextWindow] = useState("");
   const [maxOutput, setMaxOutput] = useState("");
   const [flags, setFlags] = useState({});
+  const [useCatalogLevels, setUseCatalogLevels] = useState(true);
+  const [reasoningLevels, setReasoningLevels] = useState([]);
   const [prices, setPrices] = useState({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [importing, setImporting] = useState(false);
   const [importMsg, setImportMsg] = useState("");
+
+  const catalogLevels = model ? getThinkingLevels(model.providerId || model.providerAlias, model.id, {
+    ...model.staticCaps, reasoning: true,
+  }) || [] : [];
+  const orderedLevels = (levels) => REASONING_EFFORT_LEVELS.filter((level) =>
+    levels.includes(level) || (level === "high" && levels.includes("thinking"))
+  );
 
   // Pull caps/pricing for this model's provider from the models.dev catalog
   // and write them as overrides. Exact values beat manual guessing.
@@ -72,6 +82,15 @@ export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
     const nextFlags = {};
     for (const [key] of BOOL_CAPS) nextFlags[key] = !!model.caps?.[key];
     setFlags(nextFlags);
+    const manualLevels = model.caps?.reasoningLevels;
+    setUseCatalogLevels(!Array.isArray(manualLevels));
+    const defaults = getThinkingLevels(model.providerId || model.providerAlias, model.id, {
+      ...model.staticCaps, reasoning: true,
+    }) || [];
+    setReasoningLevels(REASONING_EFFORT_LEVELS.filter((level) =>
+      (Array.isArray(manualLevels) ? manualLevels : defaults).includes(level)
+      || (level === "high" && !Array.isArray(manualLevels) && defaults.includes("thinking"))
+    ));
     const nextPrices = {};
     for (const [key] of PRICE_FIELDS) {
       nextPrices[key] = model.pricing?.[key] != null ? String(model.pricing[key]) : "";
@@ -111,18 +130,28 @@ export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
       }
 
       // 2. Capabilities override = diff vs static caps (empty diff removes the override)
-      const override = {};
+      // Keep less common overrides (thinking format/range, audio/video, etc.)
+      // when editing one of the fields exposed by this modal.
+      const override = { ...(model.override || {}) };
       for (const [key] of BOOL_CAPS) {
         const value = !!flags[key];
         if (value !== !!model.staticCaps?.[key]) override[key] = value;
+        else delete override[key];
       }
       const ctx = contextWindow.trim() ? parseInt(contextWindow, 10) : null;
       if (ctx && ctx !== model.staticCaps?.contextWindow) override.contextWindow = ctx;
+      else delete override.contextWindow;
       const out = maxOutput.trim() ? parseInt(maxOutput, 10) : null;
       if (out && out !== model.staticCaps?.maxOutput) override.maxOutput = out;
+      else delete override.maxOutput;
+      const reasoningChanged = useCatalogLevels !== !Array.isArray(model.caps?.reasoningLevels)
+        || (!useCatalogLevels && JSON.stringify(reasoningLevels) !== JSON.stringify(orderedLevels(model.caps?.reasoningLevels || [])));
+      if (!useCatalogLevels) override.reasoningLevels = reasoningLevels;
+      else if (reasoningChanged) override.reasoningLevels = null;
       const capsChanged = BOOL_CAPS.some(([key]) => !!flags[key] !== !!model.caps?.[key])
         || ctx !== (model.caps?.contextWindow || null)
-        || out !== (model.caps?.maxOutput || null);
+        || out !== (model.caps?.maxOutput || null)
+        || reasoningChanged;
 
       if (capsChanged && Object.keys(override).length > 0) {
         const res = await fetch("/api/models/caps", {
@@ -347,6 +376,42 @@ export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
               </label>
             ))}
           </div>
+          <fieldset className="mt-4 border-t border-border pt-3" disabled={!flags.reasoning}>
+            <legend className="sr-only">Reasoning effort levels</legend>
+            <p className="text-sm font-medium text-text-main mb-2">Reasoning effort levels</p>
+            <label className="flex items-center gap-2 text-sm text-text-main cursor-pointer">
+              <input
+                type="checkbox"
+                checked={useCatalogLevels}
+                onChange={(e) => {
+                  setUseCatalogLevels(e.target.checked);
+                  if (e.target.checked) setReasoningLevels(orderedLevels(catalogLevels));
+                }}
+                className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+              />
+              Use catalog defaults
+            </label>
+            <div className="flex flex-wrap gap-x-4 gap-y-2 mt-3">
+              {REASONING_EFFORT_LEVELS.map((level) => (
+                <label key={level} className="flex items-center gap-2 text-sm text-text-main cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={reasoningLevels.includes(level)}
+                    disabled={useCatalogLevels || !flags.reasoning}
+                    onChange={(e) => setReasoningLevels((prev) => orderedLevels(e.target.checked
+                      ? [...prev, level] : prev.filter((entry) => entry !== level)))}
+                    aria-label={`Reasoning effort: ${level}`}
+                    className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                  />
+                  <code>{level}</code>
+                </label>
+              ))}
+            </div>
+            <p className="text-xs text-text-muted mt-2">
+              Choose the levels accepted by this provider. Saved choices are used in Codex and the model picker.
+            </p>
+            {!flags.reasoning && <p className="text-xs text-text-muted mt-1">Enable reasoning to configure effort levels.</p>}
+          </fieldset>
         </div>
 
         <div>
@@ -397,6 +462,7 @@ EditModelModal.propTypes = {
     defaultName: PropTypes.string,
     isCustom: PropTypes.bool,
     providerAlias: PropTypes.string,
+    providerId: PropTypes.string,
     aliasKey: PropTypes.string,
     alias: PropTypes.string,
     caps: PropTypes.object,

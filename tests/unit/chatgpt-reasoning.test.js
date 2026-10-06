@@ -32,6 +32,24 @@ describe("ChatGPT reasoning across provider routes", () => {
     const [model] = await withChatGPTReasoning([{ id: "glm/glm-5" }]);
     expect(model.reasoningLevels).toEqual(["none", "high"]);
   });
+  it("uses current saved capabilities for a custom model and keeps aliases scoped", async () => {
+    const levels = ["low", "medium", "high", "xhigh", "max"];
+    const available = [{ id: "ocg/space-bunny", capabilities: { reasoning: true, reasoningLevels: levels } }];
+    const models = await withChatGPTReasoning([{ id: "ocg/space-bunny" }, { id: "bunny" }], [], { bunny: "ocg/space-bunny" }, available);
+    expect(models.map(model => model.reasoningLevels)).toEqual([levels, levels]);
+    expect(models[0].defaultReasoningLevel).toBe("medium");
+  });
+  it("intersects user lists through nested Combos without inventing levels", async () => {
+    const combos = [{ name: "Nested", models: ["ocg/space-bunny"] }, { name: "Mixed", models: ["Nested", "glm/glm-5.3"] }];
+    const available = [{ id: "ocg/space-bunny", capabilities: { reasoning: true, reasoningLevels: ["medium", "high", "xhigh", "max"] } }];
+    const [model] = await withChatGPTReasoning([{ id: "Mixed" }], combos, {}, available);
+    expect(model.reasoningLevels).toEqual(["high", "max"]);
+  });
+  it.each([{ reasoning: false, reasoningLevels: ["high"] }, { reasoning: true, reasoningLevels: [] }])("hides effort controls when current caps say %j", async capabilities => {
+    const [model] = await withChatGPTReasoning([{ id: "glm/glm-5.3" }], [], {}, [{ id: "glm/glm-5.3", capabilities }]);
+    expect(model.reasoningLevels).toEqual([]);
+    expect(model.defaultReasoningLevel).toBeNull();
+  });
   it.each(["low", "high", "max"])("carries GLM %s to the actual provider thinking normalization", level => {
     expect(getThinkingLevels("glm", "glm-5.3")).toContain(level);
     expect(getCapabilitiesForModel("glm", "glm-5.3").thinkingCanDisable).toBe(false);

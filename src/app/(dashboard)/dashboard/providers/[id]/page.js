@@ -202,7 +202,7 @@ export default function ProviderDetailPage() {
   // Resolve suffix "(level)" for a model when a thinking level is picked and the model supports it.
   const resolveThinkingSuffix = (modelId) => {
     if (!thinkingMode || thinkingMode === "passthrough") return null;
-    const levels = getThinkingLevels(providerId, modelId);
+    const levels = getThinkingLevels(providerId, modelId, effectiveCaps(modelId));
     return levels && levels.includes(thinkingMode) ? thinkingMode : null;
   };
   const providerStorageAlias = isCompatible ? providerId : providerAlias;
@@ -227,7 +227,7 @@ export default function ProviderDetailPage() {
     const addLevels = (modelId) => {
       if (!modelId || seen.has(modelId)) return;
       seen.add(modelId);
-      const lv = getThinkingLevels(providerId, modelId);
+      const lv = getThinkingLevels(providerId, modelId, effectiveCaps(modelId));
       if (lv) lv.forEach((l) => { if (l !== "none") set.add(l); });
     };
     for (const m of models) addLevels(m.id);

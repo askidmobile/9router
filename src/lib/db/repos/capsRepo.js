@@ -1,8 +1,8 @@
 import { makeKv } from "../helpers/kvStore.js";
 
 // modelCaps: key=`${provider}|${model}`, value=capabilities override object.
-// Overrides are merged over static open-sse capabilities at the src layer
-// (GET /api/models) — the runtime engine keeps its static fallback.
+// Overrides are merged over static capabilities in catalogs. Reasoning metadata
+// also reaches the request pipeline; other runtime caps retain their static policy.
 const capsKv = makeKv("modelCaps");
 
 export function capsKey(provider, model) {
@@ -27,9 +27,18 @@ export async function deleteCapsOverride(provider, model) {
 
 // entries: { [modelId]: caps } for one provider — single transaction
 export async function setCapsOverridesBulk(provider, entries) {
+  const existing = await capsKv.getAll();
   const obj = {};
   for (const [model, caps] of Object.entries(entries)) {
-    obj[capsKey(provider, model)] = caps;
+    const key = capsKey(provider, model);
+    const previous = existing[key];
+    // models.dev imports refresh catalog metadata, not the user's explicit
+    // effort choices (including an empty list or a reset to automatic).
+    const reasoning = previous && Object.hasOwn(previous, "reasoningLevels") ? {
+      reasoningLevels: previous.reasoningLevels,
+      ...(typeof previous.reasoning === "boolean" ? { reasoning: previous.reasoning } : {}),
+    } : {};
+    obj[key] = { ...caps, ...reasoning };
   }
   await capsKv.setMany(obj);
 }

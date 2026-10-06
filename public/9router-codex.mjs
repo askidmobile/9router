@@ -362,8 +362,29 @@ export async function refreshNativeCatalog(state, { discover = nativeCatalog } =
   }, { skipIfLocked: true });
 }
 
+// Model edits can change reasoning choices without a server release. Refresh
+// router metadata separately so an OpenAI catalog outage cannot block them.
+export async function refreshRouterCatalog(state, { getManifest = fetchManifest } = {}) {
+  return withOperationLock(state.directory, async () => {
+    const current = await optionalJson(path.join(state.directory, "state.json"));
+    if (!current?.active || current.token !== state.token) return;
+    assertOwnership(await readConfig(path.join(current.codexHome, "config.toml")), current);
+    const filename = path.join(current.directory, "catalog.json");
+    const previous = await readJson(filename);
+    const manifest = validateManifest(await getManifest(current));
+    const next = { ...previous, ...mergeCatalog(previous.models, manifest) };
+    const changed = JSON.stringify(previous) !== JSON.stringify(next);
+    if (changed) {
+      assertOwnership(await readConfig(path.join(current.codexHome, "config.toml")), current);
+      await atomicWrite(filename, json(next));
+      await atomicWrite(path.join(current.directory, "models.json"), json(manifest));
+    }
+    return { changed, routerModelCount: manifest.models.length };
+  }, { skipIfLocked: true });
+}
+
 export function serveIntegration(state, { refresh = refreshNativeCatalog, refreshIntervalMs = 5 * 60 * 1000,
-  warn = console.warn, log = console.log, ...bridgeOptions } = {}) {
+  refreshRouter = refreshRouterCatalog, warn = console.warn, log = console.log, ...bridgeOptions } = {}) {
   const server = createBridge(state, bridgeOptions);
   let timer, refreshing = false;
   const refreshOnce = async () => {
@@ -374,6 +395,12 @@ export function serveIntegration(state, { refresh = refreshNativeCatalog, refres
       if (result?.changed) log(`Refreshed ${result.nativeModelCount} native Codex models. Restart Codex to refresh its model picker.`);
     } catch {
       warn("Could not refresh native Codex models; the existing catalog is unchanged. The bridge will retry automatically.");
+    }
+    try {
+      const result = await refreshRouter(state);
+      if (result?.changed) log("Updated 9router model settings in the Codex catalog. Restart Codex to refresh its model picker.");
+    } catch {
+      warn("Could not refresh 9router model settings; the existing catalog is unchanged. The bridge will retry automatically.");
     } finally { refreshing = false; }
   };
   server.once("listening", () => {

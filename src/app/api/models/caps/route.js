@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { REASONING_EFFORT_LEVELS } from "open-sse/providers/thinkingLevels.js";
 import {
   getCapsOverrides,
   setCapsOverride,
@@ -25,6 +26,13 @@ function validateCaps(caps) {
       if (!Number.isInteger(value) || value <= 0) return `caps.${key} must be a positive integer`;
     } else if (STRING_FIELDS.includes(key)) {
       if (value !== null && typeof value !== "string") return `caps.${key} must be a string or null`;
+    } else if (key === "reasoningLevels") {
+      if (value !== null && (!Array.isArray(value)
+        || value.length > REASONING_EFFORT_LEVELS.length
+        || new Set(value).size !== value.length
+        || value.some((level) => !REASONING_EFFORT_LEVELS.includes(level)))) {
+        return "caps.reasoningLevels must be null or a list of distinct reasoning effort levels";
+      }
     } else if (key === "thinkingRange") {
       if (value !== null && (typeof value !== "object" || typeof value.min !== "number" || typeof value.max !== "number")) {
         return "caps.thinkingRange must be null or { min, max }";
