@@ -29,6 +29,9 @@ export const GITHUB_COPILOT = {
   COPILOT_CHAT_VERSION: _ghCopilot.chatVersion,
   USER_AGENT: _ghCopilot.userAgent,
   API_VERSION: _ghCopilot.apiVersion,
+  MODELS_URL: _ghCopilot.modelsUrl,
+  MODELS_TIMEOUT_MS: _ghCopilot.modelsTimeoutMs,
+  MODELS_CACHE_TTL_MS: _ghCopilot.modelsCacheTtlMs,
 };
 
 // === Antigravity enums ===

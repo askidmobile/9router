@@ -338,5 +338,12 @@
   "sync command": "команду синхронизации",
   "status command": "команду проверки состояния",
   "change API key command": "команду смены API-ключа",
-  "disable command": "команду отключения"
+  "disable command": "команду отключения",
+  "GitHub has disabled access to some models for this account. Check your Copilot plan and model policies in GitHub, then reopen this dialog.": "GitHub отключил доступ к части моделей для этого аккаунта. Проверьте тариф Copilot и настройки доступа к моделям в GitHub, затем откройте это окно снова.",
+  "Copilot model access settings": "Настройки доступа к моделям Copilot",
+  "Select All ({count} available)": "Выбрать все (доступно: {count})",
+  " · {count} shown": " · показано: {count}",
+  "Access disabled by GitHub for this account": "GitHub отключил доступ для этого аккаунта",
+  "No access": "Нет доступа",
+  "Import Selected ({count})": "Импортировать выбранные ({count})"
 }

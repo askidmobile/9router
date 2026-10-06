@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import PropTypes from "prop-types";
 import { Modal, Button } from "@/shared/components";
+import { useTranslation } from "@/i18n/useTranslation";
 
 // Generic "import models from the provider's /models endpoint" modal.
 // Fetches GET /api/providers/{connectionId}/models, lets the user pick models
@@ -17,6 +18,7 @@ export default function ImportModelsModal({
   transformId,
   onImported,
 }) {
+  const t = useTranslation();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [warning, setWarning] = useState("");
@@ -53,7 +55,7 @@ export default function ImportModelsModal({
           if (transformId) id = transformId(id);
           if (!id || seen.has(id)) continue;
           seen.add(id);
-          normalized.push({ id, name: m?.name && m.name !== m.id && m.name !== id ? m.name : null });
+          normalized.push({ id, name: m?.name && m.name !== m.id && m.name !== id ? m.name : null, available: m.available !== false });
         }
         setModels(normalized);
         if (data.warning) setWarning(data.warning);
@@ -76,7 +78,7 @@ export default function ImportModelsModal({
     return rows.filter((m) => m.id.toLowerCase().includes(q) || (m.name || "").toLowerCase().includes(q));
   }, [rows, search]);
 
-  const selectable = visible.filter((m) => !m.added);
+  const selectable = visible.filter((m) => !m.added && m.available);
   const allVisibleSelected = selectable.length > 0 && selectable.every((m) => selected.has(m.id));
 
   const toggleAll = () => {
@@ -92,6 +94,7 @@ export default function ImportModelsModal({
   };
 
   const toggleOne = (id) => {
+    if (!rows.some(m => m.id === id && m.available && !m.added)) return;
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -139,7 +142,12 @@ export default function ImportModelsModal({
         ) : (
           <>
             {error && <p className="text-xs text-red-500 break-words">{error}</p>}
-            {warning && !error && <p className="text-xs text-amber-600 dark:text-amber-400 break-words">{warning}</p>}
+            {warning && !error && <p className="text-xs text-amber-600 dark:text-amber-400 break-words">{t(warning)}</p>}
+            {models.some(m => !m.available) && ["gh", "github"].includes(providerStorageAlias) && (
+              <a href="https://docs.github.com/en/copilot/how-tos/copilot-on-github/set-up-copilot/configure-access-to-ai-models" target="_blank" rel="noopener noreferrer" className="text-xs text-primary underline">
+                {t("Copilot model access settings")}
+              </a>
+            )}
 
             {loading ? (
               <p className="text-sm text-text-muted py-6 text-center">
@@ -159,26 +167,30 @@ export default function ImportModelsModal({
                   <input
                     type="checkbox"
                     checked={allVisibleSelected}
+                    disabled={selectable.length === 0}
                     onChange={toggleAll}
                     className="h-3.5 w-3.5 rounded border-gray-300 text-primary focus:ring-primary"
                   />
-                  Select All ({selectable.length} available{visible.length !== rows.length ? `, ${visible.length} shown` : ""})
+                  {t("Select All ({count} available)", { count: selectable.length })}
+                  {visible.length !== rows.length && t(" · {count} shown", { count: visible.length })}
                 </label>
                 <div className="flex max-h-72 flex-col gap-1 overflow-y-auto custom-scrollbar pr-1">
                   {visible.map((m) => (
                     <label
                       key={m.id}
-                      className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs ${m.added ? "border-border opacity-50" : "border-border hover:border-primary/40 cursor-pointer"}`}
+                      className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs ${!m.available ? "border-border bg-background-alt" : m.added ? "border-border opacity-50" : "border-border hover:border-primary/40 cursor-pointer"}`}
+                      title={!m.available ? t("Access disabled by GitHub for this account") : undefined}
                     >
                       <input
                         type="checkbox"
                         checked={m.added || selected.has(m.id)}
-                        disabled={m.added}
+                        disabled={m.added || !m.available}
                         onChange={() => toggleOne(m.id)}
                         className="h-3.5 w-3.5 rounded border-gray-300 text-primary focus:ring-primary"
                       />
                       <span className="min-w-0 flex-1 truncate font-mono">{m.id}</span>
                       {m.name && <span className="truncate text-text-muted/70 italic">{m.name}</span>}
+                      {!m.available && <span className="shrink-0 text-[10px] text-amber-600 dark:text-amber-400">{t("No access")}</span>}
                       {m.added && <span className="shrink-0 text-[10px] text-text-muted">added</span>}
                     </label>
                   ))}
@@ -188,7 +200,7 @@ export default function ImportModelsModal({
                 </div>
                 <div className="flex gap-2">
                   <Button onClick={handleImport} fullWidth disabled={selected.size === 0 || importing}>
-                    {importing ? "Importing..." : `Import Selected (${selected.size})`}
+                    {importing ? t("Importing...") : t("Import Selected ({count})", { count: selected.size })}
                   </Button>
                   <Button onClick={onClose} variant="ghost" fullWidth disabled={importing}>Cancel</Button>
                 </div>

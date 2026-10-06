@@ -1,155 +1,98 @@
-/**
- * GitHub Copilot model catalog fetcher.
- *
- * Calls Copilot's `GET /models` endpoint to get the live catalog for an
- * authenticated account, so `/v1/models` reflects what the account can
- * actually use (e.g. newly shipped `claude-opus-4.8`, `gpt-5.5`) instead of
- * the hand-maintained static registry, which inevitably lags behind.
- *
- * Returns chat-capable models the account's policy allows. Embeddings and
- * disabled models are filtered out.
- */
-
+/** Shared, account-specific GitHub Copilot catalog for discovery and import. */
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { GITHUB_COPILOT } from "../config/appConstants.js";
 import { refreshCopilotToken } from "./tokenRefresh.js";
 
-const MODELS_URL = "https://api.githubcopilot.com/models";
-const FETCH_TIMEOUT_MS = 10_000;
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes per credential
-
-/** @type {Map<string, { expiresAt: number, models: any[] }>} */
 const catalogCache = new Map();
+const cacheKey = credentials => credentials?.providerSpecificData?.copilotToken || credentials?.accessToken;
 
-function cacheKey(credentials) {
-  return credentials?.providerSpecificData?.copilotToken
-    || credentials?.accessToken
-    || "copilot-anonymous";
-}
-
-function buildHeaders(token) {
-  return {
-    "Authorization": `Bearer ${token}`,
-    "Content-Type": "application/json",
-    "Copilot-Integration-Id": "vscode-chat",
-    "editor-version": `vscode/${GITHUB_COPILOT.VSCODE_VERSION}`,
-    "editor-plugin-version": `copilot-chat/${GITHUB_COPILOT.COPILOT_CHAT_VERSION}`,
-    "user-agent": GITHUB_COPILOT.USER_AGENT,
-    "x-github-api-version": GITHUB_COPILOT.API_VERSION,
-  };
-}
-
-async function fetchCatalogRaw(token, signal) {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  try {
-    const response = await proxyAwareFetch(MODELS_URL, {
-      method: "GET",
-      headers: buildHeaders(token),
-      cache: "no-store",
-      signal: signal || controller.signal,
-    });
-    if (!response.ok) {
-      const err = new Error(`Copilot /models returned ${response.status}`);
-      err.status = response.status;
-      throw err;
-    }
-    const data = await response.json();
-    return Array.isArray(data?.data) ? data.data : [];
-  } finally {
-    clearTimeout(timeoutId);
+async function fetchCatalogRaw(token, options) {
+  const timeout = AbortSignal.timeout(GITHUB_COPILOT.MODELS_TIMEOUT_MS);
+  const signal = options.signal ? AbortSignal.any([timeout, options.signal]) : timeout;
+  const response = await proxyAwareFetch(GITHUB_COPILOT.MODELS_URL, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      "Copilot-Integration-Id": "vscode-chat",
+      "editor-version": `vscode/${GITHUB_COPILOT.VSCODE_VERSION}`,
+      "editor-plugin-version": `copilot-chat/${GITHUB_COPILOT.COPILOT_CHAT_VERSION}`,
+      "user-agent": GITHUB_COPILOT.USER_AGENT,
+      "x-github-api-version": GITHUB_COPILOT.API_VERSION,
+    },
+    cache: "no-store", signal,
+  }, options.proxyOptions);
+  if (!response.ok) {
+    const error = new Error(`Failed to fetch Copilot models: ${response.status}`);
+    error.status = response.status;
+    throw error;
   }
-}
-
-// Keep only chat models the account is allowed to use. The static registry
-// surfaced disabled/embedding entries inconsistently; here we trust upstream.
-function expandCatalog(raw) {
-  const seen = new Set();
-  const models = [];
-  for (const m of raw) {
-    if (!m || typeof m !== "object") continue;
-    if (m.capabilities?.type !== "chat") continue;
-    if (m.policy && m.policy.state !== "enabled") continue;
-    const id = m.id;
-    if (!id || seen.has(id)) continue;
-    seen.add(id);
-    models.push({ id, name: m.name || id });
-  }
+  // The timeout also covers stalled bodies after HTTP headers have arrived.
+  const data = await response.json();
+  const models = parseCopilotModels(data);
+  if (!models) throw Object.assign(new Error("Invalid Copilot models response"), { status: 502 });
   return models;
 }
 
+export function parseCopilotModels(data) {
+  if (!Array.isArray(data?.data)) return null;
+  const models = new Map();
+  for (const model of data.data) {
+    if (!model || model.capabilities?.type !== "chat" || model.model_picker_enabled === false || model.isInternal) continue;
+    if (typeof model.id !== "string" || !model.id.trim()) continue;
+    const id = model.id.trim();
+    if (models.has(id)) continue;
+    const policyState = model.policy?.state;
+    models.set(id, {
+      id, name: typeof model.name === "string" && model.name.trim() ? model.name : id,
+      available: policyState === undefined || policyState === "enabled",
+      ...(typeof policyState === "string" ? { policyState } : {}),
+    });
+  }
+  return [...models.values()];
+}
+
+const selectModels = (models, includeUnavailable) => ({ models: includeUnavailable
+  ? models
+  : models.filter(model => model.available).map(({ id, name }) => ({ id, name })) });
+
 /**
- * Resolve the live Copilot model catalog for a connection.
- *
- * @param {object} credentials Connection record (accessToken, refreshToken,
- *   providerSpecificData {copilotToken, copilotTokenExpiresAt}).
- * @param {object} [options]
- * @param {boolean} [options.forceRefresh] Bypass the per-credential cache.
- * @param {object}  [options.log] Logger.
- * @param {function} [options.onCredentialsRefreshed] Persist a refreshed
- *   Copilot token back to your store. Called with `{ copilotToken,
- *   copilotTokenExpiresAt }` whenever a 401 triggers a refresh.
- * @returns {Promise<{ models: object[] } | null>}
+ * Default discovery exposes only available chat models. Import passes
+ * includeUnavailable to show policy restrictions without changing them.
+ * forceRefresh bypasses the per-credential cache when opening the import dialog.
+ * onCredentialsRefreshed persists {copilotToken, copilotTokenExpiresAt} before retry.
  */
 export async function resolveCopilotModels(credentials, options = {}) {
-  const token = credentials?.providerSpecificData?.copilotToken || credentials?.accessToken;
-  if (!token) {
-    options.log?.debug?.("COPILOT_MODELS", "No copilotToken/accessToken; skipping live fetch");
-    return null;
+  const token = cacheKey(credentials);
+  if (!token) return { error: "No valid Copilot token found", status: 401 };
+  const cached = catalogCache.get(token);
+  if (!options.forceRefresh && cached?.expiresAt > Date.now()) {
+    return selectModels(cached.models, options.includeUnavailable);
   }
-
-  const key = cacheKey(credentials);
-  const now = Date.now();
-  if (!options.forceRefresh) {
-    const cached = catalogCache.get(key);
-    if (cached && cached.expiresAt > now) {
-      return { models: cached.models };
-    }
-  }
-
-  let raw;
   try {
-    raw = await fetchCatalogRaw(token, options.signal);
-  } catch (err) {
-    // A 401/403 means the Copilot token is stale — refresh from the GitHub
-    // access token and retry once.
-    if (err && (err.status === 401 || err.status === 403) && credentials.accessToken) {
-      options.log?.info?.("COPILOT_MODELS", `Got ${err.status}; refreshing Copilot token`);
+    let models;
+    try {
+      models = await fetchCatalogRaw(token, options);
+    } catch (error) {
+      // Permission denials are not expired credentials; do not refresh a 403.
+      if (error.status !== 401 || !credentials.accessToken) throw error;
       const refreshed = await refreshCopilotToken(credentials.accessToken);
-      if (refreshed?.token) {
-        if (typeof options.onCredentialsRefreshed === "function") {
-          try {
-            await options.onCredentialsRefreshed({
-              copilotToken: refreshed.token,
-              copilotTokenExpiresAt: refreshed.expiresAt,
-            });
-          } catch (e) {
-            options.log?.warn?.("COPILOT_MODELS", `onCredentialsRefreshed failed: ${e?.message || e}`);
-          }
-        }
-        try {
-          raw = await fetchCatalogRaw(refreshed.token, options.signal);
-        } catch (err2) {
-          options.log?.warn?.("COPILOT_MODELS", `Retry after refresh failed: ${err2?.message || err2}`);
-          return null;
-        }
-      } else {
-        options.log?.warn?.("COPILOT_MODELS", "Token refresh did not return a token");
-        return null;
-      }
-    } else {
-      options.log?.warn?.("COPILOT_MODELS", `Live model fetch failed: ${err?.message || err}`);
-      return null;
+      if (!refreshed?.token) throw error;
+      if (options.onCredentialsRefreshed) await options.onCredentialsRefreshed({
+        copilotToken: refreshed.token, copilotTokenExpiresAt: refreshed.expiresAt,
+      });
+      models = await fetchCatalogRaw(refreshed.token, options);
     }
+    catalogCache.set(token, { expiresAt: Date.now() + GITHUB_COPILOT.MODELS_CACHE_TTL_MS, models });
+    return selectModels(models, options.includeUnavailable);
+  } catch (error) {
+    const timedOut = error?.name === "AbortError" || error?.name === "TimeoutError";
+    const status = error.status || (timedOut ? 504 : 502);
+    const message = timedOut ? "Copilot models request timed out"
+      : status === 502 ? "Failed to fetch Copilot models" : `Failed to fetch Copilot models: ${status}`;
+    options.log?.warn?.("COPILOT_MODELS", message);
+    return { error: message, status };
   }
-
-  const models = expandCatalog(raw);
-  if (!models.length) return null;
-
-  catalogCache.set(key, { expiresAt: now + CACHE_TTL_MS, models });
-  return { models };
 }
 
-export function clearCopilotModelCache() {
-  catalogCache.clear();
-}
+export function clearCopilotModelCache() { catalogCache.clear(); }

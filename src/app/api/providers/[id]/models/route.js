@@ -14,6 +14,7 @@ import { resolveClinepassModels, resolveClineModels } from "open-sse/services/cl
 import { getRegistryEntry, deriveModelsEndpoint, fetchViaDerivedEndpoint, parseOpenAIStyleModels, getStaticProviderModels } from "@/lib/providerModels/deriveModelsEndpoint.js";
 import { resolveGeminiModels } from "@/lib/providerModels/geminiModels.js";
 import { resolveAntigravityModels } from "@/lib/providerModels/antigravityModels.js";
+import { resolveCopilotModels } from "@/lib/providerModels/copilotModels.js";
 import { resolveZedModels } from "open-sse/shared/zedAuth.js";
 import codexProvider from "open-sse/providers/registry/codex.js";
 
@@ -200,31 +201,7 @@ const PROVIDER_MODELS_CONFIG = {
     customResolver: resolveAntigravityModels,
   },
   github: {
-    url: "https://api.githubcopilot.com/models",
-    method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-      "Copilot-Integration-Id": "vscode-chat",
-      "editor-version": "vscode/1.107.1",
-      "editor-plugin-version": "copilot-chat/0.26.7",
-      "user-agent": "GitHubCopilotChat/0.26.7"
-    },
-    authHeader: "Authorization",
-    authPrefix: "Bearer ",
-    parseResponse: (data) => {
-      if (!data?.data) return [];
-      // Filter out embeddings, non-chat models, and disabled models
-      return data.data
-        .filter(m => m.capabilities?.type === "chat")
-        .filter(m => m.policy?.state !== "disabled") // Only return explicitly enabled models
-        .map(m => ({
-          id: m.id,
-          name: m.name || m.id,
-          version: m.version,
-          capabilities: m.capabilities,
-          isDefault: m.model_picker_enabled === true
-        }));
-    }
+    customResolver: resolveCopilotModels,
   },
   openai: createOpenAIModelsConfig("https://api.openai.com/v1/models"),
   openrouter: createOpenAIModelsConfig("https://openrouter.ai/api/v1/models"),

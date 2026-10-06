@@ -32,6 +32,9 @@ export default {
       "Content-Type": "application/json",
     },
     copilot: {
+      modelsUrl: "https://api.githubcopilot.com/models",
+      modelsTimeoutMs: 10000,
+      modelsCacheTtlMs: 300000,
       vscodeVersion: "1.110.0",
       chatVersion: "0.38.0",
       userAgent: "GitHubCopilotChat/0.38.0",
