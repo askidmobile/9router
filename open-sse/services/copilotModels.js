@@ -45,7 +45,7 @@ export function parseCopilotModels(data) {
     const policyState = model.policy?.state;
     models.set(id, {
       id, name: typeof model.name === "string" && model.name.trim() ? model.name : id,
-      available: policyState === undefined || policyState === "enabled",
+      available: model.policy == null || policyState === "enabled",
       ...(typeof policyState === "string" ? { policyState } : {}),
     });
   }

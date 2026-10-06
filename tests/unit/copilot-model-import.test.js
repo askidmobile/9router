@@ -153,6 +153,7 @@ describe("Copilot catalog normalization", () => {
     ]);
   });
   it("does not treat an unknown policy state as access", () => {
-    expect(parseCopilotModels({ data: [model("new", "unconfigured")] })[0].available).toBe(false);
+    const models = parseCopilotModels({ data: [model("new", "unconfigured"), model("incomplete", undefined, { policy: {} })] });
+    expect(models.every(model => !model.available)).toBe(true);
   });
 });
