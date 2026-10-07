@@ -59,6 +59,8 @@ describe("HuggingFace image generation — end to end", () => {
     expect(url).toBe("https://router.huggingface.co/fal-ai/fal-ai/flux/schnell");
     expect(init.method).toBe("POST");
     expect(JSON.parse(init.body)).toEqual({ inputs: "a lighthouse at dusk" });
+    expect(result.response.headers.get("x-9router-model")).toBe("fal-ai/fal-ai/flux/schnell");
+    expect(await result.response.json()).toMatchObject({ provider: "huggingface", model: "fal-ai/fal-ai/flux/schnell" });
   });
 
   it("authenticates with the connection's API key", async () => {

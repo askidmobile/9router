@@ -7,6 +7,7 @@ import { PROVIDERS } from "../../config/providers.js";
 import { buildRequestDetail, extractRequestConfig, saveUsageStats, formatDoneLine } from "./requestDetail.js";
 import { openAICompletionToResponses } from "../../translator/response/openai-responses-json.js";
 import { throwIfAborted } from "../../utils/abort.js";
+import { createResponseMetadata } from "../../utils/responseMetadata.js";
 
 // Responses-API providers (e.g. codex) may emit SSE without content-type + use Responses output shape
 const isResponsesProvider = (p) => PROVIDERS[p]?.format === FORMATS.OPENAI_RESPONSES;
@@ -66,8 +67,10 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel) {
   const toolCallMap = new Map(); // index -> { id, type, function: { name, arguments } }
   let finishReason = "stop";
   let usage = null;
+  let responseModel = fallbackModel;
 
   for (const chunk of chunks) {
+    if (typeof chunk.model === "string" && chunk.model.trim()) responseModel = chunk.model;
     const choice = chunk?.choices?.[0];
     const delta = choice?.delta || {};
     if (typeof delta.content === "string" && delta.content.length > 0) contentParts.push(delta.content);
@@ -109,7 +112,7 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel) {
     id: first.id || `chatcmpl-${Date.now()}`,
     object: "chat.completion",
     created: first.created || Math.floor(Date.now() / 1000),
-    model: first.model || fallbackModel || "unknown",
+    model: responseModel || "unknown",
     choices: [{ index: 0, message, finish_reason: finishReason }]
   };
   if (usage) result.usage = usage;
@@ -124,6 +127,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
   const contentType = providerResponse.headers.get("content-type") || "";
   const isSSE = contentType.includes("text/event-stream") || (contentType === "" && isResponsesProvider(provider));
   if (!isSSE) return null; // not handled here
+  const responseMetadata = createResponseMetadata({ provider, model, translatedBody, finalBody });
 
   const ctx = {
     provider, model, connectionId,
@@ -139,6 +143,8 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
   if (isCodexResponsesApi) {
     try {
       const jsonResponse = await convertResponsesStreamToJson(providerResponse.body);
+      responseMetadata.observe(jsonResponse);
+      responseMetadata.apply(jsonResponse);
       throwIfAborted(signal);
       if (onRequestSuccess) await onRequestSuccess();
 
@@ -221,7 +227,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
         };
       }
 
-      return { success: true, response: new Response(JSON.stringify(restoreToolNames(finalResp, toolNameMap)), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }) };
+      return { success: true, response: new Response(JSON.stringify(restoreToolNames(responseMetadata.apply(finalResp), toolNameMap)), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }) };
     } catch (err) {
       throwIfAborted(signal);
       console.error("[ChatCore] Responses API SSE→JSON failed:", err);
@@ -233,7 +239,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
   try {
     const sseText = await providerResponse.text();
     throwIfAborted(signal);
-    const parsed = parseSSEToOpenAIResponse(sseText, model);
+    const parsed = parseSSEToOpenAIResponse(sseText);
     if (!parsed) return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Invalid SSE response for non-streaming request");
     if (parsed.error) {
       // Structured error chunks may carry the real upstream status (e.g. the
@@ -297,11 +303,12 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
     // lost on the non-streaming return path. Inlined (not imported from
     // nonStreamingHandler.js) to avoid a circular import: nonStreamingHandler
     // already imports parseSSEToOpenAIResponse from this module.
+    responseMetadata.observe(parsed);
     const finalBody = sourceFormat === FORMATS.OPENAI_RESPONSES
       ? openAICompletionToResponses(parsed, customToolNames, toolNamespaces)
       : parsed;
 
-    return { success: true, response: new Response(JSON.stringify(restoreToolNames(finalBody, toolNameMap)), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }) };
+    return { success: true, response: new Response(JSON.stringify(restoreToolNames(responseMetadata.apply(finalBody), toolNameMap)), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }) };
   } catch (err) {
     throwIfAborted(signal);
     console.error("[ChatCore] Chat Completions SSE→JSON failed:", err);

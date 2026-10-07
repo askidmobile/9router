@@ -503,14 +503,14 @@ describe("handleEmbeddingsCore — success path", () => {
     expect(onRequestSuccess).not.toHaveBeenCalled();
   });
 
-  it("provider response with non-standard format is passed through as-is", async () => {
+  it("preserves non-standard provider fields and adds routing metadata", async () => {
     const nonStandardBody = { embeddings: [[0.1, 0.2]], model: "custom" };
     vi.mocked(fetch).mockResolvedValueOnce(makeProviderResponse(nonStandardBody));
 
     const result = await handleEmbeddingsCore(makeOptions());
     const body = await result.response.json();
 
-    expect(body).toEqual(nonStandardBody);
+    expect(body).toEqual({ ...nonStandardBody, provider: "openai" });
   });
 });
 

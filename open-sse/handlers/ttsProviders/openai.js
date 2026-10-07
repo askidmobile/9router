@@ -28,6 +28,6 @@ export default {
       throw new Error(err?.error?.message || `OpenAI TTS failed: ${res.status}`);
     }
     const buf = await res.arrayBuffer();
-    return { base64: Buffer.from(buf).toString("base64"), format: "mp3" };
+    return { base64: Buffer.from(buf).toString("base64"), format: "mp3", model: ttsModel };
   },
 };

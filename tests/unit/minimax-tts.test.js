@@ -66,7 +66,7 @@ describe("MiniMax TTS", () => {
     });
 
     const body = await result.response.json();
-    expect(body).toEqual({ audio: "AAECAw==", format: "mp3" });
+    expect(body).toEqual({ audio: "AAECAw==", format: "mp3", provider: "minimax", model: "speech-2.8-hd" });
   });
 
   it("uses the default MiniMax voice when no voice is provided", async () => {

@@ -27,7 +27,7 @@ export default {
   buildHeaders: () => ({}),
   buildBody: () => ({}),
 
-  async executeViaExecutor(model, body, credentials, log) {
+  async executeViaExecutor(model, body, credentials, log, responseMetadata) {
     const executor = getExecutor("antigravity");
     if (!executor) throw new Error("Antigravity executor not found");
 
@@ -69,6 +69,7 @@ export default {
       throw new Error(text || `HTTP ${result.response.status}`);
     }
 
+    responseMetadata?.observe({ model: result.transformedBody?.model || targetModel });
     return result.response.json();
   },
 

@@ -3,6 +3,7 @@ import { createErrorResult } from "../utils/error.js";
 import { transcribeGeminiLive } from "./geminiLiveStt.js";
 import { PROVIDER_MODELS, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
+import { withResponseMetadata } from "../utils/responseMetadata.js";
 
 // Build auth headers from sttConfig + token
 function buildAuthHeaders(cfg, token) {
@@ -94,7 +95,7 @@ async function transcribeNvidia(cfg, file, model, token) {
   const res = await fetch(cfg.baseUrl, { method: "POST", headers: buildAuthHeaders(cfg, token), body: fd });
   if (!res.ok) return upstreamError(res);
   const data = await res.json();
-  return jsonResponse({ text: data.text || data.transcript || "" });
+  return jsonResponse({ text: data.text || data.transcript || "", model: data.model || model });
 }
 
 // Gemini: generateContent with inline_data audio + transcription prompt
@@ -120,7 +121,7 @@ async function transcribeGemini(cfg, file, model, token, formData) {
   if (!res.ok) return upstreamError(res);
   const data = await res.json();
   const text = data?.candidates?.[0]?.content?.parts?.map((p) => p.text).filter(Boolean).join("") || "";
-  return jsonResponse({ text });
+  return jsonResponse({ text, model: data.modelVersion || model });
 }
 
 // HuggingFace: POST raw binary to {baseUrl}/{model_id}
@@ -135,7 +136,7 @@ async function transcribeHuggingFace(cfg, file, model, token) {
   });
   if (!res.ok) return upstreamError(res);
   const data = await res.json();
-  return jsonResponse({ text: data.text || "" });
+  return jsonResponse({ text: data.text || "", model: data.model || model });
 }
 
 // Default: OpenAI/Groq/Whisper-compatible multipart
@@ -183,7 +184,11 @@ function resolveModelTransport(provider, model) {
  * it in the app layer; built-ins fall back to the registry entry marker).
  * @returns {Promise<{success, response, status?, error?}>}
  */
-export async function handleSttCore({ provider, model, formData, credentials, sttConfig, transport }) {
+export async function handleSttCore(options) {
+  return withResponseMetadata(await transcribe(options), { provider: options.provider, finalBody: { model: options.model } });
+}
+
+async function transcribe({ provider, model, formData, credentials, sttConfig, transport }) {
   const file = formData.get("file");
   if (!file) return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Missing required field: file");
 

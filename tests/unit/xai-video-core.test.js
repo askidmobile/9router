@@ -87,7 +87,7 @@ describe("handleVideoProxyCore", () => {
     expect(init.headers["Content-Type"]).toBe("application/json");
     expect(init.headers["Idempotency-Key"]).toBe("idem-1");
 
-    expect(await result.response.json()).toEqual({ request_id: "req-123" });
+    expect(await result.response.json()).toEqual({ request_id: "req-123", provider: "xai", model: "grok-imagine-video" });
   });
 
   it("forwards multipart bodies untouched with the original boundary header", async () => {
@@ -116,7 +116,7 @@ describe("handleVideoProxyCore", () => {
     ["pending", { status: "pending", progress: 10 }],
     ["processing", { status: "processing", progress: 55 }],
     ["done", { status: "done", video: { url: "https://cdn.x.ai/v.mp4", duration: 8 } }],
-  ])("passes %s polling payload through verbatim", async (_label, payload) => {
+  ])("preserves %s polling payload with routing metadata", async (_label, payload) => {
     global.fetch.mockResolvedValueOnce(jsonResponse(payload));
 
     const result = await handleVideoProxyCore({
@@ -129,7 +129,7 @@ describe("handleVideoProxyCore", () => {
     const [url, init] = global.fetch.mock.calls[0];
     expect(url).toBe("https://api.x.ai/v1/videos/req-123");
     expect(init.method).toBe("GET");
-    expect(await result.response.json()).toEqual(payload);
+    expect(await result.response.json()).toEqual({ ...payload, provider: "xai", model: null });
   });
 
   it("passes a failed job (HTTP 200, status failed) through without translating", async () => {
@@ -179,7 +179,7 @@ describe("handleVideoProxyCore", () => {
     expect(global.fetch).toHaveBeenCalledTimes(2);
     expect(global.fetch.mock.calls[1][1].headers.Authorization).toBe("Bearer tok-NEW");
     expect(onCredentialsRefreshed).toHaveBeenCalledWith(expect.objectContaining({ accessToken: "tok-NEW" }));
-    expect(await result.response.json()).toEqual({ request_id: "req-after-refresh" });
+    expect(await result.response.json()).toEqual({ request_id: "req-after-refresh", provider: "xai", model: null });
   });
 
   it("401 twice → still only one refresh and one retry (no loop)", async () => {

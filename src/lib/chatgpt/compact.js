@@ -117,6 +117,8 @@ export async function compactResponse(response, { apiKey, model, v2 = false, str
   const result = {
     id: `resp_${randomUUID()}`, object: v2 ? "response" : "response.compaction", created_at: Math.floor(Date.now() / 1000),
     ...(v2 ? { status: "completed", model } : {}),
+    ...(data.provider ? { provider: data.provider } : {}),
+    ...(data.model ? { model: data.model } : {}),
     output: [item],
     usage,
   };

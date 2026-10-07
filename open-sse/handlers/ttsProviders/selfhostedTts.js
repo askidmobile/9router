@@ -64,6 +64,6 @@ export default {
       throw new Error(err?.error?.message || `Self-hosted TTS failed: ${res.status}`);
     }
     const buf = await res.arrayBuffer();
-    return { base64: Buffer.from(buf).toString("base64"), format: responseFormat };
+    return { base64: Buffer.from(buf).toString("base64"), format: responseFormat, model: ttsModel };
   },
 };

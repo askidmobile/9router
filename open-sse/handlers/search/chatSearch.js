@@ -5,6 +5,7 @@
  */
 import { PROVIDER_MEDIA } from "../../providers/index.js";
 import { ANTIGRAVITY_IDE_USER_AGENT } from "../../providers/shared.js";
+import { createResponseMetadata } from "../../utils/responseMetadata.js";
 
 // Default search model + endpoint derive from registry searchViaChat (single source)
 const searchModel = (id) => PROVIDER_MEDIA[id]?.searchViaChat?.defaultModel;
@@ -530,15 +531,19 @@ export async function handleChatSearch({
   const retrievedAt = new Date().toISOString();
   const limited = (citations || []).slice(0, limit);
   const results = limited.map((c, i) => toResult(c, i, provider, retrievedAt));
+  const metadata = createResponseMetadata({ provider, finalBody: { model: useModel } });
+  metadata.observe(data);
+  const responseModel = metadata.applyJson({}).model;
 
   return {
     success: true,
     status: 200,
     data: {
       provider,
+      model: responseModel,
       query,
       results,
-      answer: { source: provider, text: text || "", model: useModel },
+      answer: { source: provider, text: text || "", model: responseModel },
       usage: { queries_used: 1, search_cost_usd: 0, llm_tokens: tokens || 0 },
       metrics: {
         response_time_ms: Date.now() - startTime,

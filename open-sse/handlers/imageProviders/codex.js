@@ -114,6 +114,7 @@ async function parseStream(response, log, callbacks = {}) {
           const item = data?.item;
           if (item?.type === "image_generation_call" && item.result) {
             imageB64 = item.result;
+            if (item.model) callbacks.onModel?.(item.model);
           }
         } catch {}
       }
@@ -123,17 +124,19 @@ async function parseStream(response, log, callbacks = {}) {
 }
 
 // SSE Response that pipes codex progress + partial + done events to client
-function buildSseResponse(providerResponse, log, onSuccess) {
+function buildSseResponse(providerResponse, log, onSuccess, responseMetadata) {
   const stream = new ReadableStream({
     async start(controller) {
       const enc = new TextEncoder();
       const send = (event, data) => {
+        if (event !== "error") responseMetadata?.applyJson(data);
         controller.enqueue(enc.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
       };
       try {
         const b64 = await parseStream(providerResponse, log, {
           onProgress: (info) => send("progress", info),
           onPartialImage: (info) => send("partial_image", info),
+          onModel: (model) => responseMetadata?.observe({ model }),
         });
         if (!b64) {
           send("error", { message: "Codex did not return an image. Account may not be entitled (Plus/Pro required)." });
@@ -148,19 +151,24 @@ function buildSseResponse(providerResponse, log, onSuccess) {
       }
     },
   });
+  const headers = {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache, no-transform",
+    "Connection": "keep-alive",
+    "X-Accel-Buffering": "no",
+    "Access-Control-Allow-Origin": "*",
+  };
   return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache, no-transform",
-      "Connection": "keep-alive",
-      "X-Accel-Buffering": "no",
-      "Access-Control-Allow-Origin": "*",
-    },
+    headers: responseMetadata ? responseMetadata.headers(headers) : headers,
   });
 }
 
 export default {
   stream: true,
+  getResponseModel: (model) => {
+    const { responsesModel, toolModel } = resolveCodexImageModels(model);
+    return toolModel || responsesModel;
+  },
   buildUrl: () => CODEX_RESPONSES_URL,
   buildHeaders: (creds) => {
     const accountId = creds?.providerSpecificData?.chatgptAccountId || decodeAccountId(creds?.idToken);
@@ -205,11 +213,11 @@ export default {
     };
   },
   // Custom: codex parses SSE → either pipe to client or collect b64
-  async parseResponse(response, { log, streamToClient, onRequestSuccess }) {
+  async parseResponse(response, { log, streamToClient, onRequestSuccess, responseMetadata }) {
     if (streamToClient) {
-      return { sseResponse: buildSseResponse(response, log, onRequestSuccess) };
+      return { sseResponse: buildSseResponse(response, log, onRequestSuccess, responseMetadata) };
     }
-    const b64 = await parseStream(response, log);
+    const b64 = await parseStream(response, log, { onModel: (model) => responseMetadata?.observe({ model }) });
     if (!b64) {
       throw new Error("Codex did not return an image. Account may not be entitled (Plus/Pro required).");
     }

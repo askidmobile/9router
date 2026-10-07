@@ -68,10 +68,10 @@ describe("openrouter video adapter", () => {
     expect(init.body).toBe(raw); // verbatim
     expect(init.headers.Authorization).toBe("Bearer sk-or-key");
     expect(init.headers["HTTP-Referer"]).toBe("https://endpoint-proxy.local");
-    expect(await result.response.json()).toEqual({ id: "job-1", status: "pending" });
+    expect(await result.response.json()).toEqual({ id: "job-1", status: "pending", provider: "openrouter", model: "google/veo-3.1" });
   });
 
-  it("polls GET /videos/{id} and passes the payload through verbatim", async () => {
+  it("polls GET /videos/{id} and preserves the payload with routing metadata", async () => {
     const payload = { id: "job-1", status: "completed", unsigned_urls: ["https://cdn/v.mp4"] };
     global.fetch.mockResolvedValueOnce(jsonResponse(payload));
 
@@ -84,7 +84,7 @@ describe("openrouter video adapter", () => {
     const [url, init] = global.fetch.mock.calls[0];
     expect(url).toBe("https://openrouter.ai/api/v1/videos/job-1");
     expect(init.method).toBe("GET");
-    expect(await result.response.json()).toEqual(payload);
+    expect(await result.response.json()).toEqual({ ...payload, provider: "openrouter", model: null });
   });
 
   it("rejects unsupported actions before any upstream call (no billable job)", async () => {
@@ -151,6 +151,8 @@ describe("vertex (veo) video adapter", () => {
       id: JOB_ID,
       request_id: JOB_ID,
       status: "pending",
+      provider: "vertex",
+      model: "veo-3.1-generate-preview",
     });
   });
 
@@ -203,6 +205,8 @@ describe("vertex (veo) video adapter", () => {
       id: JOB_ID,
       request_id: JOB_ID,
       status: "completed",
+      provider: "vertex",
+      model: "veo-3.1-generate-preview",
       video: { url: "gs://bucket/v.mp4", b64_json: null, mime_type: "video/mp4" },
       videos: [{ url: "gs://bucket/v.mp4", b64_json: null, mime_type: "video/mp4" }],
     });

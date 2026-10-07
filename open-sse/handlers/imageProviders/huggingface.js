@@ -43,6 +43,7 @@ async function sourceImage(body) {
 }
 
 export default {
+  getResponseModel: (model, _body, creds) => customBaseUrl(creds) ? model : mappingPath(lookup(model)),
   buildUrl: (model, creds) => {
     const override = customBaseUrl(creds);
     if (override) {

@@ -16,6 +16,21 @@ beforeEach(() => {
 });
 
 describe("Codex remote compaction v2", () => {
+  it.each(["legacy", "json", "sse"])("preserves the executed identity through %s compaction", async format => {
+    const data = { ...await completion().json(), provider: "codex", model: "gpt-upstream-revision" };
+    const response = await routeChatGPTResponse(request({
+      input: [{ role: "user", content: "Fix app.js" }, ...(format === "legacy" ? [] : [{ type: "compaction_trigger" }])],
+      stream: format === "sse",
+    }), async () => Response.json(data), format === "legacy");
+    expect(response.ok).toBe(true);
+    const envelopes = format === "sse"
+      ? events(await response.text()).filter(event => event.response).map(event => event.response)
+      : [await response.json()];
+    expect(envelopes.length).toBeGreaterThan(0);
+    for (const envelope of envelopes) expect(envelope).toMatchObject({ provider: "codex", model: "gpt-upstream-revision" });
+    expect(openCompactionSummary(envelopes.at(-1).output[0].encrypted_content, key)).toBe(summary);
+  });
+
   it("recognizes the Responses trigger and emits exactly one completed compaction item", async () => {
     const handler = vi.fn(async req => {
       const body = await req.json();

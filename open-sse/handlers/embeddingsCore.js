@@ -3,6 +3,7 @@ import { HTTP_STATUS, FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.j
 import { getExecutor } from "../executors/index.js";
 import { refreshWithRetry } from "../services/tokenRefresh.js";
 import { getEmbeddingAdapter } from "./embeddingProviders/index.js";
+import { createResponseMetadata } from "../utils/responseMetadata.js";
 
 /**
  * Core embeddings handler — orchestrator only. Provider-specific URL/headers/body/normalize
@@ -125,17 +126,19 @@ export async function handleEmbeddingsCore({
 
   if (onRequestSuccess) await onRequestSuccess();
 
-  const normalized = adapter.normalize(responseBody, model);
+  const responseMetadata = createResponseMetadata({ provider, model, finalBody: requestBody });
+  responseMetadata.observe(responseBody);
+  const normalized = responseMetadata.applyJson(adapter.normalize(responseBody, model));
   log?.debug?.("EMBEDDINGS", `Success | usage=${JSON.stringify(normalized.usage || {})}`);
 
   return {
     success: true,
     usage: normalized.usage || null,
     response: new Response(JSON.stringify(normalized), {
-      headers: {
+      headers: responseMetadata.headers({
         "Content-Type": "application/json",
         "Access-Control-Allow-Origin": "*",
-      },
+      }),
     }),
   };
 }

@@ -6,6 +6,7 @@ const BASE_URL = PROVIDER_MEDIA["sdwebui"]?.imageConfig?.baseUrl;
 
 export default {
   noAuth: true,
+  getResponseModel: () => null,
   buildUrl: () => BASE_URL,
   buildHeaders: () => ({ "Content-Type": "application/json" }),
   buildBody: (_model, body) => {
@@ -15,6 +16,10 @@ export default {
   },
   normalize: (responseBody) => {
     const images = Array.isArray(responseBody.images) ? responseBody.images.map((img) => ({ b64_json: img })) : [];
-    return { created: nowSec(), data: images };
+    let info = responseBody.info;
+    if (typeof info === "string") {
+      try { info = JSON.parse(info); } catch { info = null; }
+    }
+    return { created: nowSec(), data: images, model: info?.sd_model_name || responseBody.model || null };
   },
 };

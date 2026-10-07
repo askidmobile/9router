@@ -17,6 +17,7 @@ import { openAICompletionToResponses } from "../../translator/response/openai-re
 import { throwIfAborted } from "../../utils/abort.js";
 import { isFailedComboCompletion } from "../../utils/comboUpstream.js";
 import { restoreToolNames } from "../../utils/opencodeFingerprint.js";
+import { createResponseMetadata } from "../../utils/responseMetadata.js";
 
 function parseToolArguments(value) {
   if (!value) return {};
@@ -218,13 +219,14 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
  * Handle non-streaming response from provider.
  */
 export async function handleNonStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, customToolNames, toolNamespaces, trackDone, appendLog, pxpipe, reqTag, log, signal, requestPolicy }) {
+  const responseMetadata = createResponseMetadata({ provider, model, translatedBody, finalBody });
   const contentType = providerResponse.headers.get("content-type") || "";
   let responseBody;
 
   if (contentType.includes("text/event-stream")) {
     const sseText = await providerResponse.text();
     throwIfAborted(signal);
-    const parsed = parseSSEToOpenAIResponse(sseText, model);
+    const parsed = parseSSEToOpenAIResponse(sseText);
     if (!parsed) {
       appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
       return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Invalid SSE response for non-streaming request");
@@ -298,9 +300,10 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
   saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, silent: true });
   if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency: { total: Date.now() - requestStartTime } }));
 
-  const translatedResponse = needsTranslation(targetFormat, sourceFormat)
+  responseMetadata.observe(responseBody);
+  const translatedResponse = responseMetadata.apply(needsTranslation(targetFormat, sourceFormat)
     ? translateNonStreamingResponse(responseBody, targetFormat, sourceFormat, customToolNames, toolNamespaces)
-    : responseBody;
+    : responseBody);
   const isClaudeMessageResponse = sourceFormat === FORMATS.CLAUDE && translatedResponse?.type === "message";
   // Responses-format translation produces a `object:"response"` body with no
   // `choices`; skip the Chat-Completions-specific post-processing below for it.

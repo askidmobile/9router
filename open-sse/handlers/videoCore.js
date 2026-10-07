@@ -3,6 +3,7 @@ import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { refreshTokenByProvider } from "../services/tokenRefresh.js";
 import { PROVIDER_MEDIA } from "../providers/index.js";
 import { getVideoAdapter } from "./videoProviders/index.js";
+import { createResponseMetadata, withResponseMetadata } from "../utils/responseMetadata.js";
 
 // Upstream fetch deadline for video job submission/polling (the job itself is
 // async upstream — this only bounds the HTTP round-trip, not video rendering).
@@ -56,12 +57,13 @@ function combineSignals(signal, timeoutMs) {
  * Transparent proxy for async video jobs (xAI Grok Imagine shape).
  *
  * - Forwards the raw body byte-for-byte (JSON or multipart) — no reshaping.
- * - Passes upstream JSON (request_id, status, video.url, error) back verbatim.
+ * - Preserves upstream job fields and adds provider/model metadata on success.
  * - 401/403 with a refresh token: refresh ONCE, retry ONCE. No other retry.
  * - Upstream error text is sanitized before it reaches the client.
  *
  * @param {object} options
  * @param {string} options.provider - Provider id (must have registry videoConfig)
+ * @param {string|null} [options.model] - Model selected for the submitted job
  * @param {"generations"|"edits"|"extensions"|null} options.action - Creation action (POST)
  * @param {string|null} [options.requestId] - Poll target (GET /videos/{id})
  * @param {Buffer|string|null} [options.rawBody] - Exact body to forward
@@ -76,6 +78,7 @@ function combineSignals(signal, timeoutMs) {
  */
 export async function handleVideoProxyCore({
   provider,
+  model = null,
   action = null,
   requestId = null,
   rawBody = null,
@@ -96,6 +99,10 @@ export async function handleVideoProxyCore({
   }
 
   const adapter = getVideoAdapter(provider);
+  if (!model && contentType?.includes("application/json") && rawBody) {
+    try { model = JSON.parse(String(rawBody)).model; } catch { /* Request validation belongs to the adapter. */ }
+  }
+  const responseMetadata = createResponseMetadata({ provider, finalBody: { model } });
   const fetchSignal = combineSignals(signal, timeoutMs);
 
   // Default (xAI shape) request plan; adapters override URL/method/headers/body.
@@ -122,6 +129,7 @@ export async function handleVideoProxyCore({
         })
       : defaultPlan();
     if (plan.error) return { planError: plan.error };
+    if (plan.model) responseMetadata.observe({ model: plan.model });
     return {
       response: await fetch(plan.url, {
         method: plan.method,
@@ -196,7 +204,7 @@ export async function handleVideoProxyCore({
     }
   }
 
-  return {
+  return withResponseMetadata({
     success: true,
     response: new Response(outBody, {
       status: upstream.status,
@@ -205,5 +213,5 @@ export async function handleVideoProxyCore({
         "Access-Control-Allow-Origin": "*",
       },
     }),
-  };
+  }, responseMetadata);
 }

@@ -150,6 +150,7 @@ export async function handleVideoCreate(request, action) {
 
     const result = await handleVideoProxyCore({
       provider,
+      model,
       action,
       rawBody: forwardBody,
       contentType: bodyInfo.contentType || null,

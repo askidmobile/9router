@@ -5,6 +5,7 @@ import { PROVIDER_MEDIA } from "../../providers/index.js";
 const BASE_URL = PROVIDER_MEDIA["gemini"]?.imageConfig?.baseUrl;
 
 export default {
+  getResponseModel: (model) => model.replace(/^models\//, ""),
   buildUrl: (model, creds) => {
     const apiKey = creds?.apiKey || creds?.accessToken;
     const modelId = model.replace(/^models\//, "");

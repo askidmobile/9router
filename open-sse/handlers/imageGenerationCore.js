@@ -4,6 +4,7 @@ import { refreshWithRetry } from "../services/tokenRefresh.js";
 import { getExecutor } from "../executors/index.js";
 import { getImageAdapter } from "./imageProviders/index.js";
 import { urlToBase64 } from "./imageProviders/_base.js";
+import { createResponseMetadata } from "../utils/responseMetadata.js";
 
 function serializeRequestBody(requestBody) {
   if (typeof FormData !== "undefined" && requestBody instanceof FormData) return requestBody;
@@ -37,6 +38,7 @@ export async function handleImageGenerationCore({
   onRequestSuccess,
 }) {
   const { provider, model } = modelInfo;
+  const responseMetadata = createResponseMetadata({ provider });
 
   if (!body.prompt) {
     return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Missing required field: prompt");
@@ -54,10 +56,11 @@ export async function handleImageGenerationCore({
   if (adapter.useExecutor && adapter.executeViaExecutor) {
     try {
       log?.debug?.("IMAGE", `${provider.toUpperCase()} | ${model} | prompt="${body.prompt.slice(0, 50)}..." (executor)`);
-      const responseBody = await adapter.executeViaExecutor(model, body, credentials, log);
+      const responseBody = await adapter.executeViaExecutor(model, body, credentials, log, responseMetadata);
+      responseMetadata.observe(responseBody);
       if (onRequestSuccess) await onRequestSuccess();
       const normalized = adapter.normalize(responseBody, body.prompt);
-      const finalBody = (normalized.created && Array.isArray(normalized.data)) ? normalized : responseBody;
+      const finalBody = responseMetadata.applyJson((normalized.created && Array.isArray(normalized.data)) ? normalized : responseBody);
 
       if (binaryOutput) {
         const first = finalBody.data?.[0];
@@ -72,7 +75,7 @@ export async function handleImageGenerationCore({
           return {
             success: true,
             response: new Response(buf, {
-              headers: { "Content-Type": mime, "Content-Disposition": `inline; filename="image.${fmt === "jpeg" ? "jpg" : fmt}"`, "Access-Control-Allow-Origin": "*" },
+              headers: responseMetadata.headers({ "Content-Type": mime, "Content-Disposition": `inline; filename="image.${fmt === "jpeg" ? "jpg" : fmt}"`, "Access-Control-Allow-Origin": "*" }),
             }),
           };
         }
@@ -81,7 +84,7 @@ export async function handleImageGenerationCore({
       return {
         success: true,
         response: new Response(JSON.stringify(finalBody), {
-          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+          headers: responseMetadata.headers({ "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }),
         }),
       };
     } catch (error) {
@@ -98,6 +101,9 @@ export async function handleImageGenerationCore({
   try {
     url = adapter.buildUrl(model, credentials);
     requestBody = await adapter.buildBody(model, body);
+    responseMetadata.observe({ model: adapter.getResponseModel
+      ? adapter.getResponseModel(model, requestBody, credentials)
+      : requestBody?.model || model });
     headers = adapter.buildHeaders(credentials, requestBody, model, body);
   } catch (error) {
     return createErrorResult(HTTP_STATUS.BAD_REQUEST, error.message || `Invalid ${provider} image request`);
@@ -139,6 +145,9 @@ export async function handleImageGenerationCore({
 
       try {
         const retryBody = await adapter.buildBody(model, body);
+        responseMetadata.observe({ model: adapter.getResponseModel
+          ? adapter.getResponseModel(model, retryBody, credentials)
+          : retryBody?.model || model });
         const retryHeaders = adapter.buildHeaders(credentials, retryBody, model, body);
         const retryUrl = adapter.buildUrl(model, credentials);
         providerResponse = await fetch(retryUrl, {
@@ -174,6 +183,7 @@ export async function handleImageGenerationCore({
         requestBody,
         model,
         body,
+        responseMetadata,
       });
       // Codex streaming case: returns an SSE Response directly
       if (parsed?.sseResponse) {
@@ -187,12 +197,14 @@ export async function handleImageGenerationCore({
   }
 
   if (onRequestSuccess) await onRequestSuccess();
+  responseMetadata.observe(parsed);
 
   // Normalize → OpenAI-compatible shape
   const normalized = adapter.normalize(parsed, body.prompt);
+  responseMetadata.observe(normalized);
 
   // Already in OpenAI shape? skip re-normalize
-  const finalBody = (normalized.created && Array.isArray(normalized.data)) ? normalized : parsed;
+  const finalBody = responseMetadata.applyJson((normalized.created && Array.isArray(normalized.data)) ? normalized : parsed);
 
   // Binary output: decode first b64_json (or fetch url) into raw bytes
   if (binaryOutput) {
@@ -208,11 +220,11 @@ export async function handleImageGenerationCore({
       return {
         success: true,
         response: new Response(buf, {
-          headers: {
+          headers: responseMetadata.headers({
             "Content-Type": mime,
             "Content-Disposition": `inline; filename="image.${fmt === "jpeg" ? "jpg" : fmt}"`,
             "Access-Control-Allow-Origin": "*",
-          },
+          }),
         }),
       };
     }
@@ -221,10 +233,10 @@ export async function handleImageGenerationCore({
   return {
     success: true,
     response: new Response(JSON.stringify(finalBody), {
-      headers: {
+      headers: responseMetadata.headers({
         "Content-Type": "application/json",
         "Access-Control-Allow-Origin": "*",
-      },
+      }),
     }),
   };
 }

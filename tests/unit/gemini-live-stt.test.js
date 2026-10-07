@@ -169,7 +169,7 @@ describe("Live transport dispatch via caller marker", () => {
     serverScript(ws, ["hello ", "world"]);
     const result = await pending;
     expect(result.success).toBe(true);
-    await expect(result.response.json()).resolves.toEqual({ text: "hello world" });
+    await expect(result.response.json()).resolves.toEqual({ text: "hello world", provider: "gemini", model: LIVE_ID });
     expect(fetchCalls).toHaveLength(0);
 
     // Registry-marker dispatch: the live entry's transport field alone — no
@@ -194,7 +194,7 @@ describe("Live transport dispatch via caller marker", () => {
     serverScript(regWs, ["reg ", "live"]);
     const regResult = await regPending;
     expect(regResult.success).toBe(true);
-    await expect(regResult.response.json()).resolves.toEqual({ text: "reg live" });
+    await expect(regResult.response.json()).resolves.toEqual({ text: "reg live", provider: "gemini", model: regId });
     expect(regFetchCalls).toHaveLength(0);
   });
 
@@ -238,7 +238,7 @@ describe("Live transport dispatch via caller marker", () => {
       sttConfig: STTCFG,
     });
     expect(restResult.success).toBe(true);
-    await expect(restResult.response.json()).resolves.toEqual({ text: "hello rest" });
+    await expect(restResult.response.json()).resolves.toEqual({ text: "hello rest", provider: "gemini", model: "gemini-2.0-flash" });
   });
 
   it("T5: server error frame yields the gateway error envelope (any 4xx/5xx, no text pin)", async () => {

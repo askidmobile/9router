@@ -207,6 +207,55 @@ sequenceDiagram
     Stream->>Usage: extract usage + persist history/log
 ```
 
+### Response provider and model
+
+Successful inference responses include `provider` and `model` for the attempt
+that produced the answer, including Combo fallback, round-robin routing, and
+vision/capability-based model selection:
+
+```json
+{
+  "object": "chat.completion",
+  "provider": "github",
+  "model": "gpt-4o-2024-08-06",
+  "choices": [{ "index": 0, "message": { "role": "assistant", "content": "Hello" }, "finish_reason": "stop" }]
+}
+```
+
+- `provider` is the canonical 9router provider ID, or the ID of a configured
+  compatible provider node. It does not identify an account or expose credentials.
+- `model` uses the model/revision reported by the upstream response. If upstream
+  omits it, it uses the model sent upstream after alias, reasoning-preset, adapter,
+  and voice selection. A Combo name or client alias is not echoed. If no model was
+  dispatched or reported (e.g. a dedicated search API, server-selected image
+  checkpoint, or a video job poll without model information), `model` is `null`.
+- Chat Completions JSON and SSE chunks carry both fields at the top level.
+  Responses API uses the response object (nested under `response` in SSE events).
+  Claude uses the message object (`message_start.message` in SSE). Gemini uses the
+  completion envelope, also retaining `modelVersion`. Native Gemini chat responses
+  and Ollama's streamed JSON records preserve these fields through their adapters.
+  Native Responses compaction and the ChatGPT compaction wrapper preserve the
+  final summarizer's identity as well.
+- Stream metadata is remembered across chunks that omit it. A model revision
+  reported later in a stream is reflected from that point onward. JSON assembled
+  from SSE retains the reported model as well.
+- Image generation/editing, embeddings, TTS/STT, video jobs, and search add the
+  fields to their JSON envelopes. Image tool calls use the explicit image model
+  when available; legacy Codex image aliases report the dispatched controller
+  model if the image tool did not disclose its own model. TTS voices are separated
+  from model IDs; voice/language-based services retain their selected service ID.
+- Media APIs also expose `X-9Router-Provider` and `X-9Router-Model` HTTP headers,
+  including through CORS. Binary images/audio and plain-text transcription retain
+  their original body format. The model header is omitted if the model is unknown;
+  non-ASCII header values are percent-encoded. Native Gemini audio and Codex image
+  SSE carry metadata in their JSON events; streaming headers reflect the model
+  known when the response starts, while events can report a later upstream revision.
+
+The provider identifies the selected 9router route. When that route is another
+aggregator, its undisclosed internal provider/model choices cannot be inferred.
+Synthetic bypass responses and pre-completion errors do not claim an executed
+provider. Message text, tool arguments, and usage retain their existing contracts.
+
 ## Combo + Account Fallback Flow
 
 ```mermaid

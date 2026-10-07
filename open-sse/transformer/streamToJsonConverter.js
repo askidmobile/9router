@@ -22,6 +22,14 @@ function processSSEMessage(msg, state) {
   try { parsed = JSON.parse(dataStr); }
   catch { return; }
 
+  // Some providers identify the model only in response.created, others in the
+  // terminal event. Preserve either when assembling the non-streaming result.
+  for (const key of ["model", "provider"]) {
+    if (typeof parsed.response?.[key] === "string" && parsed.response[key].trim()) {
+      state[key] = parsed.response[key];
+    }
+  }
+
   if (eventType === "response.created") {
     state.responseId = parsed.response?.id || state.responseId;
     state.created = parsed.response?.created_at || state.created;
@@ -103,6 +111,8 @@ export async function convertResponsesStreamToJson(stream) {
   return {
     id: state.responseId || `resp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     object: "response",
+    ...(state.model ? { model: state.model } : {}),
+    ...(state.provider ? { provider: state.provider } : {}),
     created_at: state.created,
     status: state.status || "completed",
     incomplete_details: state.incompleteDetails || null,

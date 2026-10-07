@@ -2,6 +2,7 @@
 export function transformToOllama(response, model) {
   let buffer = "";
   let pendingToolCalls = {};
+  const responseMetadata = { model };
   
   const transform = new TransformStream({
     transform(chunk, controller) {
@@ -15,13 +16,15 @@ export function transformToOllama(response, model) {
         const data = line.slice(5).trim();
         
         if (data === "[DONE]") {
-          const ollamaEnd = JSON.stringify({ model, message: { role: "assistant", content: "" }, done: true }) + "\n";
+          const ollamaEnd = JSON.stringify({ ...responseMetadata, message: { role: "assistant", content: "" }, done: true }) + "\n";
           controller.enqueue(new TextEncoder().encode(ollamaEnd));
           return;
         }
 
         try {
           const parsed = JSON.parse(data);
+          if (typeof parsed.model === "string" && parsed.model.trim()) responseMetadata.model = parsed.model;
+          if (typeof parsed.provider === "string" && parsed.provider.trim()) responseMetadata.provider = parsed.provider;
           const delta = parsed.choices?.[0]?.delta || {};
           const content = delta.content || "";
           const toolCalls = delta.tool_calls;
@@ -38,7 +41,7 @@ export function transformToOllama(response, model) {
           }
 
           if (content) {
-            const ollama = JSON.stringify({ model, message: { role: "assistant", content }, done: false }) + "\n";
+            const ollama = JSON.stringify({ ...responseMetadata, message: { role: "assistant", content }, done: false }) + "\n";
             controller.enqueue(new TextEncoder().encode(ollama));
           }
 
@@ -53,14 +56,14 @@ export function transformToOllama(response, model) {
                 }
               }));
               const ollama = JSON.stringify({ 
-                model, 
+                ...responseMetadata,
                 message: { role: "assistant", content: "", tool_calls: formattedCalls }, 
                 done: true
               }) + "\n";
               controller.enqueue(new TextEncoder().encode(ollama));
               pendingToolCalls = {};
             } else if (finishReason === "stop") {
-              const ollamaEnd = JSON.stringify({ model, message: { role: "assistant", content: "" }, done: true }) + "\n";
+              const ollamaEnd = JSON.stringify({ ...responseMetadata, message: { role: "assistant", content: "" }, done: true }) + "\n";
               controller.enqueue(new TextEncoder().encode(ollamaEnd));
             }
           }
@@ -70,7 +73,7 @@ export function transformToOllama(response, model) {
       }
     },
     flush(controller) {
-      const ollamaEnd = JSON.stringify({ model, message: { role: "assistant", content: "" }, done: true }) + "\n";
+      const ollamaEnd = JSON.stringify({ ...responseMetadata, message: { role: "assistant", content: "" }, done: true }) + "\n";
       controller.enqueue(new TextEncoder().encode(ollamaEnd));
     }
   });
@@ -82,4 +85,3 @@ export function transformToOllama(response, model) {
     headers: { "Content-Type": "application/x-ndjson", "Access-Control-Allow-Origin": "*" }
   });
 }
-

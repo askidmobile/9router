@@ -144,6 +144,9 @@ describe("Xquik search provider", () => {
     const payload = await result.response.json();
 
     expect(result.success).toBe(true);
+    expect(payload).toMatchObject({ provider: "xquik", model: null });
+    expect(result.response.headers.get("x-9router-provider")).toBe("xquik");
+    expect(result.response.headers.get("x-9router-model")).toBeNull();
     expect(payload.usage).toEqual({
       queries_used: 1,
       search_cost_usd: null,

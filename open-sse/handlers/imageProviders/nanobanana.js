@@ -8,6 +8,7 @@ const POLL_BASE = IMG_CFG.pollUrl;
 
 export default {
   async: true,
+  getResponseModel: () => null,
   buildUrl: () => SUBMIT_URL,
   buildHeaders: (creds) => {
     const headers = { "Content-Type": "application/json" };

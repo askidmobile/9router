@@ -2,6 +2,7 @@ import { Buffer } from "node:buffer";
 import { createErrorResult } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { getTtsAdapter, synthesizeViaConfig } from "./ttsProviders/index.js";
+import { withResponseMetadata } from "../utils/responseMetadata.js";
 
 // Re-export voice fetchers + voices APIs for backward compat with existing routes
 export {
@@ -59,13 +60,13 @@ export async function handleTtsCore({ provider, model, input, credentials, respo
     if (adapter) {
       const result = await adapter.synthesize(input.trim(), model, credentials, responseFormat, { language, style });
       // Adapter may return a full {success, response} (legacy) or {base64, format}
-      if (result.success !== undefined) return result;
-      return createTtsResponse(result.base64, result.format, responseFormat);
+      if (result.success !== undefined) return withResponseMetadata(result, { provider, finalBody: { model: result.model || model } });
+      return withResponseMetadata(createTtsResponse(result.base64, result.format, responseFormat), { provider, finalBody: { model: result.model || model } });
     }
 
     // Generic config-driven (hyperbolic, deepgram, nvidia, huggingface, inworld, cartesia, playht, coqui, tortoise, qwen, ...)
     const result = await synthesizeViaConfig(provider, input.trim(), model, credentials);
-    if (result) return createTtsResponse(result.base64, result.format, responseFormat);
+    if (result) return withResponseMetadata(createTtsResponse(result.base64, result.format, responseFormat), { provider, finalBody: { model: result.model || model } });
 
     return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Provider '${provider}' does not support TTS via this route.`);
   } catch (err) {

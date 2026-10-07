@@ -84,6 +84,6 @@ export default {
     }
     const buf = await res.arrayBuffer();
     if (buf.byteLength < 1024) throw new Error("Bing TTS returned empty audio");
-    return { base64: Buffer.from(buf).toString("base64"), format: "mp3" };
+    return { base64: Buffer.from(buf).toString("base64"), format: "mp3", model: voiceId };
   },
 };

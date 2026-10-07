@@ -126,6 +126,7 @@ export default {
       return {
         method: "POST",
         url: `${base}/v1/${modelPathOf(operationName)}:fetchPredictOperation`,
+        model: modelPathOf(operationName).split("/").at(-1),
         headers,
         body: JSON.stringify({ operationName }),
       };
@@ -150,6 +151,7 @@ export default {
     return {
       method: "POST",
       url: `${base}/v1/projects/${projectId}/locations/${location}/publishers/google/models/${body.model}:predictLongRunning`,
+      model: body.model,
       headers,
       body: JSON.stringify(toVertexBody(body)),
     };

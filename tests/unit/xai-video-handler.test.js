@@ -113,7 +113,7 @@ describe("handleVideoCreate", () => {
 
     const res = await handleVideoCreate(makeRequest({ prompt: "x" }), "generations");
     expect(res.headers.get("x-9router-connection-id")).toBe("conn-77");
-    expect(await res.json()).toEqual({ request_id: "r1" });
+    expect(await res.json()).toEqual({ request_id: "r1", provider: "xai", model: null });
   });
 
   it("honors preferred x-connection-id when selecting the account", async () => {
@@ -203,7 +203,7 @@ describe("handleVideoGet", () => {
     const res = await handleVideoGet(req, "req-1");
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ status: "pending", progress: 42 });
+    expect(await res.json()).toEqual({ status: "pending", progress: 42, provider: "xai", model: null });
     expect(authMocks.getProviderCredentials).toHaveBeenCalledWith(
       "xai", null, null, expect.objectContaining({ preferredConnectionId: "conn-5" })
     );

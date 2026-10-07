@@ -49,6 +49,6 @@ export default {
     const split = JSON.parse(data.split("\n")[3]);
     const base64 = JSON.parse(split[0][2])[0];
     if (!base64 || base64.length < 100) throw new Error("Google TTS returned empty audio");
-    return { base64, format: "mp3" };
+    return { base64, format: "mp3", model: lang };
   },
 };

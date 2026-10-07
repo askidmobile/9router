@@ -47,6 +47,7 @@ export default {
 
     // Parse SSE stream, accumulate base64 audio chunks
     const chunks = [];
+    let responseModel = ttsModel;
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
@@ -61,6 +62,7 @@ export default {
         if (!line.startsWith("data: ") || line === "data: [DONE]") continue;
         try {
           const json = JSON.parse(line.slice(6));
+          if (typeof json.model === "string" && json.model.trim()) responseModel = json.model;
           const audioData = json.choices?.[0]?.delta?.audio?.data;
           if (audioData) chunks.push(audioData);
         } catch {}
@@ -68,6 +70,6 @@ export default {
     }
 
     if (chunks.length === 0) throw new Error("OpenRouter TTS returned no audio data");
-    return { base64: chunks.join(""), format: "wav" };
+    return { base64: chunks.join(""), format: "wav", model: responseModel };
   },
 };

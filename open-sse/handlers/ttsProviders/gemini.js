@@ -85,7 +85,7 @@ export default {
       throw new Error(`Gemini TTS returned no audio (finishReason: ${reason}, voice: ${voiceId}, model: ${modelId})`);
     }
     const wav = pcmToWav(Buffer.from(b64, "base64"));
-    return { base64: wav.toString("base64"), format: "wav" };
+    return { base64: wav.toString("base64"), format: "wav", model: data.modelVersion || modelId };
   },
 };
 

@@ -9,6 +9,7 @@ import { getSettings } from "@/lib/localDb";
 import { PROVIDER_MODELS } from "@/shared/constants/models";
 import { GEMINI_NATIVE_TTS_FETCH_TIMEOUT_MS } from "open-sse/config/runtimeConfig.js";
 import { initTranslators } from "open-sse/translator/index.js";
+import { withResponseMetadata } from "open-sse/utils/responseMetadata.js";
 
 let initialized = false;
 const GEMINI_NATIVE_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
@@ -333,11 +334,12 @@ async function forwardGeminiNativeRequest(request, body, model, action) {
 
     if (upstreamResponse.ok) {
       await clearAccountError(credentials.connectionId, credentials, modelId);
-      return new Response(upstreamResponse.body, {
+      const result = await withResponseMetadata({ success: true, response: new Response(upstreamResponse.body, {
         status: upstreamResponse.status,
         statusText: upstreamResponse.statusText,
         headers: corsHeadersFrom(upstreamResponse),
-      });
+      }) }, { provider: "gemini", model: modelId });
+      return result.response;
     }
 
     const errorText = await upstreamResponse.text();
@@ -485,7 +487,10 @@ function transformOpenAISSEToGeminiSSE(upstreamResponse, model) {
           candidate.finishReason = FINISH_REASON_MAP[choice.finish_reason] || "STOP";
         }
 
-        const geminiChunk = { candidates: [candidate] };
+        const geminiChunk = {
+          candidates: [candidate],
+          ...(parsed.provider ? { provider: parsed.provider, model: parsed.model || model } : {}),
+        };
 
         // Attach usage + modelVersion on the final chunk (when finish_reason is set)
         if (choice.finish_reason && parsed.usage) {
@@ -569,6 +574,7 @@ async function convertOpenAIResponseToGemini(response, model) {
       },
     ],
     modelVersion: body.model || model,
+    ...(body.provider ? { provider: body.provider, model: body.model || model } : {}),
   };
 
   if (body.usage) {

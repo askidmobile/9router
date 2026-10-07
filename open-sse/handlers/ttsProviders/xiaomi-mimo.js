@@ -60,6 +60,7 @@ export async function synthesizeMiMo(text, model, apiKey, style, language) {
 
   return {
     base64: audio,
+    model: data.model || modelId,
     format: data?.choices?.[0]?.message?.audio?.format || "wav",
   };
 }

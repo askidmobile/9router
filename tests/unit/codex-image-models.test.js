@@ -68,7 +68,7 @@ describe("Codex GPT-5.6 image models", () => {
       type: "input_image", image_url: "data:image/png;base64,cmVmZXJlbmNl", detail: "low",
     });
     const stream = await result.response.text();
-    expect(stream).toContain('event: partial_image\ndata: {"b64_json":"cGFydGlhbA==","index":0}');
+    expect(stream).toContain(`event: partial_image\ndata: ${JSON.stringify({ b64_json: "cGFydGlhbA==", index: 0, provider: "codex", model })}`);
     expect(stream).toContain("event: done\n");
     expect(stream).toContain('"data":[{"b64_json":"ZmluYWw="}]');
     expect(onRequestSuccess).toHaveBeenCalledTimes(1);

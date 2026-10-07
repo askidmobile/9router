@@ -89,6 +89,27 @@ describe("Gemini native v1beta endpoint", () => {
     expect(names).toContain("models/gemini-2.5-pro-preview-tts");
   });
 
+  it.each([false, true])("preserves the executed provider and model in chat responses (stream=%s)", async stream => {
+    const identity = { provider: "gemini", model: "gemini-upstream-revision" };
+    mocks.handleChat.mockResolvedValueOnce(stream
+      ? new Response([
+        { ...identity, choices: [{ delta: { content: "hello" } }] },
+        { ...identity, choices: [{ delta: {}, finish_reason: "stop" }], usage: { prompt_tokens: 8, completion_tokens: 2, total_tokens: 10 } },
+      ].map(chunk => `data: ${JSON.stringify(chunk)}\n\n`).join("") + "data: [DONE]\n\n", { headers: { "content-type": "text/event-stream" } })
+      : Response.json({ ...identity, choices: [{ message: { content: "hello" }, finish_reason: "stop" }] }));
+    const modelAction = `gemini-3.5-flash-lite:${stream ? "streamGenerateContent" : "generateContent"}`;
+    const response = await POST(makeGeminiRequest(`gemini/${modelAction}`, {
+      contents: [{ role: "user", parts: [{ text: "hello" }] }],
+    }), { params: Promise.resolve({ path: ["gemini", modelAction] }) });
+
+    const responses = stream
+      ? (await response.text()).split("\n").filter(line => line.startsWith("data:")).map(line => JSON.parse(line.slice(5)))
+      : [await response.json()];
+    expect(responses).toHaveLength(stream ? 2 : 1);
+    for (const body of responses) expect(body).toMatchObject(identity);
+    expect(responses.at(-1).modelVersion).toBe(identity.model);
+  });
+
   it.each([
     ["generateContent", { serviceTier: "flex" }],
     ["streamGenerateContent", { serviceTier: "flex" }],
@@ -126,6 +147,25 @@ describe("Gemini native v1beta endpoint", () => {
     expect(JSON.parse(options.body)).toEqual(body);
     expect(options.headers["x-goog-api-key"]).toBe("real-gemini-key");
     expect(options.headers.Authorization).toBeUndefined();
+    expect(response.headers.get("x-9router-provider")).toBe("gemini");
+    expect(await response.json()).toMatchObject({ provider: "gemini", model: "gemini-3.1-flash-tts-preview" });
+  });
+
+  it("adds identity to native audio SSE records while preserving framing and split UTF-8", async () => {
+    const raw = 'event: audio\r\ndata: {"modelVersion":"gemini-audio-revision",\r\ndata: "candidates":[{"content":{"parts":[{"text":"Привет"}]}}]}\r\n\r\ndata: [DONE]\r\n\r\n';
+    const bytes = new TextEncoder().encode(raw);
+    global.fetch.mockResolvedValueOnce(new Response(new ReadableStream({ start(controller) {
+      for (const byte of bytes) controller.enqueue(new Uint8Array([byte]));
+      controller.close();
+    } }), { headers: { "content-type": "text/event-stream" } }));
+    const modelAction = "gemini-3.1-flash-tts-preview:streamGenerateContent";
+    const response = await POST(makeGeminiRequest(modelAction, audioBody()), { params: Promise.resolve({ path: [modelAction] }) });
+    expect(response.headers.get("x-9router-provider")).toBe("gemini");
+    const text = await response.text();
+    expect(text).toContain("event: audio\n");
+    expect(text).toContain("data: [DONE]\n\n");
+    const data = JSON.parse(text.split("\n").find(line => line.startsWith("data:")).slice(5));
+    expect(data).toMatchObject({ provider: "gemini", model: "gemini-audio-revision", modelVersion: "gemini-audio-revision", candidates: [{ content: { parts: [{ text: "Привет" }] } }] });
   });
 
   it("accepts Google-style client keys without forwarding them upstream", async () => {

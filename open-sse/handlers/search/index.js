@@ -11,6 +11,7 @@ import { buildSearchRequest } from "./callers.js";
 import { normalizeSearchResponse } from "./normalizers.js";
 import { handleChatSearch } from "./chatSearch.js";
 import { fetchPublic } from "../../../src/shared/utils/ssrfGuard.js";
+import { createResponseMetadata } from "../../utils/responseMetadata.js";
 
 const GLOBAL_TIMEOUT_MS = 15000;
 const NON_RETRIABLE = new Set([400, 401, 403, 404]);
@@ -55,7 +56,11 @@ function errorResult(status, error) {
 
 /** Wrap a success payload. */
 function successResult(data) {
-  return { success: true, data, response: jsonResponse(data, 200) };
+  const metadata = createResponseMetadata({ provider: data.provider, finalBody: { model: data.model || data.answer?.model } });
+  metadata.applyJson(data);
+  return { success: true, data, response: new Response(JSON.stringify(data), {
+    headers: metadata.headers({ "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }),
+  }) };
 }
 
 /**
