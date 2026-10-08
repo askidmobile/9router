@@ -4,6 +4,7 @@
 - **Response accounting**: expose the actual provider/model and USD `usage.cost` in JSON, SSE and Responses replies, including Combo fallback winners; Fusion replies include completed panel and judge calls in `usage.cost_details.requests`.
 - **Pricing**: honor saved prices and upstream-reported costs; use raw billable tokens, preserve explicit zero cache rates, and distinguish unavailable prices from free routes.
 - **JSON compatibility**: retain JSON replies and their cost when a forced-stream provider returns JSON to a non-streaming client.
+- **Streaming accounting**: persist final usage once at the protocol terminal event, so Combo/client cancellation after completion cannot drop the final call from the usage journal.
 - **GitHub Copilot**: send adaptive thinking and `output_config.effort` for Haiku 5.5 while retaining budget-based thinking for older Haiku models.
 
 ## Features

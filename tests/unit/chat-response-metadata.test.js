@@ -41,10 +41,10 @@ const sse = frames => frames.map(frame => typeof frame === "string"
 const frames = text => text.split("\n").filter(line => line.startsWith("data:") && !line.includes("[DONE]"))
   .map(line => JSON.parse(line.slice(5).trim()));
 
-function respond(payload, { format = FORMATS.OPENAI, stream = false, sentModel, split = false } = {}) {
+function respond(payload, { format = FORMATS.OPENAI, stream = false, sentModel, split = false, holdOpen = false } = {}) {
   execute.mockImplementationOnce(async (_provider, options) => {
     const bytes = new TextEncoder().encode(stream ? payload : JSON.stringify(payload));
-    const body = split ? new ReadableStream({
+    const body = holdOpen ? new ReadableStream({ start(controller) { controller.enqueue(bytes); } }) : split ? new ReadableStream({
       start(controller) {
         // Split UTF-8 and JSON tokens across reads, including the model name.
         for (let i = 0; i < bytes.length; i += 7) controller.enqueue(bytes.slice(i, i + 7));
@@ -255,6 +255,48 @@ describe("client response identity through chatCore", () => {
 
 
 describe("client-visible cost and headers", () => {
+  it.each([FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, FORMATS.CLAUDE])("persists native Claude usage once when a client cancels at the terminal (%s)", async format => {
+    const { saveRequestUsage } = await import("@/lib/usageDb.js");
+    saveRequestUsage.mockClear();
+    respond(sse([
+      { type: "message_start", message: { id: "msg_test", type: "message", role: "assistant", model: "claude-haiku-5.5", content: [], usage: { input_tokens: 8, output_tokens: 0, cost: 0.0123 } } },
+      { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
+      { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "hello" } },
+      { type: "content_block_stop", index: 0 },
+      { type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 2 } },
+      { type: "message_stop" },
+    ]), { format: FORMATS.CLAUDE, stream: true, holdOpen: true });
+    const result = await request({ provider: "anthropic-compatible-test", model: "claude-haiku-5.5", format, stream: true });
+    const reader = result.response.body.getReader();
+    const decoder = new TextDecoder();
+    let text = "";
+    while (!/data: \[DONE\]|"type":"message_stop"|"type":"response.completed"|"finish_reason":"stop"/.test(text)) {
+      const next = await reader.read();
+      expect(next.done).toBe(false);
+      text += decoder.decode(next.value, { stream: true });
+    }
+    await reader.cancel();
+    expect(saveRequestUsage).toHaveBeenCalledTimes(1);
+    expect(saveRequestUsage.mock.calls[0][0].tokens).toMatchObject({ prompt_tokens: 8, completion_tokens: 2, cost: 0.0123 });
+  });
+  it.each([FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, FORMATS.CLAUDE])("persists the quoted cost once before a Combo client cancels at the Chat terminal (%s)", async format => {
+    const { saveRequestUsage } = await import("@/lib/usageDb.js");
+    saveRequestUsage.mockClear();
+    const tail = { ...chunk({}, "gpt-4o", "stop"), usage: { ...usage, cost: 0.0123 } };
+    respond(sse([chunk({ content: "hello" }, "gpt-4o"), tail, "[DONE]"]), { stream: true, holdOpen: true });
+    const result = await request({ format, stream: true });
+    const reader = result.response.body.getReader();
+    const decoder = new TextDecoder();
+    let text = "";
+    while (!/data: \[DONE\]|"type":"message_stop"|"type":"response.completed"/.test(text)) {
+      const next = await reader.read();
+      expect(next.done).toBe(false);
+      text += decoder.decode(next.value, { stream: true });
+    }
+    await reader.cancel();
+    expect(saveRequestUsage).toHaveBeenCalledTimes(1);
+    expect(saveRequestUsage.mock.calls[0][0].tokens).toMatchObject({ cost: 0.0123, cost_details: { source: "provider", estimated: false } });
+  });
   it.each([FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, FORMATS.CLAUDE])("keeps JSON and provider cost when a forced-stream provider returns JSON (%s)", async format => {
     respond({ ...completion("gpt-4o-revision"), usage: { ...usage, cost: 0.0123 } });
     const result = await request({ provider: "openai", format });

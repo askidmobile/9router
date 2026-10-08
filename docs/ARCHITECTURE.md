@@ -290,6 +290,12 @@ body, non-streaming clients continue through the JSON handler, preserving their
 requested format, provider identity and cost instead of receiving a JSON body
 with an appended SSE sentinel.
 
+Streaming accounting finalizes once at `[DONE]` or the native Claude/Responses/
+Ollama terminal event. Combo guards and clients may cancel immediately after
+that event; waiting for HTTP EOF could otherwise lose the final usage record.
+An ordinary Chat `finish_reason` still allows a later usage trailer before
+`[DONE]`, and EOF remains a fallback when no explicit sentinel arrives.
+
 ## Combo + Account Fallback Flow
 
 ```mermaid

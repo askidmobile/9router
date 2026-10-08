@@ -97,6 +97,8 @@ export function createSSEStream(options = {}) {
     if (completionFlushTimer) { clearTimeout(completionFlushTimer); completionFlushTimer = null; }
     if (finalized) return;
     finalized = true;
+    if (trackDone) trackDone();
+    else trackPendingRequest(model, provider, connectionId, false);
 
     const isPassthrough = mode === STREAM_MODE.PASSTHROUGH;
     let finalUsage = isPassthrough ? usage : state?.usage;
@@ -171,6 +173,9 @@ export function createSSEStream(options = {}) {
           const isDoneLine = trimmed.startsWith("data:") && trimmed.slice(5).trim() === "[DONE]";
           if (isDoneLine && passthroughDoneSent) continue;
           if (isDoneLine) passthroughDoneSent = true;
+          // Combo/client readers may cancel as soon as they receive [DONE].
+          // Persist the final observed usage before emitting that sentinel.
+          if (isDoneLine) finalizeStream();
 
           if (trimmed.startsWith("data:") && trimmed.slice(5).trim() !== "[DONE]") {
             try {
@@ -245,7 +250,8 @@ export function createSSEStream(options = {}) {
                 usage = mergeUsage(usage, extracted);
               }
 
-              responsesTerminal = isOpenAIResponsesTerminalEvent(currentOpenAIResponsesEvent, parsed);
+              responsesTerminal = isOpenAIResponsesTerminalEvent(currentOpenAIResponsesEvent, parsed) ||
+                parsed.type === "message_stop" || parsed.done === true;
 
               const isFinishChunk = parsed.choices?.[0]?.finish_reason;
               const nativeReason = parsed.choices?.[0]?.native_finish_reason;
@@ -300,7 +306,7 @@ export function createSSEStream(options = {}) {
 
           reqLogger?.appendConvertedChunk?.(output);
           controller.enqueue(sharedEncoder.encode(output));
-          // Responses clients (codex CLI) close on response.completed instead of [DONE]
+          // Native clients close on their terminal event instead of waiting for EOF.
           if (responsesTerminal) finalizeStream();
           continue;
         }
@@ -350,6 +356,7 @@ export function createSSEStream(options = {}) {
           }
           streamDoneSent = true;
           if (keepsOpenAIResponsesFormat) openAIResponsesDoneSent = true;
+          finalizeStream();
           continue;
         }
 
@@ -420,6 +427,12 @@ export function createSSEStream(options = {}) {
 
         // Translate: targetFormat -> openai -> sourceFormat
         const translated = translateResponse(targetFormat, sourceFormat, parsed, state);
+        // Native Claude/Responses/Ollama clients close on their terminal event
+        // without waiting for EOF. The translator has now merged final usage.
+        if (parsed.type === "message_stop" ||
+            (parsed.type === "message_delta" && parsed.delta?.stop_reason && sourceFormat !== FORMATS.CLAUDE) ||
+            (isOpenAIResponsesStream && openAIResponsesTerminalSeen) ||
+            (targetFormat === FORMATS.OLLAMA && parsed.done)) finalizeStream();
 
         // Log OpenAI intermediate chunks (if available)
         if (translated?._openaiIntermediate) {
@@ -473,8 +486,6 @@ export function createSSEStream(options = {}) {
     flush(controller) {
       const evtSummary = Object.entries(eventTypeCounts).map(([k, v]) => `${k}=${v}`).join(",") || "none";
       dbg("SSE", `flush | provider=${provider} | model=${model} | recvLines=${sseLineCount} | emitted=${sseEmittedCount} | events=[${evtSummary}]`);
-      if (trackDone) trackDone();
-      else trackPendingRequest(model, provider, connectionId, false);
       try {
         const remaining = decoder.decode();
         if (remaining) buffer += remaining;
