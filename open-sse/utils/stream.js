@@ -224,7 +224,9 @@ export function createSSEStream(options = {}) {
                 continue;
               }
 
-              const delta = parsed.choices?.[0]?.delta;
+              const isFinishChunk = parsed.choices?.[0]?.finish_reason;
+              const duplicateFinish = isFinishChunk && passthroughFinishSeen;
+              const delta = duplicateFinish ? null : parsed.choices?.[0]?.delta;
               // OpenRouter-style gateways (e.g. stealth/ox-alpha) stream
               // reasoning under `delta.reasoning`, but OpenAI-compatible
               // clients (Cursor, OpenCode, pi) expect `delta.reasoning_content`.
@@ -253,7 +255,6 @@ export function createSSEStream(options = {}) {
               responsesTerminal = isOpenAIResponsesTerminalEvent(currentOpenAIResponsesEvent, parsed) ||
                 parsed.type === "message_stop" || parsed.done === true;
 
-              const isFinishChunk = parsed.choices?.[0]?.finish_reason;
               const nativeReason = parsed.choices?.[0]?.native_finish_reason;
               // Detect upstream gateway errors masked as HTTP 200 (e.g. OpenRouter
               // sending finish_reason:"stop" with native_finish_reason:"network_error"
@@ -262,18 +263,22 @@ export function createSSEStream(options = {}) {
                 controller.error(new Error(`Upstream stream failed: ${nativeReason}`));
                 return;
               }
-              if (isFinishChunk && passthroughFinishSeen) {
-                // Duplicate finish chunk (the second usually carries only
-                // upstream-side usage) — drop it: two finish_reasons in one
-                // stream break AI SDK clients ("content after finish reason").
-                continue;
+              if (duplicateFinish) {
+                // Gateways can repeat the finish while attaching final usage.
+                // Preserve that accounting as an OpenAI usage-only trailer;
+                // replaying the finish or delta breaks clients and tool calls.
+                if (!extracted) continue;
+                parsed.choices = [];
+                fieldsInjected = true;
+              } else if (isFinishChunk) {
+                passthroughFinishSeen = true;
               }
-              if (isFinishChunk) passthroughFinishSeen = true;
-              if (isFinishChunk && !hasValidUsage(parsed.usage)) {
+              if (isFinishChunk && !hasValidUsage(usage)) {
                 const estimated = estimateUsage(body, totalContentLength, FORMATS.OPENAI);
                 parsed.usage = filterUsageForFormat(estimated, FORMATS.OPENAI);
                 output = `data: ${JSON.stringify(parsed)}\n`;
-                usage = estimated;
+                // Client estimates must not pollute later real counters or DB
+                // accounting. finalizeStream estimates only if none arrived.
                 injectedUsage = true;
               } else if (isFinishChunk && usage) {
                 const buffered = addBufferToUsage(usage);

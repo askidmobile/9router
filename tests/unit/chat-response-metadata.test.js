@@ -255,6 +255,46 @@ describe("client response identity through chatCore", () => {
 
 
 describe("client-visible cost and headers", () => {
+  it.each(["stop", "tool_calls"])("keeps Cline's late usage trailer without replaying its %s finish", async finish => {
+    const { saveRequestUsage } = await import("@/lib/usageDb.js");
+    saveRequestUsage.mockClear();
+    const firstFinish = chunk({}, "z-ai/glm-5.3-flash", finish);
+    delete firstFinish.usage;
+    const actualUsage = {
+      prompt_tokens: 20, completion_tokens: 7, total_tokens: 27,
+      prompt_tokens_details: { cached_tokens: 16 },
+      completion_tokens_details: { reasoning_tokens: 3 }, cost: 0.001043,
+    };
+    const delta = finish === "tool_calls"
+      ? { tool_calls: [{ index: 0, id: "call_info", type: "function", function: { name: "info", arguments: "{}" } }] }
+      : { content: "hello" };
+    respond(sse([
+      chunk(delta, "z-ai/glm-5.3-flash"), firstFinish,
+      { ...chunk({}, "z-ai/glm-5.3-flash", finish), usage: actualUsage }, "[DONE]",
+    ]), { stream: true, split: true });
+    // Make the early estimate much larger than the real upstream prompt count.
+    const result = await request({ provider: "clinepass", model: "cline-pass/glm-5.3-flash", stream: true,
+      messages: [{ role: "user", content: "long context ".repeat(1000) }] });
+    const events = frames(await result.response.text());
+    expect(events.flatMap(e => e.choices || []).filter(c => c.finish_reason)).toHaveLength(1);
+    expect(events.flatMap(e => e.choices || []).filter(c => c.delta?.tool_calls)).toHaveLength(finish === "tool_calls" ? 1 : 0);
+    const trailer = events.findLast(e => e.usage);
+    expect(trailer).toMatchObject({ provider: "clinepass", model: "z-ai/glm-5.3-flash", choices: [] });
+    expect(trailer.usage).toMatchObject({
+      completion_tokens: 7, cost: 0.001043,
+      prompt_tokens_details: { cached_tokens: 16 },
+      completion_tokens_details: { reasoning_tokens: 3 },
+      cost_details: { source: "provider", estimated: false },
+    });
+    expect(trailer.usage).not.toHaveProperty("estimated", true);
+    expect(saveRequestUsage).toHaveBeenCalledTimes(1);
+    expect(saveRequestUsage.mock.calls[0][0].tokens).toMatchObject({
+      prompt_tokens: 20, completion_tokens: 7, total_tokens: 27,
+      cached_tokens: 16, reasoning_tokens: 3, cost: 0.001043,
+      cost_details: { source: "provider", estimated: false },
+    });
+    expect(saveRequestUsage.mock.calls[0][0].tokens).not.toHaveProperty("estimated", true);
+  });
   it.each([FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, FORMATS.CLAUDE])("persists native Claude usage once when a client cancels at the terminal (%s)", async format => {
     const { saveRequestUsage } = await import("@/lib/usageDb.js");
     saveRequestUsage.mockClear();
