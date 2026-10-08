@@ -25,6 +25,7 @@ export function transformToOllama(response, model) {
           const parsed = JSON.parse(data);
           if (typeof parsed.model === "string" && parsed.model.trim()) responseMetadata.model = parsed.model;
           if (typeof parsed.provider === "string" && parsed.provider.trim()) responseMetadata.provider = parsed.provider;
+          if (parsed.usage) responseMetadata.usage = parsed.usage;
           const delta = parsed.choices?.[0]?.delta || {};
           const content = delta.content || "";
           const toolCalls = delta.tool_calls;
@@ -82,6 +83,6 @@ export function transformToOllama(response, model) {
     return new Response("", { status: response.status, headers: { "Content-Type": "application/x-ndjson" } });
   }
   return new Response(response.body.pipeThrough(transform), {
-    headers: { "Content-Type": "application/x-ndjson", "Access-Control-Allow-Origin": "*" }
+    headers: { ...Object.fromEntries(response.headers), "Content-Type": "application/x-ndjson", "Access-Control-Allow-Origin": "*" }
   });
 }

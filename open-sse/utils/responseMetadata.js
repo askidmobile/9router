@@ -2,6 +2,9 @@ import { getModelUpstreamId, PROVIDER_ID_TO_ALIAS } from "../config/providerMode
 import { stripThinkingSuffix } from "../translator/concerns/thinkingUnified.js";
 import { MODEL_FALLBACK, RESPONSES_ITEM } from "../translator/schema/index.js";
 import { RESPONSE_METADATA_HEADERS } from "../config/responseMetadata.js";
+import { getPricingForModel } from "../providers/pricing.js";
+import { extractUsage, mergeUsage } from "./usageTracking.js";
+import { calculateResponseCost } from "./responseCost.js";
 
 const modelId = (value) => typeof value === "string" && value.trim() && value !== MODEL_FALLBACK ? value : null;
 
@@ -13,14 +16,26 @@ function responseEnvelope(payload) {
 }
 
 /** Per-attempt identity: observe raw upstream data before lossy translation. */
-export function createResponseMetadata({ provider, model, translatedBody, finalBody } = {}) {
+export function createResponseMetadata({ provider, model, translatedBody, finalBody, resolvePricing = id => getPricingForModel(provider, id) } = {}) {
   const alias = PROVIDER_ID_TO_ALIAS[provider] || provider;
   let actualModel = modelId(finalBody?.model) || modelId(translatedBody?.model)
     || (model ? stripThinkingSuffix(getModelUpstreamId(alias, model)) : null);
+  // Prices belong to the configured route (including free/subscription
+  // namespaces), even when upstream reports a paid vendor's model revision.
+  const pricingModel = model ? stripThinkingSuffix(model) : actualModel;
+  let rawUsage = null;
+  const cost = () => calculateResponseCost(rawUsage, resolvePricing(pricingModel) || resolvePricing(actualModel));
+  const assignCost = envelope => {
+    const usage = envelope.usage || envelope.usageMetadata;
+    // Estimated client counters still need an explicit unavailable price when
+    // upstream sent no usage. Non-token units (e.g. credits) stay untouched.
+    if (usage && (extractUsage({ usage }) || usage.input_tokens !== undefined || rawUsage?.cost !== undefined)) Object.assign(usage, cost());
+  };
 
   const assignIdentity = (envelope) => {
     envelope.provider = provider;
     envelope.model = actualModel || null;
+    assignCost(envelope);
     return envelope;
   };
 
@@ -28,12 +43,24 @@ export function createResponseMetadata({ provider, model, translatedBody, finalB
     observe(payload) {
       const envelope = responseEnvelope(payload);
       actualModel = modelId(envelope?.modelVersion) || modelId(envelope?.model) || actualModel;
+      const upstreamUsage = envelope?.usage || envelope?.usageMetadata;
+      const extracted = extractUsage(payload?.event ? payload.data : payload);
+      if (extracted || upstreamUsage) {
+        const counts = extracted || upstreamUsage;
+        rawUsage = mergeUsage(rawUsage, {
+          ...counts,
+          ...(upstreamUsage?.cost !== undefined ? { cost: upstreamUsage.cost, cost_details: upstreamUsage.cost_details } : {}),
+          ...(upstreamUsage?.completion_tokens_details ? { completion_tokens_details: upstreamUsage.completion_tokens_details } : {}),
+          ...(upstreamUsage?.output_tokens_details ? { output_tokens_details: upstreamUsage.output_tokens_details } : {}),
+        });
+      }
     },
+    cost,
     apply(payload) {
       if (!provider) return payload;
       const envelope = responseEnvelope(payload);
       if (!envelope || typeof envelope !== "object" || Array.isArray(envelope) || envelope.error) return payload;
-      const isCompletion = Array.isArray(envelope.choices) || Array.isArray(envelope.candidates)
+      const isCompletion = Array.isArray(envelope.choices) || Array.isArray(envelope.candidates) || envelope.usage && envelope.type
         || envelope.object === "response" || envelope.object === "response.compaction" || envelope.type === RESPONSES_ITEM.MESSAGE
         || envelope !== payload && (envelope.id || envelope.status);
       if (isCompletion) {
@@ -54,11 +81,11 @@ export function createResponseMetadata({ provider, model, translatedBody, finalB
     headers(existing) {
       const headers = new Headers(existing);
       const exposed = new Set((headers.get("Access-Control-Expose-Headers") || "").split(",").map(value => value.trim()).filter(Boolean));
-      for (const [key, value] of Object.entries({ provider, model: actualModel })) {
-        if (!value) continue;
+      for (const [key, value] of Object.entries({ provider, model: actualModel, cost: rawUsage ? cost().cost : null })) {
+        if (value === null || value === undefined || value === "") continue;
         // Model IDs are normally ASCII. Encode unusual IDs instead of letting
         // non-ByteString characters or control bytes break an otherwise valid response.
-        headers.set(RESPONSE_METADATA_HEADERS[key], /^[\x20-\x7e]+$/.test(value) ? value : encodeURIComponent(value));
+        headers.set(RESPONSE_METADATA_HEADERS[key], /^[\x20-\x7e]+$/.test(String(value)) ? String(value) : encodeURIComponent(value));
         exposed.add(RESPONSE_METADATA_HEADERS[key]);
       }
       if (exposed.size) headers.set("Access-Control-Expose-Headers", [...exposed].join(", "));
@@ -67,9 +94,21 @@ export function createResponseMetadata({ provider, model, translatedBody, finalB
   };
 }
 
+/** Resolve saved prices before streaming starts; accounting itself stays synchronous. */
+export async function prepareResponseMetadata(options) {
+  let prices = {};
+  try {
+    const { getPricing } = await import("@/lib/db/repos/pricingRepo.js");
+    prices = await getPricing();
+  } catch { /* Standalone engine/tests can use the static catalog. */ }
+  const alias = PROVIDER_ID_TO_ALIAS[options.provider] || options.provider;
+  return createResponseMetadata({ ...options, resolvePricing: id => prices[options.provider]?.[id]
+    || prices[alias]?.[id] || getPricingForModel(options.provider, id) });
+}
+
 // Native media streams do not pass through the chat translators. Preserve SSE
 // event names/comments and only decorate complete JSON data records.
-function metadataStream(metadata) {
+export function metadataStream(metadata) {
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
   let buffer = "";

@@ -129,7 +129,7 @@ describe("OpenAI Responses usage on response.completed", () => {
       },
     ]);
 
-    expect(completedResponse(output).usage).toEqual({
+    expect(completedResponse(output).usage).toMatchObject({
       ...EXPECTED_USAGE,
       output_tokens_details: { reasoning_tokens: 12 },
     });
@@ -140,7 +140,7 @@ describe("OpenAI Responses usage on response.completed", () => {
     // Missing optional reasoning details remain unknown; the normalized usage
     // still carries all required counts and the reported cache count.
     const { output_tokens_details, ...reportedUsage } = EXPECTED_USAGE;
-    expect(completedResponse(output).usage).toEqual(reportedUsage);
+    expect(completedResponse(output).usage).toMatchObject(reportedUsage);
   });
 
   it("still completes when the upstream reports no usage at all", async () => {

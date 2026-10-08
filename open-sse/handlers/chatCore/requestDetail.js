@@ -61,6 +61,21 @@ export function extractUsageFromResponse(responseBody) {
     };
   }
 
+  // Ollama format: prompt_eval_count/eval_count at top level (not nested under usage).
+  // prompt_eval_cached_count is a cache-read subset of prompt_eval_count (cache-INCLUSIVE).
+  if (responseBody.done === true &&
+      (responseBody.prompt_eval_count !== undefined || responseBody.eval_count !== undefined)) {
+    const prompt = responseBody.prompt_eval_count || 0;
+    const completion = responseBody.eval_count || 0;
+    const cached = responseBody.prompt_eval_cached_count || 0;
+    return {
+      prompt_tokens: prompt,
+      completion_tokens: completion,
+      total_tokens: prompt + completion,
+      cached_tokens: cached
+    };
+  }
+
   return null;
 }
 
@@ -120,6 +135,10 @@ export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, 
     prompt_tokens: tokens.prompt_tokens ?? tokens.input_tokens ?? 0,
     completion_tokens: tokens.completion_tokens ?? tokens.output_tokens ?? 0
   };
+  if (tokens.cost !== undefined) normalized.cost = tokens.cost;
+  if (tokens.cost_details) normalized.cost_details = tokens.cost_details;
+  if (tokens.completion_tokens_details) normalized.completion_tokens_details = tokens.completion_tokens_details;
+  if (tokens.output_tokens_details) normalized.output_tokens_details = tokens.output_tokens_details;
 
   saveRequestUsage({
     provider: provider || "unknown",

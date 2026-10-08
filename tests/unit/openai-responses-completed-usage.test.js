@@ -115,7 +115,7 @@ describe("Responses response.completed reports token usage", () => {
 
     const usage = completed[0].data.response.usage;
     expectCodexUsageShape(usage);
-    expect(usage).toEqual({
+    expect(usage).toMatchObject({
       input_tokens: 300,
       output_tokens: 20,
       total_tokens: 320,
@@ -136,7 +136,7 @@ describe("Responses response.completed reports token usage", () => {
 
     const completed = events.filter((e) => e.event === "response.completed");
     expect(completed).toHaveLength(1);
-    expect(completed[0].data.response.usage).toEqual({ input_tokens: 300, output_tokens: 20, total_tokens: 320 });
+    expect(completed[0].data.response.usage).toMatchObject({ input_tokens: 300, output_tokens: 20, total_tokens: 320 });
   });
 
   it.each([0, 999])("derives the total when upstream reports inconsistent total_tokens=%i", async (totalTokens) => {
@@ -153,7 +153,7 @@ describe("Responses response.completed reports token usage", () => {
 
     const completed = events.filter((e) => e.event === "response.completed");
     expect(completed).toHaveLength(1);
-    expect(completed[0].data.response.usage).toEqual({
+    expect(completed[0].data.response.usage).toMatchObject({
       input_tokens: 300,
       output_tokens: 20,
       total_tokens: 320,

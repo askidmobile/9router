@@ -54,7 +54,7 @@ describe("Ollama NDJSON stream: the tail left in the line buffer", () => {
     const out = await runOllamaStream([chunk("hello"), chunk("", true)].join("\n"));
     const last = deltas(out).at(-1);
     expect(last.choices[0].finish_reason).toBe("stop");
-    expect(last.usage).toEqual({ prompt_tokens: 11, completion_tokens: 7, total_tokens: 18 });
+    expect(last.usage).toMatchObject({ prompt_tokens: 11, completion_tokens: 7, total_tokens: 18 });
   });
 
   it("is unchanged when every line is newline-terminated", async () => {

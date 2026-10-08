@@ -278,6 +278,10 @@ export function createSSEStream(options = {}) {
                 output = `data: ${JSON.stringify(parsed)}\n`;
                 injectedUsage = true;
               }
+              // Filtering/buffering usage above must not discard the accounting
+              // derived from raw upstream tokens. Usage-only trailers count too.
+              responseMetadata.apply(parsed);
+              if (injectedUsage) output = `data: ${JSON.stringify(parsed)}\n`;
             } catch {
               // Skip non-JSON data lines silently — don't forward garbage to clients.
               // Upstream providers sometimes return plain-text errors (HTML, rate-limit

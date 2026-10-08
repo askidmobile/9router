@@ -2,6 +2,7 @@
  * Shared combo (model combo) handling with fallback support
  */
 
+import { withComboCost } from "../utils/comboCost.js";
 import { checkFallbackError, formatRetryAfter } from "./accountFallback.js";
 import { errorResponse, unavailableResponse } from "../utils/error.js";
 import { abortableDelay, createComboDeadlineError, isComboDeadlineError, throwIfAborted } from "../utils/abort.js";
@@ -551,7 +552,10 @@ async function readPanelAnswer(response, signal) {
     }
   }
   const text = extractPanelText(json);
-  return { ok: Boolean(text.trim()), status: response.status, text, __empty: !text.trim() };
+  const envelope = json.response || json;
+  const usage = envelope.usage || envelope.usageMetadata;
+  const bill = { role: "panel", provider: envelope.provider || null, model: envelope.model || null, cost: usage?.cost ?? null, estimated: usage?.cost_details?.estimated ?? true };
+  return { ok: Boolean(text.trim()), status: response.status, text, __empty: !text.trim(), bill };
 }
 
 /**
@@ -676,6 +680,8 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
   if (signal?.aborted) return errorResponse(499, "Request aborted");
   log.info("FUSION", `fan-out collected in ${Date.now() - t0}ms`);
 
+  const panelCosts = settled.filter(r => r?.bill).map(r => r.bill);
+
   // 2. Collect successful answers.
   const answers = [];
   for (let i = 0; i < settled.length; i++) {
@@ -702,12 +708,12 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
   if (answers.length === 1) {
     log.info("FUSION", `Only ${answers[0].model} succeeded — answering directly (no fusion)`);
     if (signal?.aborted) return errorResponse(499, "Request aborted");
-    return handleSingleModel(body, answers[0].model, undefined, { signal });
+    return withComboCost(await handleSingleModel(body, answers[0].model, undefined, { signal }), panelCosts);
   }
 
   // 4. Judge analyzes + writes one final answer (streams to client if requested).
   const judgeBody = appendUserTurn(body, buildJudgePrompt(answers));
   log.info("FUSION", `Judging ${answers.length} answers with ${judge}`);
   if (signal?.aborted) return errorResponse(499, "Request aborted");
-  return handleSingleModel(judgeBody, judge, undefined, { signal });
+  return withComboCost(await handleSingleModel(judgeBody, judge, undefined, { signal }), panelCosts);
 }

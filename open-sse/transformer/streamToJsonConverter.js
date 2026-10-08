@@ -38,6 +38,7 @@ function processSSEMessage(msg, state) {
   } else if (eventType === "response.completed" || eventType === "response.done") {
     state.status = "completed";
     if (parsed.response?.usage) {
+      state.usage = { ...parsed.response.usage };
       state.usage.input_tokens = parsed.response.usage.input_tokens || 0;
       state.usage.output_tokens = parsed.response.usage.output_tokens || 0;
       state.usage.total_tokens = parsed.response.usage.total_tokens || 0;
@@ -46,6 +47,7 @@ function processSSEMessage(msg, state) {
     state.status = "incomplete";
     state.incompleteDetails = parsed.response?.incomplete_details || null;
     if (parsed.response?.usage) {
+      state.usage = { ...parsed.response.usage };
       state.usage.input_tokens = parsed.response.usage.input_tokens || 0;
       state.usage.output_tokens = parsed.response.usage.output_tokens || 0;
       state.usage.total_tokens = parsed.response.usage.total_tokens || 0;

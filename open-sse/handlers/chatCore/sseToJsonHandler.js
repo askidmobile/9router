@@ -7,7 +7,7 @@ import { PROVIDERS } from "../../config/providers.js";
 import { buildRequestDetail, extractRequestConfig, saveUsageStats, formatDoneLine } from "./requestDetail.js";
 import { openAICompletionToResponses } from "../../translator/response/openai-responses-json.js";
 import { throwIfAborted } from "../../utils/abort.js";
-import { createResponseMetadata } from "../../utils/responseMetadata.js";
+import { prepareResponseMetadata } from "../../utils/responseMetadata.js";
 
 // Responses-API providers (e.g. codex) may emit SSE without content-type + use Responses output shape
 const isResponsesProvider = (p) => PROVIDERS[p]?.format === FORMATS.OPENAI_RESPONSES;
@@ -127,7 +127,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
   const contentType = providerResponse.headers.get("content-type") || "";
   const isSSE = contentType.includes("text/event-stream") || (contentType === "" && isResponsesProvider(provider));
   if (!isSSE) return null; // not handled here
-  const responseMetadata = createResponseMetadata({ provider, model, translatedBody, finalBody });
+  const responseMetadata = await prepareResponseMetadata({ provider, model, translatedBody, finalBody });
 
   const ctx = {
     provider, model, connectionId,
@@ -148,7 +148,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       throwIfAborted(signal);
       if (onRequestSuccess) await onRequestSuccess();
 
-      const usage = jsonResponse.usage || {};
+      const usage = { ...jsonResponse.usage, ...responseMetadata.cost() };
       appendLog({ tokens: usage, status: "200 OK" });
       saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, silent: true });
       if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency: { total: Date.now() - requestStartTime } }));
@@ -171,7 +171,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
 
       // Client is Responses API → return as-is
       if (sourceFormat === FORMATS.OPENAI_RESPONSES) {
-        return { success: true, response: new Response(JSON.stringify(restoreToolNames(jsonResponse, toolNameMap)), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }) };
+        return { success: true, response: new Response(JSON.stringify(restoreToolNames(jsonResponse, toolNameMap)), { headers: responseMetadata.headers({ "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }) }) };
       }
 
       // Build client-format response.
@@ -227,7 +227,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
         };
       }
 
-      return { success: true, response: new Response(JSON.stringify(restoreToolNames(responseMetadata.apply(finalResp), toolNameMap)), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }) };
+      return { success: true, response: new Response(JSON.stringify(restoreToolNames(responseMetadata.apply(finalResp), toolNameMap)), { headers: responseMetadata.headers({ "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }) }) };
     } catch (err) {
       throwIfAborted(signal);
       console.error("[ChatCore] Responses API SSE→JSON failed:", err);
@@ -258,7 +258,8 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
 
     if (onRequestSuccess) await onRequestSuccess();
 
-    const usage = parsed.usage || {};
+    responseMetadata.observe(parsed);
+    const usage = { ...parsed.usage, ...responseMetadata.cost() };
     appendLog({ tokens: usage, status: "200 OK" });
     saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, silent: true });
     if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency: { total: Date.now() - requestStartTime } }));
@@ -308,7 +309,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       ? openAICompletionToResponses(parsed, customToolNames, toolNamespaces)
       : parsed;
 
-    return { success: true, response: new Response(JSON.stringify(restoreToolNames(responseMetadata.apply(finalBody), toolNameMap)), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }) };
+    return { success: true, response: new Response(JSON.stringify(restoreToolNames(responseMetadata.apply(finalBody), toolNameMap)), { headers: responseMetadata.headers({ "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }) }) };
   } catch (err) {
     throwIfAborted(signal);
     console.error("[ChatCore] Chat Completions SSE→JSON failed:", err);

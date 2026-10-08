@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import "../translator/registerAll.js";
 
-const { execute } = vi.hoisted(() => ({ execute: vi.fn() }));
+const { execute, getPricing } = vi.hoisted(() => ({ execute: vi.fn(), getPricing: vi.fn() }));
+vi.mock("@/lib/db/repos/pricingRepo.js", () => ({ getPricing }));
 vi.mock("../../open-sse/executors/index.js", () => ({
   getExecutor: provider => ({ noAuth: true, execute: options => execute(provider, options) }),
 }));
@@ -69,7 +70,7 @@ function request({ provider = "openai-compatible-primary", model = "gpt-4o", for
   });
 }
 
-beforeEach(() => execute.mockReset());
+beforeEach(() => { execute.mockReset(); getPricing.mockResolvedValue({ "openai-compatible-primary": { "gpt-4o": { input: 2, output: 4 } } }); });
 
 describe("client response identity through chatCore", () => {
   it.each([FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, FORMATS.CLAUDE])("reports the upstream revision for %s JSON", async format => {
@@ -249,5 +250,51 @@ describe("client response identity through chatCore", () => {
     const body = await result.response.json();
     expect(body).not.toHaveProperty("provider");
     expect(body).not.toHaveProperty("model");
+  });
+});
+
+
+describe("client-visible cost and headers", () => {
+  it.each([FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, FORMATS.CLAUDE])("JSON %s uses saved prices and raw counts before the context buffer", async format => {
+    respond(completion("gpt-4o"));
+    const result = await request({ format });
+    const payload = await result.response.json();
+    expect(payload.usage.cost).toBeCloseTo(0.000024, 12);
+    expect(payload.usage.cost_details).toMatchObject({ currency: "USD", source: "pricing", estimated: true });
+    expect(result.response.headers.get("x-9router-provider")).toBe("openai-compatible-primary");
+    expect(result.response.headers.get("x-9router-model")).toBe("gpt-4o");
+    expect(Number(result.response.headers.get("x-9router-cost"))).toBeCloseTo(payload.usage.cost, 12);
+  });
+  it.each([FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, FORMATS.CLAUDE])("SSE %s retains cost after filtering and translation", async format => {
+    respond(sse([chunk({ role: "assistant" }, "gpt-4o"), chunk({ content: "hello" }), chunk({}, null, "stop"), "[DONE]"]), { stream: true });
+    const result = await request({ format, stream: true });
+    const events = frames(await result.response.text());
+    const priced = events.map(e => e.response || e.message || e).filter(e => e.usage?.cost !== undefined);
+    expect(priced.length).toBeGreaterThan(0);
+    expect(priced.at(-1).usage.cost).toBeCloseTo(0.000024, 12);
+    expect(priced.at(-1)).toMatchObject({ provider: "openai-compatible-primary", model: "gpt-4o" });
+  });
+  it("preserves provider-reported pricing across the lossy JSON translator", async () => {
+    respond({ ...completion("gpt-4o"), usage: { ...usage, cost: 0.123, cost_details: { upstream_inference_cost: 0.1 } } });
+    const result = await request({ format: FORMATS.OPENAI_RESPONSES });
+    expect((await result.response.json()).usage).toMatchObject({ cost: 0.123, cost_details: { source: "provider", estimated: false, upstream_inference_cost: 0.1 } });
+  });
+  it.each([FORMATS.OPENAI, FORMATS.CLAUDE])("marks estimated client usage as unpriced without raw upstream usage (%s)", async format => {
+    const tail = chunk({}, "gpt-4o", "stop");
+    delete tail.usage;
+    respond(sse([chunk({ content: "hello" }, "gpt-4o"), tail, "[DONE]"]), { stream: true });
+    const result = await request({ format, stream: true });
+    const events = frames(await result.response.text());
+    const terminal = events.findLast(event => event.usage);
+    expect(terminal?.usage).toMatchObject({ cost: null, cost_details: { source: "unavailable", estimated: false } });
+  });
+  it("keeps cache, reasoning details and the provider bill through forced Responses SSE-to-JSON", async () => {
+    respond(sse([
+      { type: "response.created", response: { id: "r", model: "gpt-4o", object: "response", output: [] } },
+      { type: "response.output_item.done", item: { type: "message", role: "assistant", content: [{ type: "output_text", text: "hello" }] } },
+      { type: "response.completed", response: { id: "r", status: "completed", usage: { input_tokens: 8, output_tokens: 2, input_tokens_details: { cached_tokens: 6 }, output_tokens_details: { reasoning_tokens: 1 }, cost: 0.07 } } },
+    ]), { stream: true, format: FORMATS.OPENAI_RESPONSES });
+    const result = await request({ provider: "codex", format: FORMATS.OPENAI_RESPONSES });
+    expect((await result.response.json()).usage).toMatchObject({ cost: 0.07, input_tokens_details: { cached_tokens: 6 }, output_tokens_details: { reasoning_tokens: 1 } });
   });
 });

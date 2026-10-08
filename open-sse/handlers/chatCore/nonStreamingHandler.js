@@ -17,7 +17,7 @@ import { openAICompletionToResponses } from "../../translator/response/openai-re
 import { throwIfAborted } from "../../utils/abort.js";
 import { isFailedComboCompletion } from "../../utils/comboUpstream.js";
 import { restoreToolNames } from "../../utils/opencodeFingerprint.js";
-import { createResponseMetadata } from "../../utils/responseMetadata.js";
+import { prepareResponseMetadata } from "../../utils/responseMetadata.js";
 
 function parseToolArguments(value) {
   if (!value) return {};
@@ -219,7 +219,7 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
  * Handle non-streaming response from provider.
  */
 export async function handleNonStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, customToolNames, toolNamespaces, trackDone, appendLog, pxpipe, reqTag, log, signal, requestPolicy }) {
-  const responseMetadata = createResponseMetadata({ provider, model, translatedBody, finalBody });
+  const responseMetadata = await prepareResponseMetadata({ provider, model, translatedBody, finalBody });
   const contentType = providerResponse.headers.get("content-type") || "";
   let responseBody;
 
@@ -295,7 +295,9 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
   // Decloak tool_use names once on raw Claude body, before any translation (INPUT side)
   responseBody = decloakToolNames(responseBody, toolNameMap);
 
-  const usage = extractUsageFromResponse(responseBody);
+  responseMetadata.observe(responseBody);
+  const extractedUsage = extractUsageFromResponse(responseBody);
+  const usage = extractedUsage ? { ...extractedUsage, ...responseMetadata.cost() } : null;
   appendLog({ tokens: usage, status: "200 OK" });
   saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, silent: true });
   if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency: { total: Date.now() - requestStartTime } }));
@@ -348,6 +350,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     }
   }
 
+  responseMetadata.apply(translatedResponse);
   reqLogger.logConvertedResponse(translatedResponse);
 
   const totalLatency = Date.now() - requestStartTime;
@@ -372,7 +375,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
   return {
     success: true,
     response: new Response(JSON.stringify(restoreToolNames(translatedResponse, toolNameMap)), {
-      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*", ...upstreamResponseHeaders(providerResponse.headers) }
+      headers: responseMetadata.headers({ "Content-Type": "application/json", "Access-Control-Allow-Origin": "*", ...upstreamResponseHeaders(providerResponse.headers) })
     })
   };
 }

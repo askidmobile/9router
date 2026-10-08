@@ -143,8 +143,8 @@ async function calculateCost(provider, model, tokens) {
     // Delegate the actual math to the single source of truth (avoids the two
     // copies drifting apart — see open-sse/providers/pricing.js for the
     // cache-inclusive prompt_tokens convention this assumes).
-    const { calculateCostFromTokens } = await import("open-sse/providers/pricing.js");
-    return calculateCostFromTokens(tokens, pricing);
+    const { calculateResponseCost } = await import("open-sse/utils/responseCost.js");
+    return calculateResponseCost(tokens, pricing).cost ?? 0;
   } catch (e) {
     console.error("Error calculating cost:", e);
     return 0;
@@ -245,7 +245,9 @@ export async function saveRequestUsage(entry) {
     const db = await getAdapter();
 
     if (!entry.timestamp) entry.timestamp = new Date().toISOString();
-    entry.cost = await calculateCost(entry.provider, entry.model, entry.tokens);
+    entry.cost = entry.tokens?.cost_details
+      ? (Number.isFinite(entry.tokens.cost) && entry.tokens.cost >= 0 ? entry.tokens.cost : 0)
+      : await calculateCost(entry.provider, entry.model, entry.tokens);
 
     const tokens = entry.tokens || {};
     const promptTokens = tokens.prompt_tokens || tokens.input_tokens || 0;

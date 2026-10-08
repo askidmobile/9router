@@ -256,6 +256,35 @@ aggregator, its undisclosed internal provider/model choices cannot be inferred.
 Synthetic bypass responses and pre-completion errors do not claim an executed
 provider. Message text, tool arguments, and usage retain their existing contracts.
 
+#### Request cost and Combo accounting (v0.5.99 fork)
+
+Chat JSON and SSE include `usage.cost` in USD (native Gemini uses `usageMetadata`).
+Responses SSE places it in `response.completed.response.usage`; Claude's final
+`message_delta` includes the identity and cost. Read the terminal usage event.
+`cost_details.source` is `provider` for an upstream-reported bill, `pricing` for
+an estimate using configured model prices, and `unavailable` for unknown prices.
+Unknown pricing is `null`; explicit free/subscription route prices can be zero.
+`cost_details.estimated` distinguishes a rate estimate from a reported bill.
+`billable_tokens` records the raw, canonical counts used for rate estimates: the
+legacy 2000-token client context buffer is not charged. Cache discounts (including
+explicit zero rates), cache writes, and reasoning output subsets are respected.
+The usage journal persists that same per-model cost.
+
+Fallback/round-robin/vision Combos report the successful executed model and its
+completion cost. Fusion adds all observed panel calls plus the final judge call,
+with per-call provider/model/cost in `cost_details.requests` and
+`scope: "completed_calls"`. An unknown price makes the total `null` while
+`known_cost` exposes the observed subtotal. Unreported charges for failed/cancelled
+upstream calls cannot be reconstructed; this is not a provider invoice.
+
+Chat and Combo also expose CORS-readable `X-9Router-Provider` and
+`X-9Router-Model`. JSON exposes `X-9Router-Cost` when known. Streaming cannot know
+the final cost when headers are sent, so final cost is in terminal SSE usage.
+These fields add to the existing wire shapes; tokens, text and tool calls keep
+their existing contracts. Claude Haiku 5.5 uses `claude-adaptive` (including dotted
+and hyphenated IDs); legacy Haiku keeps budget thinking. Claude normalization
+uses the same capability rule, preserving Haiku 5.5 adaptive effort.
+
 ## Combo + Account Fallback Flow
 
 ```mermaid

@@ -481,7 +481,7 @@ export function calculateCostFromTokens(tokens, pricing) {
   cost += nonCachedInput * (pricing.input / 1000000);
 
   if (cachedTokens > 0) {
-    cost += cachedTokens * ((pricing.cached || pricing.input) / 1000000);
+    cost += cachedTokens * ((pricing.cached ?? pricing.input) / 1000000);
   }
 
   const outputTokens = tokens.completion_tokens || tokens.output_tokens || 0;
@@ -489,11 +489,11 @@ export function calculateCostFromTokens(tokens, pricing) {
 
   const reasoningTokens = tokens.reasoning_tokens || 0;
   if (reasoningTokens > 0) {
-    cost += reasoningTokens * ((pricing.reasoning || pricing.output) / 1000000);
+    cost += reasoningTokens * ((pricing.reasoning ?? pricing.output) / 1000000);
   }
 
   if (cacheCreationTokens > 0) {
-    cost += cacheCreationTokens * ((pricing.cache_creation || pricing.input) / 1000000);
+    cost += cacheCreationTokens * ((pricing.cache_creation ?? pricing.input) / 1000000);
   }
 
   return cost;

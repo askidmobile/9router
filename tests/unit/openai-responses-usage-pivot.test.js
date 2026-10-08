@@ -93,7 +93,7 @@ describe("OpenAI Responses usage across the pivot", () => {
     const output = await runTransform(CLAUDE_CHUNKS_WITH_USAGE, FORMATS.CLAUDE, "claude");
 
     // prompt side = input + cache_read + cache_creation = 1500 + 12000 + 300.
-    expect(completedResponse(output).usage).toEqual({
+    expect(completedResponse(output).usage).toMatchObject({
       input_tokens: 13800,
       output_tokens: 42,
       total_tokens: 13842,

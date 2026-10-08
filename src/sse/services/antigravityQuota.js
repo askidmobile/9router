@@ -151,10 +151,17 @@ export function clearAntigravityStrikes(connectionId, model) {
   if (until === undefined) return;
   strikeBlocks.delete(key);
   const cached = quotaCache.get(connectionId);
-  if (cached?.[model]?.resetAt === new Date(until).toISOString()) {
+  const iso = new Date(until).toISOString();
+  if (cached?.[model]?.resetAt === iso) {
     delete cached[model];
-    quotaCache.set(connectionId, cached);
   }
+  const family = getAntigravityModelFamily(model);
+  if (family === "claude_gpt" && cached?.claude_gpt_session?.resetAt === iso) {
+    delete cached.claude_gpt_session;
+  } else if (family === "gemini" && cached?.gemini_session?.resetAt === iso) {
+    delete cached.gemini_session;
+  }
+  quotaCache.set(connectionId, cached);
 }
 
 /**
