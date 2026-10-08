@@ -545,8 +545,10 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
       if (result) { streamController.handleComplete(); return result; }
     }
 
-    // True non-streaming response
-    if (!stream) {
+    // A forced-stream provider may return JSON instead of SSE. The collector
+    // above declines JSON, so retain the client's non-streaming contract here
+    // rather than passing a JSON body through the SSE transformer.
+    if (!stream || !clientRequestedStreaming) {
       const result = await handleNonStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat: providerResponseFormat, reqLogger, toolNameMap, customToolNames, toolNamespaces, trackDone, appendLog });
       throwIfAborted(signal);
       streamController.handleComplete();

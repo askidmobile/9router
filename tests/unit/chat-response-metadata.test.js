@@ -255,6 +255,16 @@ describe("client response identity through chatCore", () => {
 
 
 describe("client-visible cost and headers", () => {
+  it.each([FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, FORMATS.CLAUDE])("keeps JSON and provider cost when a forced-stream provider returns JSON (%s)", async format => {
+    respond({ ...completion("gpt-4o-revision"), usage: { ...usage, cost: 0.0123 } });
+    const result = await request({ provider: "openai", format });
+    expect(result.success).toBe(true);
+    expect(result.response.headers.get("content-type")).toContain("application/json");
+    const payload = await result.response.json();
+    expect(payload).toMatchObject({ provider: "openai", model: "gpt-4o-revision" });
+    expect(payload.usage).toMatchObject({ cost: 0.0123, cost_details: { source: "provider", estimated: false } });
+    expect(Number(result.response.headers.get("x-9router-cost"))).toBeCloseTo(0.0123, 12);
+  });
   it.each([FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, FORMATS.CLAUDE])("JSON %s uses saved prices and raw counts before the context buffer", async format => {
     respond(completion("gpt-4o"));
     const result = await request({ format });

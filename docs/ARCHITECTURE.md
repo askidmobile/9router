@@ -285,6 +285,11 @@ their existing contracts. Claude Haiku 5.5 uses `claude-adaptive` (including dot
 and hyphenated IDs); legacy Haiku keeps budget thinking. Claude normalization
 uses the same capability rule, preserving Haiku 5.5 adaptive effort.
 
+A forced-stream provider can still return JSON. If SSE collection declines that
+body, non-streaming clients continue through the JSON handler, preserving their
+requested format, provider identity and cost instead of receiving a JSON body
+with an appended SSE sentinel.
+
 ## Combo + Account Fallback Flow
 
 ```mermaid
