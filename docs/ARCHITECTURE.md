@@ -258,7 +258,7 @@ provider. Message text, tool arguments, and usage retain their existing contract
 
 #### Request cost and Combo accounting (v0.5.99 fork)
 
-Chat JSON and SSE include `usage.cost` in USD (native Gemini uses `usageMetadata`).
+OpenAI Chat JSON and SSE include `usage.cost` in USD.
 Responses SSE places it in `response.completed.response.usage`; Claude's final
 `message_delta` includes the identity and cost. Read the terminal usage event.
 `cost_details.source` is `provider` for an upstream-reported bill, `pricing` for
@@ -295,6 +295,10 @@ Ollama terminal event. Combo guards and clients may cancel immediately after
 that event; waiting for HTTP EOF could otherwise lose the final usage record.
 An ordinary Chat `finish_reason` still allows a later usage trailer before
 `[DONE]`, and EOF remains a fallback when no explicit sentinel arrives.
+
+The direct native Gemini `/v1beta` endpoint preserves its identity and token
+usage contract; `usageMetadata.cost` is not guaranteed there. The cost contract
+above applies to the Chat, Responses and Claude engine response paths.
 
 ## Combo + Account Fallback Flow
 
