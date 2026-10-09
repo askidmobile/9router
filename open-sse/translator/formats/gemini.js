@@ -22,6 +22,8 @@ export const UNSUPPORTED_SCHEMA_CONSTRAINTS = [
   "$schema", "$defs", "definitions", "const", "$ref", "$comment",
   // Annotation keywords (rejected by Gemini/Antigravity - e.g. MCP tool schemas set these)
   "deprecated", "readOnly", "writeOnly",
+  // Codex tool schema annotation; not a field in Google's Schema proto.
+  "encrypted",
   // Object validation keywords (not supported)
   "additionalProperties", "propertyNames", "patternProperties", "enumDescriptions",
   // Complex schema keywords (handled by flattenAnyOfOneOf/mergeAllOf)
@@ -161,7 +163,13 @@ function removeUnsupportedKeywords(obj, keywords) {
     }
 
     const value = obj[key];
-    if (value && typeof value === "object") {
+    if (key === "properties" && value && typeof value === "object" && !Array.isArray(value)) {
+      // Property names are tool arguments, not schema keywords. Preserve names
+      // such as "encrypted", "title", or "x-option" while cleaning their schemas.
+      for (const propertySchema of Object.values(value)) {
+        removeUnsupportedKeywords(propertySchema, keywords);
+      }
+    } else if (value && typeof value === "object") {
       removeUnsupportedKeywords(value, keywords);
     }
   }

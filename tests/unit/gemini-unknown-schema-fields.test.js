@@ -34,6 +34,75 @@ describe("UNSUPPORTED_SCHEMA_CONSTRAINTS includes non-standard annotation keywor
   });
 });
 
+describe("Codex encrypted schema annotations", () => {
+  it.each([true, false])("strips encrypted=%s from schema nodes at every depth", (encrypted) => {
+    const schema = {
+      type: "object",
+      encrypted,
+      properties: {
+        text: { type: "string", description: "Message", encrypted },
+        entries: {
+          type: "array",
+          encrypted,
+          items: {
+            type: "object",
+            encrypted,
+            properties: { value: { type: "string", encrypted } },
+            required: ["value"],
+          },
+        },
+        choice: { anyOf: [{ type: "string", encrypted }, { type: "null" }] },
+        combined: {
+          allOf: [{ properties: { value: { type: "string", encrypted } }, required: ["value"] }],
+        },
+      },
+      required: ["text", "entries"],
+    };
+
+    expect(cleanJSONSchemaForAntigravity(schema)).toEqual({
+      type: "object",
+      properties: {
+        text: { type: "string", description: "Message" },
+        entries: {
+          type: "array",
+          items: { type: "object", properties: { value: { type: "string" } }, required: ["value"] },
+        },
+        choice: { type: "string" },
+        combined: { type: "object", properties: { value: { type: "string" } }, required: ["value"] },
+      },
+      required: ["text", "entries"],
+    });
+  });
+
+  it("preserves argument names that collide with unsupported schema keywords", () => {
+    const properties = {
+      encrypted: { type: "boolean", encrypted: true },
+      title: { type: "string", title: "Display title" },
+      "x-option": { type: "string", "x-hint": "client metadata" },
+      nested: {
+        type: "object",
+        properties: { encrypted: { type: "boolean", encrypted: false } },
+        required: ["encrypted"],
+      },
+    };
+
+    expect(cleanJSONSchemaForAntigravity({
+      type: "object", properties, required: Object.keys(properties),
+    })).toEqual({
+      type: "object",
+      properties: {
+        encrypted: { type: "boolean" },
+        title: { type: "string" },
+        "x-option": { type: "string" },
+        nested: {
+          type: "object", properties: { encrypted: { type: "boolean" } }, required: ["encrypted"],
+        },
+      },
+      required: ["encrypted", "title", "x-option", "nested"],
+    });
+  });
+});
+
 describe("cleanJSONSchemaForAntigravity strips errorMessage recursively (#4283)", () => {
   it("strips top-level errorMessage", () => {
     const schema = {
