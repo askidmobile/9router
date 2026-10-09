@@ -125,22 +125,22 @@ describe("bridge on real HTTP sockets", () => {
     return { origin, url: `${origin}/local-token/v1`, captured };
   }
   const nativeHeaders = { authorization: "Bearer native-secret", "chatgpt-account-id": "native-account", cookie: "private-cookie", "x-codex-session-id": "session", "content-type": "application/json" };
-  it("preserves native auxiliary endpoints, compressed bodies and credentials independently of router models", async () => {
+  it.each(["/tools/search?client_version=0.154", "/alpha/search"])("preserves native search endpoint %s independently of router models", async suffix => {
     let received;
-    const payload = zlib.gzipSync('{"query":"test"}');
+    const payload = zlib.gzipSync(JSON.stringify({ model: "9router/Coding", commands: { search_query: [{ q: "test" }] } }));
     const { url, captured } = await setup(async (req, res) => {
       const chunks = []; for await (const chunk of req) chunks.push(chunk);
       received = Buffer.concat(chunks);
       res.writeHead(200, { "content-type": "application/json" }); res.end('{"ok":true}');
     });
-    const response = await fetch(`${url}/tools/search?client_version=0.154`, { method: "POST", headers: { ...nativeHeaders, "content-encoding": "gzip" }, body: payload });
+    const response = await fetch(`${url}${suffix}`, { method: "POST", headers: { ...nativeHeaders, "content-encoding": "gzip" }, body: payload });
     expect(response.status).toBe(200);
     expect(received).toEqual(payload);
-    expect(captured[0].url).toBe("https://chatgpt.com/backend-api/codex/tools/search?client_version=0.154");
+    expect(captured[0].url).toBe(`https://chatgpt.com/backend-api/codex${suffix}`);
     expect(captured[0].headers.authorization).toBe("Bearer native-secret");
     expect(captured[0].headers["chatgpt-account-id"]).toBe("native-account");
     expect(captured[0].headers.cookie).toBeUndefined();
-    expect((await fetch(`${url}/tools/search`, { method: "POST", body: "{}" })).status).toBe(401);
+    expect((await fetch(`${url}${suffix}`, { method: "POST", body: "{}" })).status).toBe(401);
     expect(captured).toHaveLength(1);
   });
   it.each(["identity", "gzip", ...(zlib.zstdCompressSync ? ["zstd"] : [])])("routes %s native and external bodies with distinct credentials", async encoding => {

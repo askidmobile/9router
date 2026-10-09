@@ -199,7 +199,7 @@ describe("ChatGPT Responses production adapter", () => {
     expect(text).toContain("response.completed");
   });
 
-  it.each([false, true])("preserves the search call id after a provider error (stream=%s)", async stream => {
+  it.each([false, true].flatMap(stream => [1, 2].map(count => ({ stream, count }))))("preserves all search call ids after provider errors (%j)", async ({ stream, count }) => {
     db.getSettings.mockResolvedValue({ chatgptIntegration: { models: selected, webSearchModel: "glm/search" } });
     search.handleSearch.mockImplementation(async req => {
       expect((await req.json()).provider).toBe("glm");
@@ -208,13 +208,13 @@ describe("ChatGPT Responses production adapter", () => {
     const payloads = [];
     const handler = vi.fn(async req => {
       payloads.push(await req.json());
-      if (payloads.length === 1) return Response.json({ status: "completed", output: [{
-        type: "function_call", call_id: "call_search_failed", name: "web_search", arguments: '{"query":"fixture docs"}',
-      }] });
-      expect(payloads[1].input.at(-1)).toEqual({
-        type: "function_call_output", call_id: "call_search_failed",
+      if (payloads.length === 1) return Response.json({ status: "completed", output: Array.from({ length: count }, (_, index) => ({
+        type: "function_call", call_id: `call_search_failed_${index}`, name: "web_search", arguments: '{"query":"fixture docs"}',
+      })) });
+      expect(payloads[1].input.slice(-count)).toEqual(Array.from({ length: count }, (_, index) => ({
+        type: "function_call_output", call_id: `call_search_failed_${index}`,
         output: JSON.stringify({ error: "Search provider temporarily unavailable" }),
-      });
+      })));
       return Response.json({ status: "completed", output: [{
         type: "message", role: "assistant", content: [{ type: "output_text", text: "Search was unavailable." }],
       }] });
