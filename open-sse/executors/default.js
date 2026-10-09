@@ -99,7 +99,7 @@ export class DefaultExecutor extends BaseExecutor {
   }
 
   transformRequest(model, body) {
-    const transformed = this.applyJsonSchemaFallback(body);
+    const transformed = this.applyAutoToolRouting(model, this.applyJsonSchemaFallback(body));
 
     if (transformed && typeof transformed === "object") {
       // quirk: some openai-compatible providers reject Anthropic's client_metadata field
@@ -110,6 +110,16 @@ export class DefaultExecutor extends BaseExecutor {
     }
 
     return injectReasoningContent({ provider: this.provider, model, body: transformed });
+  }
+
+  applyAutoToolRouting(model, body) {
+    const routing = this.config.quirks?.autoToolRouting;
+    if (!routing || !body || typeof body !== "object" || Array.isArray(body)) return body;
+    if (!routing.models.includes(body.model || model)) return body;
+    if (!Array.isArray(body.tools) || body.tools.length === 0) return body;
+    if (body.tool_choice !== undefined && body.tool_choice !== "auto") return body;
+    if (body.provider !== undefined) return body;
+    return { ...body, provider: structuredClone(routing.provider) };
   }
 
   // Fallback json_schema → json_object for openai-compatible providers without native Structured Output.

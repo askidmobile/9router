@@ -24,7 +24,16 @@ export default {
       "X-Title": "Cline",
     },
     // Non-stream chat completions come back wrapped in {"success":true,"data":{...}}
-    quirks: { responseDataEnvelope: true, clineEnvelope: true },
+    quirks: {
+      responseDataEnvelope: true,
+      clineEnvelope: true,
+      // OpenInference emits tool intent as ordinary text on long GLM Flash
+      // conversations in auto mode. Z.AI preserves native automatic tool calls.
+      autoToolRouting: {
+        models: ["cline-pass/glm-5.3-flash", "z-ai/glm-5.3-flash", "glm-5.3-flash"],
+        provider: { only: ["z-ai"], allow_fallbacks: false, require_parameters: true },
+      },
+    },
     auth: {
       combined: true,
       header: "Authorization",
