@@ -191,12 +191,42 @@ describe("ChatGPT Responses production adapter", () => {
     searchRequest = search.handleSearch.mock.calls[0][0];
     expect(searchRequest.url).toBe("http://router/v1/search");
     expect(searchRequest.headers.get("authorization")).toBe("Bearer router-key");
-    expect(await searchRequest.json()).toMatchObject({ provider: "brave-search/search", query: "codex web search" });
+    expect(await searchRequest.json()).toMatchObject({ provider: "brave-search", query: "codex web search" });
     const text = await result.text();
     expect(text).toContain("response.output_item.added");
     expect(text).toContain("\"type\":\"web_search_call\"");
     expect(text).toContain("Found current docs.");
     expect(text).toContain("response.completed");
+  });
+
+  it.each([false, true])("preserves the search call id after a provider error (stream=%s)", async stream => {
+    db.getSettings.mockResolvedValue({ chatgptIntegration: { models: selected, webSearchModel: "glm/search" } });
+    search.handleSearch.mockImplementation(async req => {
+      expect((await req.json()).provider).toBe("glm");
+      return Response.json({ error: { message: "Search provider temporarily unavailable" } }, { status: 503 });
+    });
+    const payloads = [];
+    const handler = vi.fn(async req => {
+      payloads.push(await req.json());
+      if (payloads.length === 1) return Response.json({ status: "completed", output: [{
+        type: "function_call", call_id: "call_search_failed", name: "web_search", arguments: '{"query":"fixture docs"}',
+      }] });
+      expect(payloads[1].input.at(-1)).toEqual({
+        type: "function_call_output", call_id: "call_search_failed",
+        output: JSON.stringify({ error: "Search provider temporarily unavailable" }),
+      });
+      return Response.json({ status: "completed", output: [{
+        type: "message", role: "assistant", content: [{ type: "output_text", text: "Search was unavailable." }],
+      }] });
+    });
+    const response = await routeChatGPTResponse(request({
+      model: "9router/Coding", input: [{ role: "user", content: "Search docs" }], tools: [{ type: "web_search" }], stream,
+    }), handler);
+    expect(response.status).toBe(200);
+    const text = await response.text();
+    expect(text).toContain('"status":"failed"');
+    expect(text).toContain("Search was unavailable.");
+    expect(handler).toHaveBeenCalledTimes(2);
   });
 
   it.each(["gpt-6-astra", "9router/missing", null])("does not route disabled or unprefixed models: %s", async model => {

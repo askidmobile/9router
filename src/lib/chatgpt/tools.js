@@ -69,18 +69,22 @@ async function executeSearch({ requestUrl, apiKey, model, call, signal }) {
       id: `ws_${randomUUID()}`, type: "web_search_call", status: "failed",
       action: { type: "search", query }, results: [],
     },
+    callId: call.call_id,
     output: JSON.stringify({ error: message }),
   });
 
-  if (!model) return { ...failed("No active 9router web-search provider is configured."), callId: call.call_id };
-  if (!query) return { ...failed("The model did not provide a non-empty web_search query."), callId: call.call_id };
+  if (!model) return failed("No active 9router web-search provider is configured.");
+  if (!query) return failed("The model did not provide a non-empty web_search query.");
   signal?.throwIfAborted();
 
+  // The picker exposes catalog ids such as glm/search; /v1/search accepts
+  // the provider id/alias (glm). Keep stored selections in catalog format.
+  const provider = model.endsWith("/search") ? model.slice(0, -"/search".length) : model;
   const response = await handleSearch(new Request(new URL("/v1/search", requestUrl), {
     method: "POST",
     headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
     body: JSON.stringify({
-      provider: model,
+      provider,
       query,
       search_type: args.search_type === "news" ? "news" : "web",
       max_results: Number.isInteger(args.max_results) ? Math.min(Math.max(args.max_results, 1), 10) : undefined,

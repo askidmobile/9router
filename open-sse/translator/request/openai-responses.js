@@ -32,7 +32,8 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
 
   // Group items by conversation turn
   let currentAssistantMsg = null;
-  let pendingToolResults = [];
+  const pendingToolCallIds = new Set();
+  let pendingSearchResults = [];
   let pendingReasoning = "";
   let pendingReasoningEncrypted = "";
   const additionalTools = [];
@@ -73,14 +74,6 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
         result.messages.push(currentAssistantMsg);
         currentAssistantMsg = null;
       }
-      // Flush pending tool results
-      if (pendingToolResults.length > 0) {
-        for (const tr of pendingToolResults) {
-          result.messages.push(tr);
-        }
-        pendingToolResults = [];
-      }
-
       // Convert content: input_text → text, output_text → text, input_image → image_url
       const content = Array.isArray(item.content)
         ? item.content.map(c => {
@@ -114,6 +107,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       }
       // Skip items with empty/missing name — Codex/OpenAI reject nameless tool calls (#444)
       if (!item.name || typeof item.name !== "string" || item.name.trim() === "") continue;
+      pendingToolCallIds.add(item.call_id);
       if (itemType === RESPONSES_ITEM.CUSTOM_TOOL_CALL) customToolNames.add(item.name);
       const toolInput = itemType === RESPONSES_ITEM.CUSTOM_TOOL_CALL
         ? { input: typeof item.input === "string" ? item.input : JSON.stringify(item.input ?? "") }
@@ -133,38 +127,31 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
         result.messages.push(currentAssistantMsg);
         currentAssistantMsg = null;
       }
-      // Flush any pending tool results first
-      if (pendingToolResults.length > 0) {
-        for (const tr of pendingToolResults) {
-          result.messages.push(tr);
-        }
-        pendingToolResults = [];
-      }
       // Add tool result immediately
       result.messages.push({
         role: ROLE.TOOL,
         tool_call_id: item.call_id,
         content: typeof item.output === "string" ? item.output : JSON.stringify(item.output)
       });
+      pendingToolCallIds.delete(item.call_id);
+      if (pendingToolCallIds.size === 0) {
+        result.messages.push(...pendingSearchResults);
+        pendingSearchResults = [];
+      }
     }
     else if (itemType === RESPONSES_ITEM.ADDITIONAL_TOOLS) {
       if (Array.isArray(item.tools)) additionalTools.push(...item.tools);
     }
     else if (itemType === "web_search_call") {
-      // Chat-compatible providers have no hosted server-tool history. Preserve
-      // the completed search as plain context so later Codex turns do not lose it.
-      if (currentAssistantMsg) {
-        result.messages.push(currentAssistantMsg);
-        currentAssistantMsg = null;
-      }
-      if (pendingToolResults.length > 0) {
-        for (const tr of pendingToolResults) result.messages.push(tr);
-        pendingToolResults = [];
-      }
-      result.messages.push({
+      // Hosted searches may be interleaved with client calls in one Responses
+      // turn. Their context must follow ALL client results, otherwise it splits
+      // tool_use from tool_result (and can split parallel calls into two turns).
+      const searchResult = {
         role: ROLE.USER,
-        content: `9router web_search results (query: ${item.action?.query || ""}):\n${JSON.stringify(item.results || [])}`
-      });
+        content: `9router web_search ${item.status === "failed" ? "failed" : "results"} (query: ${item.action?.query || ""}):\n${JSON.stringify(item.results || [])}`
+      };
+      if (pendingToolCallIds.size > 0) pendingSearchResults.push(searchResult);
+      else result.messages.push(searchResult);
     }
     else if (itemType === RESPONSES_ITEM.REASONING) {
       // Buffer reasoning text; attached to next assistant message/function_call.
@@ -184,11 +171,8 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   if (currentAssistantMsg) {
     result.messages.push(currentAssistantMsg);
   }
-  if (pendingToolResults.length > 0) {
-    for (const tr of pendingToolResults) {
-      result.messages.push(tr);
-    }
-  }
+  // Retain search evidence even if the caller supplied incomplete tool history.
+  result.messages.push(...pendingSearchResults);
 
   // Convert tools format.
   // Responses API supports "hosted" tools (e.g. { type: "request_user_input" }) that carry no
