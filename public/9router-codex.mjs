@@ -121,8 +121,18 @@ export function disableConfig(text, state) {
   return replaceRoot(text, updates);
 }
 
+function useMaximumNativeContext(model) {
+  const maximum = model.max_context_window;
+  if (!Number.isSafeInteger(maximum) || maximum <= 0 ||
+      (Number.isFinite(model.context_window) && model.context_window >= maximum)) return model;
+  // Codex consumes context_window; max_context_window only advertises the
+  // available ceiling. Apply it per model without mutating discovery metadata.
+  return { ...model, context_window: maximum };
+}
+
 export function mergeCatalog(nativeModels, manifest) {
-  const native = nativeModels.filter(model => typeof model.slug === "string" && !model.slug.startsWith(PREFIX));
+  const native = nativeModels.filter(model => typeof model.slug === "string" && !model.slug.startsWith(PREFIX))
+    .map(useMaximumNativeContext);
   if (!native.length) throw new Error("The native Codex catalog is empty.");
   const baseInstructions = native.find(m => m.base_instructions)?.base_instructions ||
     "You are Codex, a coding agent. You and the user share a workspace and collaborate to achieve the user's goals. Use the available tools to complete the task.";
@@ -348,7 +358,7 @@ export async function refreshNativeCatalog(state, { discover = nativeCatalog } =
     assertOwnership(await readConfig(path.join(current.codexHome, "config.toml")), current);
     const filename = path.join(current.directory, "catalog.json");
     const previous = await readJson(filename);
-    const native = await discover(current.codexHome, { proxyEnv: current.proxyEnv });
+    const native = (await discover(current.codexHome, { proxyEnv: current.proxyEnv })).map(useMaximumNativeContext);
     const next = { ...previous, models: [
       ...previous.models.filter(model => model.slug.startsWith(PREFIX)),
       ...native,

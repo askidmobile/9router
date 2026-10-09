@@ -10,6 +10,42 @@ const cached = { client_version: "0.154.0", models: [oldModel] };
 const run = vi.fn(async () => ({ stdout: "codex-cli 0.155.0-alpha.16\n" }));
 const read = async filename => structuredClone(filename.endsWith("auth.json") ? auth : cached);
 
+describe("generated native model context windows", () => {
+  it("uses each model's maximum context without changing other metadata or the source catalog", () => {
+    const native = [{
+      slug: "gpt-6-astra", context_window: 272000, max_context_window: 872000,
+      auto_compact_token_limit: null, effective_context_window_percent: 95,
+      supported_reasoning_levels: [{ effort: "xhigh" }], prefer_websockets: true,
+    }, {
+      slug: "future-native", context_window: 128000, max_context_window: 512000,
+      auto_compact_token_limit: 100000, custom_metadata: { keep: true },
+    }];
+    const original = structuredClone(native);
+    const manifest = { version: 1, models: [{
+      id: "external", slug: "9router/external", contextWindow: 200000,
+    }] };
+    const merged = mergeCatalog(native, manifest);
+    expect(merged.models.slice(1)).toEqual([
+      { ...native[0], context_window: 872000 }, { ...native[1], context_window: 512000 },
+    ]);
+    expect(merged.models[0]).toMatchObject({ context_window: 200000, max_context_window: 200000 });
+    expect(native).toEqual(original);
+    expect(mergeCatalog(merged.models, manifest)).toEqual(merged);
+  });
+
+  it.each([undefined, null, 0, -1, "872000", NaN, Infinity, 872000.5, 128000])(
+    "keeps the existing context for an unusable or smaller maximum %s", max_context_window => {
+      const model = { slug: "native-model", context_window: 272000, max_context_window };
+      expect(mergeCatalog([model], { models: [] }).models).toEqual([model]);
+    },
+  );
+
+  it("uses a valid maximum when the default context is absent", () => {
+    const model = { slug: "native-model", max_context_window: 872000 };
+    expect(mergeCatalog([model], { models: [] }).models).toEqual([{ ...model, context_window: 872000 }]);
+  });
+});
+
 describe("native Codex catalog refresh", () => {
   it("discovers newly released models despite a populated, stale cache", async () => {
     const fetchCatalog = vi.fn(async () => ({ models: [newModel, oldModel] }));

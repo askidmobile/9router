@@ -33,6 +33,28 @@ async function fixture() {
 }
 
 describe("automatic native catalog writes", () => {
+  it("keeps maximum native context across repeated native and router refreshes", async () => {
+    const { state, catalogPath, config } = await fixture();
+    const native = {
+      ...newModel, context_window: 272000, max_context_window: 872000,
+      auto_compact_token_limit: null, prefer_websockets: true,
+    };
+    const discover = vi.fn(async () => [native]);
+    expect(await refreshNativeCatalog(state, { discover })).toEqual({ changed: true, nativeModelCount: 1 });
+    expect(JSON.parse(await fs.readFile(catalogPath, "utf8")).models).toEqual([
+      routerModel, { ...native, context_window: 872000 },
+    ]);
+    expect(await refreshNativeCatalog(state, { discover })).toEqual({ changed: false, nativeModelCount: 1 });
+
+    await refreshRouterCatalog(state, { getManifest: async () => ({ version: 1, models: [{
+      id: "external", slug: routerModel.slug, contextWindow: 200000,
+    }] }) });
+    expect(JSON.parse(await fs.readFile(catalogPath, "utf8")).models[1]).toEqual({ ...native, context_window: 872000 });
+    expect(native.context_window).toBe(272000);
+    expect(await fs.readFile(path.join(state.codexHome, "config.toml"), "utf8")).toBe(config);
+    expect(await fs.readFile(path.join(state.codexHome, "auth.json"), "utf8")).toBe("account-credentials-must-not-change");
+  });
+
   it("adds new native models without a router request or any changes to router entries, config or credentials", async () => {
     const { state, catalogPath, config } = await fixture();
     const discover = vi.fn(async () => [newModel, oldModel]);
