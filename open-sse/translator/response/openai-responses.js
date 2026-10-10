@@ -8,6 +8,7 @@ import { buildChunk } from "../concerns/chunk.js";
 import { buildUsage } from "../concerns/usage.js";
 import { fallbackToolCallId } from "../concerns/toolCall.js";
 import { reasoningDelta, extractReasoningText } from "../concerns/reasoning.js";
+import { parseTextToolCalls } from "../concerns/textToolCalls.js";
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, OPENAI_FINISH, MODEL_FALLBACK } from "../schema/index.js";
 import { responsesStatusFromFinishReason, finishReasonFromIncompleteReason } from "./openai-responses-json.js";
 
@@ -139,7 +140,7 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
       // The answer starts, so thinking is over. Upstreams that send reasoning via
       // reasoning_content never emit "</think>", so close it here rather than at finish.
       closeReasoning(state, emit);
-      emitTextContent(state, emit, idx, content);
+      appendAssistantText(state, emit, idx, content);
     }
   }
 
@@ -155,6 +156,7 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
   // Handle finish_reason
   if (choice.finish_reason) {
     state.responsesFinishReason = choice.finish_reason;
+    flushAssistantText(state, emit);
     for (const i in state.msgItemAdded) closeMessage(state, emit, i);
     closeReasoning(state, emit);
     for (const i in state.funcCallIds) closeToolCall(state, emit, i);
@@ -279,6 +281,140 @@ function emitTextContent(state, emit, idx, content) {
 
   if (!state.msgTextBuf[idx]) state.msgTextBuf[idx] = "";
   state.msgTextBuf[idx] += content;
+}
+
+// Some free/aggregator models print their tool call as XML inside the assistant
+// message instead of emitting the provider's structured tool_calls field. The
+// block is held back until it closes (or the stream ends) so Responses clients
+// never receive the raw markup; parsed calls become real function_call items.
+function assistantTextBlock(state, idx) {
+  state.textBlocks ??= {};
+  return (state.textBlocks[idx] ??= { buffer: "", inBlock: false, key: idx, seq: 0 });
+}
+
+// Hold only a trailing fragment that could still become a block marker, so
+// ordinary prose keeps streaming without waiting for the whole answer.
+function heldPrefixLength(buffer) {
+  const marker = "<tool_calls";
+  const lastLt = buffer.lastIndexOf("<");
+  if (lastLt < 0) return buffer.length;
+  const tail = buffer.slice(lastLt).toLowerCase();
+  if (tail.length <= marker.length && marker.startsWith(tail)) return lastLt;
+  return buffer.length;
+}
+
+function appendAssistantText(state, emit, idx, content) {
+  const block = assistantTextBlock(state, idx);
+  block.buffer += content;
+  processAssistantText(state, emit, idx, block);
+}
+
+function emitRecoveredToolCalls(state, emit, calls) {
+  state.textToolSeq ??= 0;
+  for (const call of calls) {
+    const sequence = state.textToolSeq++;
+    const key = `text:${sequence}`;
+    const callId = `call_text${sequence}_${Date.now().toString(36)}`;
+    const outputIndex = outputIndexFor(state, `tool:${key}`);
+    const namespace = state.toolNamespaces?.get(call.name);
+    const item = {
+      id: `fc_${callId}`,
+      type: RESPONSES_ITEM.FUNCTION_CALL,
+      call_id: callId,
+      name: call.name,
+      arguments: call.arguments,
+      ...(namespace ? { namespace } : {})
+    };
+
+    emit("response.output_item.added", {
+      type: "response.output_item.added",
+      output_index: outputIndex,
+      item: { ...item, arguments: "" }
+    });
+    emit("response.function_call_arguments.delta", {
+      type: "response.function_call_arguments.delta",
+      item_id: `fc_${callId}`,
+      output_index: outputIndex,
+      delta: call.arguments
+    });
+    emit("response.function_call_arguments.done", {
+      type: "response.function_call_arguments.done",
+      item_id: `fc_${callId}`,
+      output_index: outputIndex,
+      arguments: call.arguments
+    });
+    emit("response.output_item.done", {
+      type: "response.output_item.done",
+      output_index: outputIndex,
+      item
+    });
+
+    recordCompletedOutputItem(state, outputIndex, item);
+    state.funcItemAdded[key] = true;
+    state.funcItemDone[key] = true;
+    state.funcArgsDone[key] = true;
+    state.funcCallIds[key] = callId;
+    state.funcNames[key] = call.name;
+    state.funcArgsBuf[key] = call.arguments;
+  }
+}
+
+function processAssistantText(state, emit, idx, block) {
+  for (;;) {
+    if (!block.inBlock) {
+      const start = /<tool_calls\b/i.exec(block.buffer);
+      if (start) {
+        const head = block.buffer.slice(0, start.index);
+        block.buffer = block.buffer.slice(start.index);
+        block.inBlock = true;
+        if (head) emitTextContent(state, emit, block.key, head);
+        continue;
+      }
+      const cut = heldPrefixLength(block.buffer);
+      if (cut > 0) {
+        const safe = block.buffer.slice(0, cut);
+        block.buffer = block.buffer.slice(cut);
+        emitTextContent(state, emit, block.key, safe);
+      }
+      return;
+    }
+
+    const end = /<\/tool_calls>/i.exec(block.buffer);
+    if (!end) return;
+    const raw = block.buffer.slice(0, end.index + end[0].length);
+    block.buffer = block.buffer.slice(end.index + end[0].length);
+    block.inBlock = false;
+
+    const parsed = parseTextToolCalls(raw);
+    if (parsed.calls.length > 0) {
+      for (const i in state.msgItemAdded) closeMessage(state, emit, i);
+      emitRecoveredToolCalls(state, emit, parsed.calls);
+      block.seq += 1;
+      block.key = `${idx}:${block.seq}`;
+    } else {
+      emitTextContent(state, emit, block.key, raw);
+    }
+  }
+}
+
+function flushAssistantText(state, emit) {
+  if (!state.textBlocks) return;
+  for (const block of Object.values(state.textBlocks)) {
+    if (!block.buffer) continue;
+    const raw = block.buffer;
+    block.buffer = "";
+    if (block.inBlock) {
+      block.inBlock = false;
+      const parsed = parseTextToolCalls(raw);
+      if (parsed.calls.length > 0) {
+        for (const i in state.msgItemAdded) closeMessage(state, emit, i);
+        emitRecoveredToolCalls(state, emit, parsed.calls);
+        if (parsed.text) emitTextContent(state, emit, block.key, parsed.text);
+        continue;
+      }
+    }
+    emitTextContent(state, emit, block.key, raw);
+  }
 }
 
 function closeMessage(state, emit, idx) {
@@ -490,6 +626,7 @@ function flushEvents(state) {
     events.push({ event: eventType, data });
   };
 
+  flushAssistantText(state, emit);
   for (const i in state.msgItemAdded) closeMessage(state, emit, i);
   closeReasoning(state, emit);
   for (const i in state.funcCallIds) closeToolCall(state, emit, i);

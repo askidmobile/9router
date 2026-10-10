@@ -1,4 +1,5 @@
 import { extractReasoningText } from "../concerns/reasoning.js";
+import { parseTextToolCalls } from "../concerns/textToolCalls.js";
 import { extractTextContent } from "../formats/gemini.js";
 import { CLAUDE_STOP, OPENAI_FINISH, ROLE, RESPONSES_ITEM } from "../schema/index.js";
 
@@ -50,7 +51,13 @@ export function openAICompletionToResponses(responseBody, customToolNames = null
     });
   }
 
-  const text = extractTextContent(message.content);
+  // Models on free aggregator routes may print their tool call as XML text
+  // instead of emitting structured tool_calls. Recover it so Responses clients
+  // (Codex) execute the call instead of rendering the markup as an answer.
+  const rawText = extractTextContent(message.content);
+  const parsedText = parseTextToolCalls(rawText);
+  const structuredCalls = message.tool_calls || [];
+  const text = parsedText.calls.length > 0 ? parsedText.text : rawText;
   if (text) {
     output.push({
       type: RESPONSES_ITEM.MESSAGE,
@@ -59,7 +66,7 @@ export function openAICompletionToResponses(responseBody, customToolNames = null
     });
   }
 
-  for (const tc of message.tool_calls || []) {
+  for (const tc of structuredCalls) {
     const fn = tc.function || {};
     const custom = customNames.has(fn.name);
     output.push({
@@ -72,6 +79,20 @@ export function openAICompletionToResponses(responseBody, customToolNames = null
         ? { input: extractCustomToolInput(fn.arguments) }
         : { arguments: typeof fn.arguments === "string" ? fn.arguments : JSON.stringify(fn.arguments || {}) }),
     });
+  }
+
+  if (structuredCalls.length === 0) {
+    for (const [index, call] of parsedText.calls.entries()) {
+      const callId = `call_text${index}_${Date.now().toString(36)}`;
+      output.push({
+        type: RESPONSES_ITEM.FUNCTION_CALL,
+        id: `fc_${callId}`,
+        call_id: callId,
+        name: call.name,
+        arguments: call.arguments,
+        ...(namespaces.get(call.name) ? { namespace: namespaces.get(call.name) } : {}),
+      });
+    }
   }
 
   const usage = responseBody.usage || {};
