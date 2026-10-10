@@ -54,7 +54,8 @@ export function getComboMemberCircuit(member, circuits, providers, now) {
   return {
     ...circuit,
     remainingMs,
-    // A timer expiring only makes a probe due; it never makes a model healthy.
-    phase: circuit.state === "probing" ? "probing" : remainingMs > 0 ? "waiting" : "due",
+    // A timer expiring only makes the pair retryable; the next real request
+    // decides whether it recovers or the cooldown grows.
+    phase: remainingMs > 0 ? "waiting" : "due",
   };
 }

@@ -725,8 +725,8 @@ function ComboCard({ combo, getCaps, capsOverrides = {}, allCombos = [], aliasCa
   const frozenMembers = (combo.models || [])
     .map((model) => ({ model, circuit: circuitFor(model) }))
     .filter(({ circuit }) => circuit);
-  const circuitLabel = (circuit) => circuit.phase === "probing" ? "Checking now"
-    : circuit.phase === "waiting" ? `Next check in ${fmtRemaining(circuit.remainingMs)}` : "Awaiting background check";
+  const circuitLabel = (circuit) => circuit.phase === "waiting"
+    ? `Next attempt in ${fmtRemaining(circuit.remainingMs)}` : "Ready to retry";
   const allBlocked = combo.models?.length > 0 && combo.models.every((model, index) =>
     isMemberOff?.(model) || memberLocks[index] > 0 || circuitFor(model));
 
@@ -805,7 +805,7 @@ function ComboCard({ combo, getCaps, capsOverrides = {}, allCombos = [], aliasCa
             )}
             {frozenMembers.length > 0 && (
               <div className="mt-1.5 space-y-1 rounded bg-orange-500/10 px-2 py-1.5 text-xs text-orange-700 dark:text-orange-400">
-                <p>{allBlocked ? "Combo unavailable. " : ""}{frozenMembers.length} {frozenMembers.length === 1 ? "model frozen" : "models frozen"} across combos; return only after a successful background check.</p>
+                <p>{allBlocked ? "Combo unavailable. " : ""}{frozenMembers.length} {frozenMembers.length === 1 ? "model frozen" : "models frozen"} across combos; retried automatically when the cooldown ends.</p>
                 {frozenMembers.map(({ model, circuit }) => (
                   <div key={model} className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
                     <code className="break-all font-mono">{model}</code>

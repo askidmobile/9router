@@ -10,8 +10,5 @@ export async function register() {
 
     const { startModelCatalogSync } = await import("@/lib/modelCatalog/sync.js");
     startModelCatalogSync();
-
-    const { startBackgroundComboHealth } = await import("@/sse/services/backgroundComboHealth.js");
-    startBackgroundComboHealth();
   }
 }

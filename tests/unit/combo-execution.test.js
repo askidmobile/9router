@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../../open-sse/services/comboHealth.js", () => ({
   getComboHealth: vi.fn(() => { throw new Error("Use injected health storage"); }),
   freezeComboModel: vi.fn(() => { throw new Error("Use injected health storage"); }),
+  clearComboModel: vi.fn(() => { throw new Error("Use injected health storage"); }),
 }));
 
 import { runComboModelExecution } from "../../open-sse/services/comboExecution.js";
@@ -13,8 +14,6 @@ const config = {
   firstResponseTimeoutMs: 40,
   requestTimeoutMs: 120,
   streamIdleTimeoutMs: 30,
-  probeTimeoutMs: 50,
-  probeIntervalMs: 5,
   maxBufferedBytes: 4096,
 };
 const encoder = new TextEncoder();
@@ -55,7 +54,7 @@ const pump = () => vi.advanceTimersByTimeAsync(0);
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(NOW);
-  health = { get: vi.fn(async () => null), freeze: vi.fn(async () => {}) };
+  health = { get: vi.fn(async () => null), freeze: vi.fn(async () => {}), clear: vi.fn(async () => {}) };
   execute = vi.fn(async () => Response.json(completion));
   sources = [];
 });
@@ -69,14 +68,23 @@ afterEach(async () => {
 });
 
 describe("Combo member execution admission and deadlines", () => {
-  it("skips a frozen pair even after its next-probe deadline without executing a request", async () => {
-    health.get.mockResolvedValue({ state: "open", nextProbeAt: NOW - 1000 });
+  it("skips a pair only while its cooldown is still running", async () => {
+    health.get.mockResolvedValue({ state: "open", nextProbeAt: NOW + 60_000 });
     const response = await run();
     expect(response.status).toBe(503);
-    expect(await response.text()).toContain("awaiting a successful background check");
+    expect(await response.text()).toContain("temporarily unavailable");
     expect(Number(response.headers.get("retry-after"))).toBeGreaterThan(0);
     expect(execute).not.toHaveBeenCalled();
     expect(health.freeze).not.toHaveBeenCalled();
+  });
+
+  it("retries the pair with the next real request once the cooldown expired", async () => {
+    health.get.mockResolvedValue({ state: "open", nextProbeAt: NOW - 1000 });
+    const response = await run();
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(completion);
+    expect(execute).toHaveBeenCalledOnce();
+    expect(health.clear).toHaveBeenCalledWith({ provider: "commandcode", model: "z-ai/glm-5.3-flash" });
   });
 
   it("uses one executor attempt and passes the bounded header policy", async () => {
@@ -230,7 +238,7 @@ describe("Combo HTTP failure classification", () => {
   });
 });
 
-describe("Combo completed JSON and probe validation", () => {
+describe("Combo completed JSON validation", () => {
   it.each([
     ["OpenAI text", completion],
     ["OpenAI tool call", { choices: [{ message: { tool_calls: [{ type: "function", function: { name: "search", arguments: "{}" } }] } }] }],
@@ -279,24 +287,15 @@ describe("Combo completed JSON and probe validation", () => {
     expect(health.freeze).toHaveBeenCalledTimes(1);
   });
 
-  it("lets a recovery probe execute despite the circuit and requires actual answer text", async () => {
-    health.get.mockResolvedValue({ state: "open", nextProbeAt: NOW + 60_000 });
-    execute.mockResolvedValue(Response.json({ choices: [{ message: { reasoning_content: "Only reasoning" } }] }));
-    expect((await run({ probe: true })).status).toBe(502);
-    expect(health.get).not.toHaveBeenCalled();
-    expect(health.freeze).not.toHaveBeenCalled();
+  it("keeps the circuit on a failed retry and clears it only on real output", async () => {
+    health.get.mockResolvedValue({ state: "open", nextProbeAt: NOW - 1000 });
+    execute.mockResolvedValue(new Response("Unavailable", { status: 502 }));
+    expect((await run()).status).toBe(502);
+    expect(health.clear).not.toHaveBeenCalled();
+    expect(health.freeze).toHaveBeenCalledTimes(1);
     execute.mockResolvedValue(Response.json(completion));
-    expect((await run({ probe: true })).status).toBe(200);
-    expect(health.freeze).not.toHaveBeenCalled();
-  });
-
-  it("times out a recovery probe without recording a foreground failure", async () => {
-    execute.mockImplementation(() => new Promise(() => {}));
-    const task = run({ probe: true });
-    await vi.advanceTimersByTimeAsync(51);
-    expect((await task).status).toBe(504);
-    expect(execute.mock.calls[0][0].aborted).toBe(true);
-    expect(health.freeze).not.toHaveBeenCalled();
+    expect((await run()).status).toBe(200);
+    expect(health.clear).toHaveBeenCalledOnce();
   });
 });
 

@@ -1,5 +1,4 @@
-import { randomUUID } from "node:crypto";
-import { COMBO_HEALTH_CONFIG, COMBO_HEALTH_STORAGE_CONFIG, getComboProbeTimeoutMs } from "../config/comboHealth.js";
+import { COMBO_HEALTH_CONFIG, COMBO_HEALTH_STORAGE_CONFIG } from "../config/comboHealth.js";
 import { MAX_RATE_LIMIT_COOLDOWN_MS } from "../config/errorConfig.js";
 import { comboHealthKey, comboHealthRepository } from "../../src/lib/db/repos/comboHealthRepo.js";
 
@@ -31,9 +30,10 @@ function safeStatus(status) {
   return Number.isInteger(status) && status >= 100 && status <= 599 ? status : null;
 }
 
-export function comboHealthNextProbeAt({ now, failureCount, retryAfterMs, config = COMBO_HEALTH_CONFIG }) {
-  const exponent = Math.min(Math.max(failureCount - 1, 0), 30);
-  const delay = Math.min(config.baseCooldownMs * 2 ** exponent, config.maxCooldownMs);
+// Cooldown before the pair may be attempted again. Consecutive incidents grow
+// it X, 2X, 3X... up to the cap; an explicit provider deadline wins.
+export function comboHealthRetryAt({ now, failureCount, retryAfterMs, config = COMBO_HEALTH_CONFIG }) {
+  const delay = Math.min(config.baseCooldownMs * Math.max(failureCount, 1), config.maxCooldownMs);
   // retryAfterMs is an absolute deadline (the same convention as account cooldowns).
   const retryDeadline = Number.isFinite(retryAfterMs)
     ? Math.min(Math.max(now, retryAfterMs), now + MAX_RATE_LIMIT_COOLDOWN_MS)
@@ -44,7 +44,6 @@ export function comboHealthNextProbeAt({ now, failureCount, retryAfterMs, config
 export function createComboHealthService({
   repository = comboHealthRepository,
   now = Date.now,
-  createToken = randomUUID,
   config = COMBO_HEALTH_CONFIG,
 } = {}) {
   return {
@@ -61,7 +60,12 @@ export function createComboHealthService({
       return repository.transaction((tx) => {
         const timestamp = now();
         const previous = tx.get(pair.provider, pair.model);
-        const failureCount = previous?.failureCount || 1;
+        // A failure while the pair is still frozen (a concurrent request that
+        // started earlier) belongs to the same incident; only a retry after the
+        // cooldown escalates the counter.
+        const failureCount = previous && previous.nextProbeAt > timestamp
+          ? previous.failureCount
+          : Math.min((previous?.failureCount || 0) + 1, maxFailureCount);
         const record = {
           ...pair,
           state: "open",
@@ -69,12 +73,7 @@ export function createComboHealthService({
           openedAt: previous?.openedAt ?? timestamp,
           lastFailureAt: timestamp,
           nextProbeAt: Math.max(previous?.nextProbeAt || 0,
-            comboHealthNextProbeAt({ now: timestamp, failureCount, retryAfterMs, config })),
-          lastProbeAt: previous?.lastProbeAt ?? null,
-          // An in-flight probe invalidated by a newer foreground failure may
-          // still be using the network. Retain its global lease until expiry.
-          leaseUntil: previous?.leaseUntil > timestamp ? previous.leaseUntil : null,
-          probeToken: null,
+            comboHealthRetryAt({ now: timestamp, failureCount, retryAfterMs, config })),
           lastStatus: safeStatus(status),
           lastReason: sanitizeComboHealthReason(reason),
         };
@@ -82,55 +81,10 @@ export function createComboHealthService({
         return record;
       });
     },
-    async claimDueComboProbe({ eligiblePairs } = {}) {
-      const eligible = eligiblePairs === undefined ? null : new Set(eligiblePairs.map((pair) => {
-        const normalized = identity(pair.provider, pair.model);
-        return comboHealthKey(normalized.provider, normalized.model);
-      }));
-      return repository.transaction((tx) => {
-        const timestamp = now();
-        const records = tx.list();
-        if (records.some((record) => record.leaseUntil > timestamp)) return null;
-        const due = records.filter((record) => record.nextProbeAt <= timestamp
-          && (!eligible || eligible.has(comboHealthKey(record.provider, record.model))))
-          .sort((a, b) => a.nextProbeAt - b.nextProbeAt
-            || comboHealthKey(a.provider, a.model).localeCompare(comboHealthKey(b.provider, b.model)))[0];
-        if (!due) return null;
-        const record = {
-          ...due,
-          state: "probing",
-          lastProbeAt: timestamp,
-          leaseUntil: timestamp + getComboProbeTimeoutMs(due.provider, due.model, config) + config.probeLeaseGraceMs,
-          probeToken: createToken(),
-        };
-        tx.set(record);
-        return record;
-      });
-    },
-    async finishComboProbe({ provider, model, probeToken, success, status, reason, retryAfterMs, cancelled = false }) {
+    async clearComboModel({ provider, model }) {
       const pair = identity(provider, model);
       return repository.transaction((tx) => {
-        const timestamp = now();
-        const previous = tx.get(pair.provider, pair.model);
-        if (!probeToken || previous?.state !== "probing" || previous.probeToken !== probeToken
-          || previous.leaseUntil <= timestamp) return false;
-        if (success && !cancelled) {
-          tx.remove(pair.provider, pair.model);
-          return true;
-        }
-        const failureCount = cancelled ? previous.failureCount : Math.min(previous.failureCount + 1, maxFailureCount);
-        tx.set({
-          ...previous,
-          state: "open",
-          failureCount,
-          lastFailureAt: cancelled ? previous.lastFailureAt : timestamp,
-          nextProbeAt: cancelled ? Math.max(previous.nextProbeAt, timestamp + config.probeIntervalMs)
-            : comboHealthNextProbeAt({ now: timestamp, failureCount, retryAfterMs, config }),
-          leaseUntil: null,
-          probeToken: null,
-          lastStatus: cancelled ? previous.lastStatus : safeStatus(status),
-          lastReason: cancelled ? previous.lastReason : sanitizeComboHealthReason(reason),
-        });
+        tx.remove(pair.provider, pair.model);
         return true;
       });
     },
@@ -138,4 +92,5 @@ export function createComboHealthService({
 }
 
 const defaultService = createComboHealthService();
-export const { getComboHealth, listComboHealth, freezeComboModel, claimDueComboProbe, finishComboProbe } = defaultService;
+
+export const { getComboHealth, listComboHealth, freezeComboModel, clearComboModel } = defaultService;

@@ -28,8 +28,7 @@ import { getProjectIdForConnection } from "open-sse/services/projectId.js";
 import { stripModelContextMarker } from "open-sse/utils/modelMarkers.js";
 import { resolveGeminiServiceTier, splitGeminiModelId } from "open-sse/utils/geminiModels.js";
 import { GEMINI_FLEX_SUFFIX } from "open-sse/config/gemini.js";
-import { COMBO_HEALTH_CONFIG } from "open-sse/config/comboHealth.js";
-import { runComboModelExecution, comboRetryAfter, getComboCompletionIssue } from "open-sse/services/comboExecution.js";
+import { runComboModelExecution } from "open-sse/services/comboExecution.js";
 import { getKeyAccessContext, enforceKeyAccess, filterAdapterModels } from "../services/keyAccess.js";
 
 /**
@@ -275,7 +274,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     const variant = flex ? splitGeminiModelId(model) : null;
     const healthModel = flex ? variant.baseModelId + GEMINI_FLEX_SUFFIX + variant.modelId.slice(variant.baseModelId.length) : model;
     return runComboModelExecution({
-      provider, model: healthModel, body, flex, signal: request?.signal, probe: !!execution.probe, log,
+      provider, model: healthModel, body, flex, signal: request?.signal, log,
       requestTimeoutFloorMs: execution.comboRequestTimeoutFloorMs,
       execute: (signal, requestPolicy) => handleSingleModelChat(body, modelStr, clientRawRequest, request, apiKey, {
         ...execution, guarded: true, signal, requestPolicy, resolvedModelInfo: modelInfo,
@@ -419,27 +418,3 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   }
 }
 
-/** Internal synthetic inference; never uses a user's prompt or falls back to another pair. */
-export async function runComboModelProbe({ provider, model, signal }) {
-  const body = {
-    model: `${provider}/${model}`,
-    messages: [{ role: "user", content: COMBO_HEALTH_CONFIG.probePrompt }],
-    max_tokens: COMBO_HEALTH_CONFIG.probeMaxTokens,
-    stream: false,
-  };
-  const request = { url: "http://localhost/api/v1/chat/completions", signal,
-    headers: new Headers({ accept: "application/json", "user-agent": "9router-combo-health" }) };
-  const response = await handleSingleModelChat(body, body.model, null, request, null, {
-    combo: true, probe: true, resolvedModelInfo: { provider, model },
-  });
-  let payload;
-  try { payload = await response.json(); } catch { /* Failed probe, never a soft success. */ }
-  const issue = response.ok ? getComboCompletionIssue(payload, { probe: true }) : null;
-  const ok = response.ok && issue === null;
-  return {
-    ok,
-    status: response.status,
-    reason: ok ? undefined : response.ok ? issue.reason : `Upstream HTTP ${response.status}`,
-    retryAfterMs: comboRetryAfter(response, payload),
-  };
-}

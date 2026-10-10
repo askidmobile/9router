@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // executor. Only transport, credentials, persistence, and logs are replaced.
 const mocks = vi.hoisted(() => ({
   transport: vi.fn(), credentials: vi.fn(), lockAccount: vi.fn(), clearAccount: vi.fn(),
-  updateCredentials: vi.fn(), pending: vi.fn(), freeze: vi.fn(), getHealth: vi.fn(),
+  updateCredentials: vi.fn(), pending: vi.fn(), freeze: vi.fn(), getHealth: vi.fn(), clear: vi.fn(),
   combos: new Map(), circuits: new Map(), executors: new Map(), settings: {},
   logger: Object.fromEntries(["debug", "info", "warn", "error", "line", "errorLine", "tagForSession", "nextTag", "maskKey", "fmtThink"].map((name) => [name, vi.fn()])),
 }));
@@ -12,7 +12,7 @@ vi.mock("open-sse/index.js", () => ({}));
 vi.mock("../../open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: mocks.transport }));
 vi.mock("../../open-sse/utils/debugLog.js", () => ({ dbg: vi.fn(), isDebugEnabled: () => false }));
 vi.mock("../../open-sse/executors/index.js", () => ({ getExecutor: (provider) => mocks.executors.get(provider) }));
-vi.mock("../../open-sse/services/comboHealth.js", () => ({ getComboHealth: mocks.getHealth, freezeComboModel: mocks.freeze }));
+vi.mock("../../open-sse/services/comboHealth.js", () => ({ getComboHealth: mocks.getHealth, freezeComboModel: mocks.freeze, clearComboModel: mocks.clear }));
 vi.mock("../../src/sse/services/auth.js", () => ({
   getProviderCredentials: mocks.credentials, markAccountUnavailable: mocks.lockAccount,
   clearAccountError: mocks.clearAccount, extractApiKey: () => null, isValidApiKey: async () => true,
@@ -41,7 +41,7 @@ vi.mock("../../open-sse/utils/requestLogger.js", () => ({
 }));
 
 import { DefaultExecutor } from "../../open-sse/executors/default.js";
-import { handleChat, runComboModelProbe } from "../../src/sse/handlers/chat.js";
+import { handleChat } from "../../src/sse/handlers/chat.js";
 
 const NOW = 1_800_000_000_000;
 const MODEL = "z-ai/glm-5.3-flash";
@@ -135,12 +135,23 @@ describe("Combo health through the public chat route", () => {
     expect(mocks.credentials.mock.calls.map(([provider]) => provider)).toEqual(["commandcode", "openai", "openai"]);
   });
 
+  it("retries a member after its cooldown expires and clears the circuit on success", async () => {
+    mocks.circuits.set(key("commandcode", MODEL), { state: "open", failureCount: 2, nextProbeAt: NOW - 1000 });
+    const response = await handleChat(request());
+    expect(response.status).toBe(200);
+    expect((await response.json()).choices[0].message.content).toBe("OK");
+    expect(mocks.credentials.mock.calls.map(([provider]) => provider)).toEqual(["commandcode"]);
+    expect(mocks.transport).toHaveBeenCalledTimes(1);
+    expect(mocks.clear).toHaveBeenCalledExactlyOnceWith({ provider: "commandcode", model: MODEL });
+    expect(mocks.freeze).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["commandcode", `cmc/${MODEL}`, `commandcode/${MODEL}`],
     [CUSTOM, "cheaper/glm-5.3-flash", `${CUSTOM}/glm-5.3-flash`],
   ])("shares a canonical circuit across builtin/custom aliases for %s", async (provider, alias, canonical) => {
     const model = canonical.slice(canonical.indexOf("/") + 1);
-    mocks.circuits.set(key(provider, model), { state: "open", nextProbeAt: NOW - 1000 });
+    mocks.circuits.set(key(provider, model), { state: "open", nextProbeAt: NOW + 60_000 });
     for (const member of [alias, canonical]) {
       mocks.combos.set("alias-test", [member, "openai/gpt-4o-mini"]);
       expect((await handleChat(request("alias-test"))).status).toBe(200);
@@ -284,73 +295,6 @@ describe("Combo health through the public chat route", () => {
       "commandcode-one", 502, expect.any(String), "commandcode", "deepseek-chat", null,
     );
     else expect(mocks.lockAccount).not.toHaveBeenCalled();
-  });
-
-  it.each([200, 502])("runs an isolated recovery probe through a frozen pair without another provider or changing state: HTTP %s", async (status) => {
-    const frozen = { state: "open", nextProbeAt: NOW + 60_000 };
-    mocks.circuits.set(key("commandcode", MODEL), frozen);
-    if (status !== 200) mocks.transport.mockResolvedValue(new Response("Unavailable", { status }));
-    const result = await runComboModelProbe({ provider: "commandcode", model: MODEL, signal: new AbortController().signal });
-    expect(result.ok).toBe(status === 200);
-    expect(mocks.transport).toHaveBeenCalledTimes(1);
-    expect(mocks.credentials.mock.calls.map(([provider]) => provider)).toEqual(["commandcode"]);
-    expect(mocks.circuits.get(key("commandcode", MODEL))).toBe(frozen);
-    expect(mocks.freeze).not.toHaveBeenCalled();
-    const sent = JSON.parse(mocks.transport.mock.calls[0][1].body);
-    expect(sent.messages.at(-1).content).toBe("Reply with exactly OK.");
-  });
-
-  it("keeps Gemini Flex body tiers and suffixes on the same key while Standard remains separate", async () => {
-    mocks.combos.set("gemini-body", ["gemini/gemini-3.8-flash(high)"]);
-    mocks.combos.set("gemini-suffix", ["gemini/gemini-3.8-flash:flex(high)"]);
-    mocks.transport.mockResolvedValueOnce(Response.json({ error: { message: "Capacity unavailable" } }, { status: 503 }));
-    expect((await handleChat(request("gemini-body", { service_tier: "flex" }))).status).toBe(503);
-    expect(mocks.freeze).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ provider: "gemini", model: "gemini-3.8-flash:flex(high)" }));
-    const flexBody = JSON.parse(mocks.transport.mock.calls[0][1].body);
-    expect(flexBody.serviceTier).toBe("flex");
-    expect(flexBody.service_tier).toBeUndefined();
-    expect(flexBody.generationConfig.thinkingConfig).toBeDefined();
-    expect((await handleChat(request("gemini-suffix"))).status).toBe(503);
-    expect(mocks.transport).toHaveBeenCalledTimes(1);
-    mocks.transport.mockResolvedValueOnce(Response.json({ candidates: [{ content: { role: "model", parts: [{ text: "OK" }] }, finishReason: "STOP" }] }));
-    expect((await handleChat(request("gemini-body"))).status).toBe(200);
-    expect(mocks.transport).toHaveBeenCalledTimes(2);
-    expect(JSON.parse(mocks.transport.mock.calls[1][1].body).serviceTier).toBeUndefined();
-    expect(mocks.circuits.has(key("gemini", "gemini-3.8-flash:flex(high)"))).toBe(true);
-  });
-
-  it.each([
-    ["partial EOF", 'data: {"choices":[{"index":0,"delta":{"content":"partial"},"finish_reason":null}]}\n\n'],
-    ["native failure with text", 'data: {"choices":[{"index":0,"delta":{"content":"partial"},"finish_reason":"stop","native_finish_reason":"network_error"}]}\n\ndata: [DONE]\n\n'],
-  ])("rejects force-stream OpenAI %s before JSON translation can turn it into a successful fallback or probe", async (_, partial) => {
-    mocks.combos.set("force-stream-failure", ["openai/gpt-4o-mini", `cmc/${MODEL}`]);
-    const upstream = () => new Response(partial, { headers: { "content-type": "text/event-stream" } });
-    mocks.transport.mockResolvedValueOnce(upstream());
-    const response = await handleChat(request("force-stream-failure"));
-    expect(response.status).toBe(200);
-    expect((await response.json()).choices[0].message.content).toBe("OK");
-    expect(mocks.transport).toHaveBeenCalledTimes(2);
-    expect(mocks.freeze).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ provider: "openai", status: 502 }));
-    const frozen = mocks.circuits.get(key("openai", "gpt-4o-mini"));
-    mocks.transport.mockResolvedValueOnce(upstream());
-    const probe = await runComboModelProbe({ provider: "openai", model: "gpt-4o-mini", signal: new AbortController().signal });
-    expect(probe.ok).toBe(false);
-    expect(mocks.transport).toHaveBeenCalledTimes(3);
-    expect(mocks.freeze).toHaveBeenCalledTimes(1);
-    expect(mocks.circuits.get(key("openai", "gpt-4o-mini"))).toBe(frozen);
-  });
-
-  it("cannot count Responses failed-with-text as a successful recovery probe", async () => {
-    const partial = { id: "resp-failed", status: "failed", output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text: "partial answer" }] }] };
-    const data = `event: response.failed\ndata: ${JSON.stringify({ type: "response.failed", response: partial })}\n\n`;
-    mocks.circuits.set(key(RESPONSES, "response-model"), { state: "open", nextProbeAt: NOW + 60_000 });
-    mocks.transport.mockResolvedValueOnce(new Response(data, { headers: { "content-type": "text/event-stream" } }));
-    const probe = await runComboModelProbe({ provider: RESPONSES, model: "response-model", signal: new AbortController().signal });
-    expect(probe.ok).toBe(false);
-    expect(probe.status).toBeGreaterThanOrEqual(500);
-    expect(mocks.transport).toHaveBeenCalledTimes(1);
-    expect(mocks.freeze).not.toHaveBeenCalled();
-    expect(mocks.circuits.has(key(RESPONSES, "response-model"))).toBe(true);
   });
 
   it("does not apply the new strict Combo completion contract to a manual direct request", async () => {

@@ -1,6 +1,6 @@
-import { COMBO_HEALTH_CONFIG, getComboProbeTimeoutMs } from "../config/comboHealth.js";
+import { COMBO_HEALTH_CONFIG } from "../config/comboHealth.js";
 import { GEMINI_FLEX_TIMEOUT_MS } from "../config/gemini.js";
-import { getComboHealth, freezeComboModel } from "./comboHealth.js";
+import { getComboHealth, freezeComboModel, clearComboModel } from "./comboHealth.js";
 import { errorResponse, unavailableResponse } from "../utils/error.js";
 import { isComboDeadlineError } from "../utils/abort.js";
 
@@ -74,17 +74,11 @@ function completionMarker(json) {
 }
 
 /** A recognized but empty generation is request-specific and must not open a global circuit. */
-export function getComboCompletionIssue(json, { probe = false } = {}) {
+export function getComboCompletionIssue(json) {
   if (!json || typeof json !== "object" || Array.isArray(json)) {
     return { reason: "Invalid completion response shape", healthFailure: true };
   }
   if (hasFailure(json)) return { reason: "Upstream completion reported failure", healthFailure: true };
-
-  if (probe) {
-    const text = json.choices?.[0]?.message?.content;
-    if (typeof text === "string" && text.trim()) return null;
-    return { reason: `Recovery probe returned no answer text${completionMarker(json)}`, healthFailure: false };
-  }
 
   let recognized = false;
   let valid = false;
@@ -111,8 +105,8 @@ export function getComboCompletionIssue(json, { probe = false } = {}) {
   return { reason: `Completion returned no final answer${marker}`, healthFailure: false };
 }
 
-export function isValidComboCompletion(json, { probe = false } = {}) {
-  return getComboCompletionIssue(json, { probe }) === null;
+export function isValidComboCompletion(json) {
+  return getComboCompletionIssue(json) === null;
 }
 
 class ComboCompletionError extends Error {
@@ -166,23 +160,24 @@ export function createComboStreamInspector(maxBufferedBytes = COMBO_HEALTH_CONFI
 
 /**
  * One canonical Combo member, encompassing every account and executor attempt.
- * Only recovery probes may close an open circuit; foreground successes never do.
+ * A positive completion clears the pair's circuit; failures keep the incident
+ * counter, so the cooldown grows with consecutive real attempts only.
  */
 export async function runComboModelExecution({
-  provider, model, body, signal, execute, flex = false, probe = false, log,
+  provider, model, body, signal, execute, flex = false, log,
   requestTimeoutFloorMs,
   config = COMBO_HEALTH_CONFIG,
-  health = { get: getComboHealth, freeze: freezeComboModel },
+  health = { get: getComboHealth, freeze: freezeComboModel, clear: clearComboModel },
 }) {
   if (signal?.aborted) return errorResponse(499, "Request aborted");
-  if (!probe) {
-    const frozen = await health.get(provider, model);
-    if (signal?.aborted) return errorResponse(499, "Request aborted");
-    if (frozen) {
-      log?.info?.("COMBO_HEALTH", `Skipping frozen ${provider}/${model}`);
-      return unavailableResponse(503, `Combo member ${provider}/${model} is awaiting a successful background check`,
-        new Date(Math.max(Date.now() + config.probeIntervalMs, frozen.nextProbeAt)).toISOString(), "background check pending");
-    }
+  const frozen = await health.get(provider, model);
+  if (signal?.aborted) return errorResponse(499, "Request aborted");
+  // Frozen means "wait until the cooldown ends": the pair is skipped while the
+  // deadline is in the future and retried by the next real request after it.
+  if (frozen && Number.isFinite(frozen.nextProbeAt) && frozen.nextProbeAt > Date.now()) {
+    log?.info?.("COMBO_HEALTH", `Skipping frozen ${provider}/${model}`);
+    return unavailableResponse(503, `Combo member ${provider}/${model} is temporarily unavailable`,
+      new Date(frozen.nextProbeAt).toISOString(), "cooldown active");
   }
 
   const controller = new AbortController();
@@ -221,8 +216,14 @@ export async function runComboModelExecution({
   };
   const wait = (promise) => Promise.race([promise, aborted]);
   let failureRecorded = false;
+  let cleared = false;
+  const succeed = () => {
+    if (cleared) return;
+    cleared = true;
+    Promise.resolve().then(() => health.clear?.({ provider, model })).catch(() => {});
+  };
   const fail = async (status, reason, retryAfterMs) => {
-    if (failureRecorded || probe || consumerCancelled ||
+    if (failureRecorded || consumerCancelled ||
       (signal?.aborted && !isComboDeadlineError(signal.reason)) || !isComboHealthFailure(status)) return;
     failureRecorded = true;
     await health.freeze({ provider, model, status, reason, retryAfterMs });
@@ -233,13 +234,10 @@ export async function runComboModelExecution({
     const pendingCancel = reader ? reader.cancel() : response?.body?.cancel();
     pendingCancel?.catch(() => {});
   };
-  const probeMs = getComboProbeTimeoutMs(provider, model, config);
   const timeoutFloorMs = Number.isSafeInteger(requestTimeoutFloorMs) && requestTimeoutFloorMs > 0
     ? requestTimeoutFloorMs : 0;
-  const firstMs = probe ? probeMs
-    : Math.max(flex ? GEMINI_FLEX_TIMEOUT_MS : config.firstResponseTimeoutMs, timeoutFloorMs);
-  const fullMs = probe ? probeMs
-    : Math.max(flex ? GEMINI_FLEX_TIMEOUT_MS : config.requestTimeoutMs, timeoutFloorMs);
+  const firstMs = Math.max(flex ? GEMINI_FLEX_TIMEOUT_MS : config.firstResponseTimeoutMs, timeoutFloorMs);
+  const fullMs = Math.max(flex ? GEMINI_FLEX_TIMEOUT_MS : config.requestTimeoutMs, timeoutFloorMs);
   const wantsStream = body.stream === true || Array.isArray(body.contents) || !!body.request?.contents;
   arm(wantsStream ? firstMs : fullMs, wantsStream ? "First response timeout" : "Response deadline exceeded");
 
@@ -269,8 +267,9 @@ export async function runComboModelExecution({
       let json;
       try { json = JSON.parse(text); }
       catch { throw new ComboCompletionError({ reason: "Malformed completion JSON", healthFailure: true }); }
-      const issue = getComboCompletionIssue(json, { probe });
+      const issue = getComboCompletionIssue(json);
       if (issue) throw new ComboCompletionError(issue);
+      succeed();
       cleanup();
       return new Response(text, { status: response.status, headers: response.headers });
     }
@@ -306,7 +305,7 @@ export async function runComboModelExecution({
     const stream = new ReadableStream({
       start(out) {
         for (const value of prefix) out.enqueue(value);
-        if (upstreamDone) { cleanup(); cancel(); out.close(); }
+        if (upstreamDone) { succeed(); cleanup(); cancel(); out.close(); }
       },
       async pull(out) {
         try {
@@ -320,6 +319,7 @@ export async function runComboModelExecution({
           inspector.push(value, done);
           if (done) {
             if (!inspector.state.terminal) throw new ComboCompletionError({ reason: "Stream ended without completion", healthFailure: true });
+            succeed();
             cleanup();
             out.close();
             return;
@@ -327,7 +327,7 @@ export async function runComboModelExecution({
           idleBudgetMs = inspector.state.progress > previousProgress ? config.streamIdleTimeoutMs
             : Math.max(1, idleBudgetMs - (Date.now() - readStarted));
           out.enqueue(value);
-          if (inspector.state.definitiveTerminal) { cleanup(); cancel(); out.close(); }
+          if (inspector.state.definitiveTerminal) { succeed(); cleanup(); cancel(); out.close(); }
         } catch (error) {
           await fail(timeoutReason ? 504 : 502, timeoutReason || "Upstream stream failed");
           cancel();

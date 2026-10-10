@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   saveUsage: vi.fn(),
   getComboHealth: vi.fn(),
   freezeComboModel: vi.fn(),
+  clearComboModel: vi.fn(),
   executor: null,
   logger: Object.fromEntries(["debug", "info", "warn", "error", "line", "errorLine", "tagForSession", "nextTag", "maskKey", "fmtThink"].map((name) => [name, vi.fn()])),
 }));
@@ -26,6 +27,7 @@ vi.mock("../../open-sse/utils/debugLog.js", () => ({ dbg: vi.fn(), isDebugEnable
 vi.mock("../../open-sse/services/comboHealth.js", () => ({
   getComboHealth: mocks.getComboHealth,
   freezeComboModel: mocks.freezeComboModel,
+  clearComboModel: mocks.clearComboModel,
 }));
 vi.mock("../../open-sse/executors/index.js", () => ({ getExecutor: () => mocks.executor }));
 vi.mock("../../src/sse/services/auth.js", () => ({
