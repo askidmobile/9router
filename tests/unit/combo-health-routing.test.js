@@ -27,7 +27,7 @@ vi.mock("@/lib/localDb", () => ({
   getComboByName: async (name) => mocks.combos.has(name) ? { name, models: mocks.combos.get(name) } : null,
   getProviderConnections: async () => [],
   getProviderNodes: async ({ type } = {}) => !type || type === "openai-compatible"
-    ? [{ id: "openai-compatible-chat-test", prefix: "cheaper", type: "openai-compatible" }] : [],
+    ? [{ id: "openai-compatible-chat-test", prefix: "cheaper-test", type: "openai-compatible" }] : [],
 }));
 vi.mock("@/lib/disabledModelsDb", () => ({ getDisabledModels: async () => ({}) }));
 vi.mock("@/lib/pxpipe/loader.js", () => ({ getTransform: async () => null }));
@@ -103,7 +103,7 @@ beforeEach(() => {
   mocks.credentials.mockImplementation(async (provider, excluded) => {
     const account = ["one", "two", "three"].find((id) => !excluded.has(`${provider}-${id}`));
     return account ? { connectionId: `${provider}-${account}`, connectionName: "Test account", apiKey: "test-key",
-      providerSpecificData: provider.startsWith("openai-compatible-") ? { baseUrl: "https://custom.test/v1", prefix: "cheaper" } : {} } : null;
+      providerSpecificData: provider.startsWith("openai-compatible-") ? { baseUrl: "https://custom.test/v1", prefix: "cheaper-test" } : {} } : null;
   });
   mocks.lockAccount.mockResolvedValue({ shouldFallback: true });
   mocks.getHealth.mockImplementation(async (provider, model) => mocks.circuits.get(key(provider, model)) || null);
@@ -148,7 +148,7 @@ describe("Combo health through the public chat route", () => {
 
   it.each([
     ["commandcode", `cmc/${MODEL}`, `commandcode/${MODEL}`],
-    [CUSTOM, "cheaper/glm-5.3-flash", `${CUSTOM}/glm-5.3-flash`],
+    [CUSTOM, "cheaper-test/glm-5.3-flash", `${CUSTOM}/glm-5.3-flash`],
   ])("shares a canonical circuit across builtin/custom aliases for %s", async (provider, alias, canonical) => {
     const model = canonical.slice(canonical.indexOf("/") + 1);
     mocks.circuits.set(key(provider, model), { state: "open", nextProbeAt: NOW + 60_000 });

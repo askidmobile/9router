@@ -160,6 +160,27 @@ export class BaseExecutor {
 
       try {
         const bodyStr = JSON.stringify(transformedBody);
+        // Declarative edge cap (registry transport.quirks.maxRequestBodyBytes): some
+        // upstreams refuse an oversized body in transit, so the answer is an opaque
+        // edge error instead of a provider one. Reject it here with the exact
+        // serialized size, before the request is sent or billed. 413 is request-scoped,
+        // so a Combo member is skipped rather than frozen.
+        const bodyLimitBytes = this.config?.quirks?.maxRequestBodyBytes;
+        if (Number.isFinite(bodyLimitBytes) && bodyLimitBytes > 0) {
+          const bodyBytes = Buffer.byteLength(bodyStr);
+          if (bodyBytes > bodyLimitBytes) {
+            const mb = (bytes) => (bytes / 1_000_000).toFixed(1);
+            return {
+              response: new Response(
+                `${this.provider} rejects request bodies over ${mb(bodyLimitBytes)} MB; this one is ${mb(bodyBytes)} MB.`,
+                { status: HTTP_STATUS.PAYLOAD_TOO_LARGE, headers: { "content-type": "text/plain" } }
+              ),
+              url,
+              headers,
+              transformedBody,
+            };
+          }
+        }
         const fetchT0 = Date.now();
         dbg("FETCH", `${this.provider.toUpperCase()} → ${url} | body=${bodyStr.length}B | connectTimeout=${timeoutMs}ms`);
         const dispatcherTimeouts = this.getDispatcherTimeouts(model, transformedBody);

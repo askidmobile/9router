@@ -134,6 +134,8 @@ import p130 from "./xquik.js";
 import p131 from "./youcom.js";
 import p132 from "./zai.js";
 import p133 from "./zed.js";
+// Appended rather than renumbered: no generator script maintains this file.
+import p134 from "./cheaper.js";
 
 export default [
   p0,
@@ -270,4 +272,5 @@ export default [
   p131,
   p132,
   p133,
+  p134,
 ];

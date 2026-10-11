@@ -8,8 +8,8 @@ import {
 const NOW = 1_800_000_000_000;
 const CUSTOM_ID = "openai-compatible-chat-health-test";
 const providers = buildComboProviderMap([
-  { provider: CUSTOM_ID, providerSpecificData: { prefix: "cheaper" } },
-  { provider: CUSTOM_ID, providerSpecificData: { prefix: "cheaper" } },
+  { provider: CUSTOM_ID, providerSpecificData: { prefix: "cheaper-test" } },
+  { provider: CUSTOM_ID, providerSpecificData: { prefix: "cheaper-test" } },
   { provider: "anthropic-compatible-test", providerSpecificData: { prefix: "cmc" } },
 ]);
 const open = (provider, model = "z-ai/glm-5.3-flash", extra = {}) => ({
@@ -30,7 +30,7 @@ describe("combo frozen-state display", () => {
 
   it("resolves a custom prefix to its UUID and shares state across combo member spellings", () => {
     const circuits = [open(CUSTOM_ID, "glm-5.3-flash")];
-    const prefixed = getComboMemberCircuit("cheaper/glm-5.3-flash", circuits, providers, NOW);
+    const prefixed = getComboMemberCircuit("cheaper-test/glm-5.3-flash", circuits, providers, NOW);
     expect(prefixed).toEqual(getComboMemberCircuit(`${CUSTOM_ID}/glm-5.3-flash`, circuits, providers, NOW));
     expect(prefixed).toMatchObject({ provider: CUSTOM_ID, failureCount: 3 });
     expect(providers.get("cmc")).toBe("commandcode");
