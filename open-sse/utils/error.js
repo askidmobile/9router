@@ -100,6 +100,35 @@ export function extractResetsAtMs(response, message) {
 }
 
 /**
+ * Turn a non-JSON upstream body into a short readable message.
+ *
+ * Edge providers answer with an HTML page instead of JSON when they reject or
+ * challenge a request (Cloudflare interstitials, nginx error pages). Those bytes
+ * used to be handed to the client verbatim: a 500-char blob full of markup, and
+ * an error whose text says "503" while the router reported something else. Extract
+ * the page's own title/heading, strip markup, and clamp the result.
+ *
+ * @param {string} bodyText - raw upstream body
+ * @param {string} [contentType] - response content-type, when known
+ * @returns {string} sanitized message, or "" when nothing readable was found
+ */
+export function sanitizeUpstreamBody(bodyText, contentType = "") {
+  if (typeof bodyText !== "string" || !bodyText.trim()) return "";
+  const looksHtml = /<\s*(?:!doctype|html|head|body|title|h1|center|p)\b/i.test(bodyText) || /text\/html/i.test(contentType);
+  if (!looksHtml) return bodyText.trim().replace(/\s+/g, " ").slice(0, 200);
+  const firstMatch = (re) => bodyText.match(re)?.[1]?.replace(/<[^>]*>/g, "") ?? "";
+  const candidate = firstMatch(/<title[^>]*>([\s\S]*?)<\/title>/i)
+    || firstMatch(/<h1[^>]*>([\s\S]*?)<\/h1>/i)
+    || firstMatch(/<h2[^>]*>([\s\S]*?)<\/h2>/i)
+    || firstMatch(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  const text = candidate.replace(/<[^>]*>/g, " ").replace(/&[a-z#0-9]+;/gi, " ").replace(/\s+/g, " ").trim();
+  if (text) return text.slice(0, 200);
+  // Markup with no readable text at all: name the shape instead of echoing bytes.
+  const stripped = bodyText.replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  return stripped ? `HTML error page: ${stripped.slice(0, 160)}` : "HTML error page";
+}
+
+/**
  * Parse upstream provider error response
  * @param {Response} response - Fetch response from provider
  * @param {object} [executor] - Optional executor with parseError() override for provider-specific parsing
@@ -131,7 +160,8 @@ export async function parseUpstreamError(response, executor = null) {
     const json = JSON.parse(bodyText);
     message = json.error?.message || json.message || json.error || bodyText;
   } catch {
-    message = bodyText;
+    // Not JSON: an HTML interstitial must never reach the client as markup.
+    message = sanitizeUpstreamBody(bodyText, response.headers?.get?.("content-type") || "");
   }
 
   const messageStr = typeof message === "string" ? message : JSON.stringify(message);

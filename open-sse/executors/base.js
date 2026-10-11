@@ -5,6 +5,7 @@ import { dbg } from "../utils/debugLog.js";
 import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE } from "../providers/shared.js";
 import { resolveOpenAICompatibleApiType } from "../services/provider.js";
 import { abortableDelay, throwIfAborted } from "../utils/abort.js";
+import { sanitizeUpstreamBody } from "../utils/error.js";
 
 /**
  * BaseExecutor - Base class for provider executors
@@ -103,7 +104,23 @@ export class BaseExecutor {
   }
 
   parseError(response, bodyText) {
-    return { status: response.status, message: bodyText || `HTTP ${response.status}` };
+    // parseUpstreamError prefers this message over its own extraction, so it has
+    // to be the READABLE form — not the raw body. Two shapes matter here:
+    //   JSON  { error: { message } }  → that message, not the serialized object
+    //   HTML  interstitials           → the page's own title, never the markup
+    const contentType = response?.headers?.get?.("content-type") || "";
+    const raw = typeof bodyText === "string" ? bodyText.trim() : "";
+    if (raw && /^[[{]/.test(raw)) {
+      try {
+        const json = JSON.parse(raw);
+        const structured = json?.error?.message ?? json?.message ?? json?.error;
+        if (typeof structured === "string" && structured.trim()) {
+          return { status: response.status, message: structured.trim() };
+        }
+      } catch { /* truncated or non-JSON despite the first character */ }
+    }
+    const message = sanitizeUpstreamBody(raw, contentType);
+    return { status: response.status, message: message || `HTTP ${response.status}` };
   }
 
   async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, requestPolicy, providerOverrides = null }) {
@@ -201,6 +218,31 @@ export class BaseExecutor {
         const ct = response.headers?.get?.("content-type") || "";
         const cl = response.headers?.get?.("content-length") || "?";
         dbg("FETCH", `${this.provider.toUpperCase()} ← ${response.status} | ttft=${Date.now() - fetchT0}ms | ct=${ct} | cl=${cl}`);
+
+        // An edge interstitial (Cloudflare challenge, nginx error page) can
+        // arrive with a 2xx status and an HTML body. It carries no completion,
+        // so hand it to the 502 retry/fallback policy — retiring the account
+        // here is wrong, and the markup must never reach the translator.
+        if (response.ok && /^text\/html\b/i.test(response.headers?.get?.("content-type") || "")) {
+          if (await tryRetry(urlIndex, HTTP_STATUS.BAD_GATEWAY, "html interstitial", response)) { urlIndex--; continue; }
+          if (this.shouldRetry(HTTP_STATUS.BAD_GATEWAY, urlIndex)) {
+            log?.debug?.("RETRY", `html interstitial on ${url}, trying fallback ${urlIndex + 1}`);
+            lastStatus = HTTP_STATUS.BAD_GATEWAY;
+            continue;
+          }
+          const bodyText = await response.text().catch(() => "");
+          const message = sanitizeUpstreamBody(bodyText, "text/html") || `HTTP ${response.status} from the edge`;
+          dbg("FETCH", `${this.provider.toUpperCase()} ✖ html interstitial: ${message}`);
+          return {
+            response: new Response(JSON.stringify({ error: { message } }), {
+              status: HTTP_STATUS.BAD_GATEWAY,
+              headers: { "content-type": "application/json" },
+            }),
+            url,
+            headers,
+            transformedBody,
+          };
+        }
 
         if (await tryRetry(urlIndex, response.status, `status ${response.status}`, response)) { urlIndex--; continue; }
 

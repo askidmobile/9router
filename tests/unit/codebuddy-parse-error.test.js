@@ -44,7 +44,9 @@ describe("CodeBuddy parseError", () => {
 
     const parsed = executor.parseError({ status: 400 }, bodyText);
     expect(parsed.status).toBe(400);
-    expect(parsed.message).toBe(bodyText);
+    // The shared parser reports the provider's own message, not the serialized
+    // JSON envelope (see open-sse/executors/base.js parseError).
+    expect(parsed.message).toBe("Non-stream chat request is currently not supported");
     expect(parsed.resetsAtMs).toBeUndefined();
   });
 });
