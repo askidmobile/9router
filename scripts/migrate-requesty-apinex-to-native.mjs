@@ -13,11 +13,14 @@ const DB_PATH = process.env.DB_PATH || "/app/data/db/data.sqlite";
 const BACKUP_DIR = process.env.BACKUP_DIR || "/app/data/db/backups";
 const NODE_DATA_KEYS = ["prefix", "apiType", "baseUrl", "nodeName"];
 const KEY_SCOPES = ["customModels", "modelCaps", "modelNames"];
-// prefix → native provider id. The combo members already route by prefix, and
-// the native alias is the same string, so no combo edit is needed.
+// prefix → native provider id + the alias every per-provider row is keyed by.
+// The router stores caps/pricing/custom models under the ALIAS (see
+// getProviderAlias() consumers: models page, combo caps, modelReasoning), so
+// rows written under the registry id are invisible at runtime. Combos keep
+// routing by the prefix, which is the alias, so no combo edit is needed.
 const TARGETS = [
-  { prefix: "req", nativeId: "requesty" },
-  { prefix: "apinex", nativeId: "apinex" },
+  { prefix: "req", nativeId: "requesty", storageAlias: "req" },
+  { prefix: "apinex", nativeId: "apinex", storageAlias: "apinex" },
 ];
 
 const db = new DatabaseSync(DB_PATH);
@@ -35,7 +38,12 @@ for (const row of nodes) {
 }
 
 const todo = TARGETS.filter((t) => byPrefix.has(t.prefix));
-if (todo.length === 0) {
+// Also repair rows a previous run of this script wrote under the registry id
+// instead of the alias. Rewriting them is safe: the alias key is what the
+// runtime reads, and the id key is never consulted for a built-in provider.
+const repairs = TARGETS.filter((t) => t.nativeId !== t.storageAlias);
+
+if (todo.length === 0 && repairs.length === 0) {
   console.log(JSON.stringify({ ...summary, status: "nothing to do: no matching nodes" }, null, 1));
   process.exit(0);
 }
@@ -51,9 +59,9 @@ const setValue = db.prepare("UPDATE kv SET value = ? WHERE rowid = ?");
 
 db.exec("BEGIN IMMEDIATE");
 try {
-  for (const { prefix, nativeId } of todo) {
+  for (const { prefix, nativeId, storageAlias } of todo) {
     const node = byPrefix.get(prefix);
-    const entry = { prefix, nativeId, nodeId: node.id, connection: null, kv: {}, removed: {} };
+    const entry = { prefix, nativeId, storageAlias, nodeId: node.id, connection: null, kv: {}, removed: {} };
 
     const existing = db.prepare("SELECT id, name FROM providerConnections WHERE provider = ?").all(nativeId);
     const source = db.prepare("SELECT * FROM providerConnections WHERE provider = ?").all(node.id)[0] || null;
@@ -79,21 +87,48 @@ try {
     for (const row of rows) {
       let nextKey = null;
       if (KEY_SCOPES.includes(row.scope) && row.key.startsWith(`${node.id}|`)) {
-        nextKey = `${nativeId}|${row.key.slice(node.id.length + 1)}`;
+        nextKey = `${storageAlias}|${row.key.slice(node.id.length + 1)}`;
         if (row.scope === "customModels") {
           try {
             const parsed = JSON.parse(row.value);
-            if (parsed?.providerAlias === node.id) setValue.run(JSON.stringify({ ...parsed, providerAlias: nativeId }), row.rowid);
+            if (parsed?.providerAlias === node.id) setValue.run(JSON.stringify({ ...parsed, providerAlias: storageAlias }), row.rowid);
           } catch { /* leave unparsable values untouched */ }
         }
       } else if (row.key === node.id) {
-        nextKey = nativeId;
+        nextKey = storageAlias;
       }
       if (!nextKey) continue;
       rename.run(nextKey, row.rowid);
       entry.kv[row.scope] = (entry.kv[row.scope] || 0) + 1;
     }
     summary.moved.push(entry);
+  }
+
+  for (const { nativeId, storageAlias } of repairs) {
+    const repaired = { alias: storageAlias, moved: 0, merged: 0 };
+    for (const scope of [...KEY_SCOPES, "pricing", "disabledModels"]) {
+      const idRows = db.prepare("SELECT rowid, key, value FROM kv WHERE scope = ? AND (key = ? OR key LIKE ?)")
+        .all(scope, nativeId, `${nativeId}|%`);
+      for (const row of idRows) {
+        const suffix = row.key === nativeId ? "" : row.key.slice(nativeId.length);
+        const aliasKey = `${storageAlias}${suffix}`;
+        const existing = db.prepare("SELECT rowid, value FROM kv WHERE scope = ? AND key = ?").get(scope, aliasKey);
+        if (!existing) {
+          rename.run(aliasKey, row.rowid);
+          repaired.moved++;
+          continue;
+        }
+        // Both spellings carry data: merge the id row over the alias row so the
+        // older, user-edited values survive, then delete the id row.
+        try {
+          const merged = { ...JSON.parse(existing.value), ...JSON.parse(row.value) };
+          setValue.run(JSON.stringify(merged), existing.rowid);
+        } catch { /* non-object values: the alias row wins */ }
+        db.prepare("DELETE FROM kv WHERE rowid = ?").run(row.rowid);
+        repaired.merged++;
+      }
+    }
+    if (repaired.moved || repaired.merged) summary.repaired = [...(summary.repaired || []), repaired];
   }
   db.exec("COMMIT");
 } catch (error) {
