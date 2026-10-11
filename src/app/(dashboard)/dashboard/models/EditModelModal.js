@@ -28,6 +28,7 @@ const inputClass =
   "w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary";
 
 export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
+  const [metadataReady, setMetadataReady] = useState(false);
   const [metadataLoading, setMetadataLoading] = useState(true);
   const [metadataRevision, setMetadataRevision] = useState(0);
   const [catalogCaps, setCatalogCaps] = useState({});
@@ -93,11 +94,15 @@ export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
     if (!isOpen || !model) return;
     let cancelled = false;
     setMetadataLoading(true);
+    setMetadataReady(false);
     setCatalogCaps({});
     setManualCaps(model.override || {});
     setSources({});
     setCatalogSources({});
-    fetch("/api/models/caps").then(res => res.json()).then(data => {
+    fetch("/api/models/caps").then(res => {
+      if (!res.ok) throw new Error("Model metadata unavailable");
+      return res.json();
+    }).then(data => {
       if (cancelled) return;
       const key = `${model.providerAlias}|${model.id}`;
       const automatic = data.automatic?.[key] || {};
@@ -114,7 +119,8 @@ export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
       const levels = Array.isArray(manual.reasoningLevels) ? manual.reasoningLevels
         : getThinkingLevels(model.providerId || model.providerAlias, model.id, { ...model.staticCaps, ...automatic, reasoning: true }) || [];
       setReasoningLevels(orderedLevels(levels));
-    }).catch(() => {}).finally(() => { if (!cancelled) setMetadataLoading(false); });
+      setMetadataReady(true);
+    }).catch(() => { if (!cancelled) setError("Could not load model metadata. Reopen the editor to retry."); }).finally(() => { if (!cancelled) setMetadataLoading(false); });
     setName(model.name || model.id);
     setAlias(model.alias || "");
     setContextWindow(model.caps?.contextWindow ? String(model.caps.contextWindow) : "");
@@ -314,7 +320,7 @@ export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
           <Button variant="ghost" onClick={onClose} disabled={saving}>
             Cancel
           </Button>
-          <Button onClick={handleSave} loading={saving} disabled={metadataLoading}>
+          <Button onClick={handleSave} loading={saving} disabled={!metadataReady}>
             Save
           </Button>
         </>
