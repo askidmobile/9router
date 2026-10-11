@@ -14,6 +14,10 @@ const scalar = value => {
   if (s.startsWith("!") || s.includes("\n")) throw new Error("Dynamic YAML values need an explicit static connection");
   return s;
 };
+const sameValue = (a, b) => {
+  const canonical = value => value && typeof value === "object" ? Object.entries(value).sort(([a], [b]) => a.localeCompare(b)) : value;
+  return JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
+};
 const indent = line => line.length - line.trimStart().length;
 function section(lines, name) {
   const start = lines.findIndex(line => line.trim() === name + ":");
@@ -93,8 +97,8 @@ export function syncDshProfile(text, models, previous = {}, provider = "nine-rou
     for (const [field, value] of Object.entries(offered)) {
       const current = readField(block, field, depth), last = previous[id]?.[field];
       // Local edits made after a sync are pins; they are never overwritten.
-      if (last !== undefined && JSON.stringify(current) !== JSON.stringify(last)) continue;
-      if (JSON.stringify(current) !== JSON.stringify(value)) {
+      if (last !== undefined && !sameValue(current, last)) continue;
+      if (!sameValue(current, value)) {
         block = writeField(block, field, value, depth);
         changes.push({ id, field, value });
       }

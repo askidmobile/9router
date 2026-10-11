@@ -40,34 +40,35 @@ export async function getCapsOverride(provider, model) {
 }
 export async function setCapsOverride(provider, model, caps) {
   const key = capsKey(provider, model);
-  const record = layers(await capsKv.get(key));
   const updatedAt = new Date().toISOString();
-  const manualSources = Object.fromEntries(Object.keys(caps).map(field => [field,
-    Object.hasOwn(record.manual, field) && JSON.stringify(record.manual[field]) === JSON.stringify(caps[field])
-      ? record.manualSources[field] || { source: "legacy", updatedAt: null, verified: false } : { source: "manual", updatedAt, verified: false },
-  ]));
-  await capsKv.set(key, { ...record, manual: caps, manualSources });
+  await capsKv.updateMany([key], previous => {
+    const record = layers(previous);
+    const manualSources = Object.fromEntries(Object.keys(caps).map(field => [field,
+      Object.hasOwn(record.manual, field) && JSON.stringify(record.manual[field]) === JSON.stringify(caps[field])
+        ? record.manualSources[field] || { source: "legacy", updatedAt: null, verified: false }
+        : { source: "manual", updatedAt, verified: false },
+    ]));
+    return { ...record, manual: caps, manualSources };
+  });
 }
 export async function deleteCapsOverride(provider, model) {
-  const key = capsKey(provider, model);
-  const record = layers(await capsKv.get(key));
-  if (Object.keys(record.automatic).length) await capsKv.set(key, { ...record, manual: {}, manualSources: {} });
-  else await capsKv.remove(key);
+  await capsKv.updateMany([capsKey(provider, model)], previous => {
+    const record = layers(previous);
+    return Object.keys(record.automatic).length ? { ...record, manual: {}, manualSources: {} } : null;
+  });
 }
 // Catalog refresh only writes the automatic layer. Missing fields retain their last observation.
 export async function setCapsOverridesBulk(provider, entries, options = {}) {
-  const existing = await capsKv.getAll();
   const updatedAt = options.updatedAt || new Date().toISOString();
-  const obj = {};
-  for (const [model, caps] of Object.entries(entries)) {
-    const key = capsKey(provider, model);
-    const record = layers(existing[key]);
+  const keyed = Object.fromEntries(Object.entries(entries).map(([model, caps]) => [capsKey(provider, model), { model, caps }]));
+  await capsKv.updateMany(Object.keys(keyed), (previous, key) => {
+    const { model, caps } = keyed[key];
+    const record = layers(previous);
     const sources = { ...record.sources };
     for (const field of Object.keys(caps)) {
       sources[field] = options.sources?.[model]?.[field]
         || { source: options.source || "models.dev", updatedAt, verified: false };
     }
-    obj[key] = { ...record, automatic: { ...record.automatic, ...caps }, sources };
-  }
-  await capsKv.setMany(obj);
+    return { ...record, automatic: { ...record.automatic, ...caps }, sources };
+  });
 }

@@ -27,6 +27,17 @@ export function makeKv(scope) {
         }
       });
     },
+    async updateMany(keys, update) {
+      const db = await getAdapter();
+      db.transaction(() => {
+        for (const key of keys) {
+          const row = db.get(`SELECT value FROM kv WHERE scope = ? AND key = ?`, [scope, key]);
+          const value = update(row ? parseJson(row.value) : null, key);
+          if (value === null) db.run(`DELETE FROM kv WHERE scope = ? AND key = ?`, [scope, key]);
+          else db.run(`INSERT INTO kv(scope, key, value) VALUES(?, ?, ?) ON CONFLICT(scope, key) DO UPDATE SET value = excluded.value`, [scope, key, stringifyJson(value)]);
+        }
+      });
+    },
     async remove(key) {
       const db = await getAdapter();
       db.run(`DELETE FROM kv WHERE scope = ? AND key = ?`, [scope, key]);

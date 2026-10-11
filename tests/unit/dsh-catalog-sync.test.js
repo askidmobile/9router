@@ -43,6 +43,13 @@ describe("DSH model catalog synchronization", () => {
     expect(out.text).toContain("              contextWindow: 100");
     expect(out.changes).toHaveLength(3);
   });
+  it("does not mistake a YAML map reorder for a local pin", () => {
+    const first = syncDshProfile(profile,[model]);
+    const reordered = first.text.replace('off: "none"\n                low: "low"\n                high: "high"', 'high: "high"\n                low: "low"\n                off: "none"');
+    const next = syncDshProfile(reordered,[{...model,reasoning_levels:["none","medium","high"]}],first.state);
+    expect(next.text).toContain('medium: "medium"');
+    expect(next.text).not.toContain('low: "low"');
+  });
   it("does not replace local pins made after a previous synchronization", () => {
     const first = syncDshProfile(profile,[model]);
     const edited = first.text.replace("contextWindow: 1000000","contextWindow: 900000");
