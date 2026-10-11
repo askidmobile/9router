@@ -6,7 +6,7 @@ import {
   isAnthropicCompatibleProvider,
   isOpenAICompatibleProvider,
 } from "@/shared/constants/providers";
-import { getProviderConnections, getCombos, getCustomModels, getModelAliases } from "@/lib/localDb";
+import { getProviderConnections, getCombos, getCustomModels, getModelAliases, getSettings } from "@/lib/localDb";
 import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { getCapsOverrides } from "@/lib/db/index.js";
 import { getKeyAccessContext, filterModelsListForKey } from "@/sse/services/keyAccess.js";
@@ -21,6 +21,7 @@ import { resolveZedModels } from "open-sse/shared/zedAuth.js";
 import { updateProviderCredentials } from "@/sse/services/tokenRefresh";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { capabilitiesFromServiceKind, getCapabilitiesForModel, getConservativeComboCapabilities } from "open-sse/providers/capabilities.js";
+import { applyComboCapOverrides } from "open-sse/services/combo.js";
 
 // Qoder shares one live resolver across intl (qoder) and CN (qoder-cn); the
 // credentials carry the provider id so qoderModels picks the right region's
@@ -284,8 +285,10 @@ export async function buildModelsList(kindFilter, options = {}) {
   }
 
   let combos = [];
+  let comboStrategies = {};
   try {
     combos = await getCombos();
+    comboStrategies = (await getSettings())?.comboStrategies || {};
   } catch (e) {
     console.log("Could not fetch combos");
   }
@@ -668,11 +671,11 @@ export async function buildModelsList(kindFilter, options = {}) {
       continue;
     }
     const comboModelsList = Array.isArray(combo.models) ? combo.models : [];
-    const comboCaps = getConservativeComboCapabilities(comboModelsList, capsOverrides, {
+    const comboCaps = applyComboCapOverrides(getConservativeComboCapabilities(comboModelsList, capsOverrides, {
       nestedResolver: (n) => resolveNestedCombo(n),
       aliasCandidates,
       modelCaps,
-    });
+    }), comboStrategies[combo.name]);
     if (comboCaps) {
       entry.capabilities = comboCaps;
       if (Number.isFinite(comboCaps.contextWindow)) entry.context_length = comboCaps.contextWindow;

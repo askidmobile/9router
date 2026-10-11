@@ -9,6 +9,7 @@ import { Card, Button, Modal, Input, CardSkeleton, ModelSelectModal, ConfirmModa
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { getConservativeComboCapabilities } from "open-sse/providers/capabilities.js";
+import { applyComboCapOverrides } from "open-sse/services/combo.js";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, getProviderAlias } from "@/shared/constants/providers";
 import { buildComboProviderMap, getComboMemberCircuit } from "@/shared/utils/comboHealth";
 
@@ -315,9 +316,11 @@ export default function CombosPage() {
   };
 
   // Per-Combo extras (currently the CTX OUT cap) live in settings.comboStrategies.
-  const persistComboExtras = async (name, maxOutput) => {
+  const persistComboExtras = async (name, { contextWindow, maxOutput } = {}) => {
     const updated = { ...comboStrategies };
     const next = { ...(updated[name] || {}) };
+    if (Number.isSafeInteger(contextWindow) && contextWindow > 0) next.contextWindow = contextWindow;
+    else delete next.contextWindow;
     if (Number.isSafeInteger(maxOutput) && maxOutput > 0) next.maxOutput = maxOutput;
     else delete next.maxOutput;
     const extras = Object.keys(next).filter((key) => key !== "fallbackStrategy");
@@ -327,7 +330,7 @@ export default function CombosPage() {
   };
 
   const handleCreate = async (data) => {
-    const { maxOutput, ...comboData } = data || {};
+    const { contextWindow, maxOutput, ...comboData } = data || {};
     try {
       const res = await fetch("/api/combos", {
         method: "POST",
@@ -335,7 +338,7 @@ export default function CombosPage() {
         body: JSON.stringify(comboData),
       });
       if (res.ok) {
-        await persistComboExtras(comboData.name, maxOutput);
+        await persistComboExtras(comboData.name, { contextWindow, maxOutput });
         await fetchData();
         setShowCreateModal(false);
       } else {
@@ -348,7 +351,7 @@ export default function CombosPage() {
   };
 
   const handleUpdate = async (id, data) => {
-    const { maxOutput, ...comboData } = data || {};
+    const { contextWindow, maxOutput, ...comboData } = data || {};
     try {
       const res = await fetch(`/api/combos/${id}`, {
         method: "PUT",
@@ -356,7 +359,7 @@ export default function CombosPage() {
         body: JSON.stringify(comboData),
       });
       if (res.ok) {
-        await persistComboExtras(comboData.name, maxOutput);
+        await persistComboExtras(comboData.name, { contextWindow, maxOutput });
         await fetchData();
         setEditingCombo(null);
       } else {
@@ -724,11 +727,11 @@ function ComboCard({ combo, getCaps, capsOverrides = {}, allCombos = [], aliasCa
       modelCaps,
     });
   };
-  const comboCaps = getConservativeComboCapabilities(combo.models || [], capsOverrides, {
+  const comboCaps = applyComboCapOverrides(getConservativeComboCapabilities(combo.models || [], capsOverrides, {
     nestedResolver: (n) => resolveNestedCombo(n),
     aliasCandidates,
     modelCaps,
-  });
+  }), strategy);
 
   // Cooldown until-timestamp for a "provider/model" combo member (max lock
   // across its connections; "__all" = whole connection down counts too).
@@ -1263,7 +1266,10 @@ function ComboFormModal({ isOpen, combo, strategy = {}, onClose, onSave, activeP
   const [showModelSelect, setShowModelSelect] = useState(false);
   const [saving, setSaving] = useState(false);
   const [nameError, setNameError] = useState("");
+  const [contextWindow, setContextWindow] = useState(strategy?.contextWindow ? String(strategy.contextWindow) : "");
   const [maxOutput, setMaxOutput] = useState(strategy?.maxOutput ? String(strategy.maxOutput) : "");
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [contextWindowError, setContextWindowError] = useState("");
   const [maxOutputError, setMaxOutputError] = useState("");
   const [modelAliases, setModelAliases] = useState({});
 
@@ -1286,11 +1292,14 @@ function ComboFormModal({ isOpen, combo, strategy = {}, onClose, onSave, activeP
     modelCaps,
   });
   const memberLimit = Number.isSafeInteger(comboCaps?.maxOutput) && comboCaps.maxOutput > 0 ? comboCaps.maxOutput : null;
+  const ctxLimit = Number.isSafeInteger(comboCaps?.contextWindow) && comboCaps.contextWindow > 0 ? comboCaps.contextWindow : null;
   const limitingMember = memberLimit === null ? null : models.find((member) => {
     const caps = getCaps?.(member);
     return Number(caps?.maxOutput) === memberLimit;
   }) || null;
   const parsedMaxOutput = maxOutput.trim() ? Number.parseInt(maxOutput, 10) : null;
+  const parsedContextWindow = contextWindow.trim() ? Number.parseInt(contextWindow, 10) : null;
+  const advancedConfigured = parsedContextWindow !== null || parsedMaxOutput !== null;
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -1376,6 +1385,13 @@ function ComboFormModal({ isOpen, combo, strategy = {}, onClose, onSave, activeP
 
   const handleSave = async () => {
     if (!validateName(name)) return;
+    if (parsedContextWindow !== null && (!Number.isSafeInteger(parsedContextWindow) || parsedContextWindow < 1
+      || (ctxLimit !== null && parsedContextWindow > ctxLimit))) {
+      setContextWindowError(ctxLimit !== null
+        ? `Context window must be between 1 and ${ctxLimit.toLocaleString()}`
+        : "Context window must be a positive integer");
+      return;
+    }
     if (parsedMaxOutput !== null && (!Number.isSafeInteger(parsedMaxOutput) || parsedMaxOutput < 1
       || (memberLimit !== null && parsedMaxOutput > memberLimit))) {
       setMaxOutputError(memberLimit !== null
@@ -1383,9 +1399,10 @@ function ComboFormModal({ isOpen, combo, strategy = {}, onClose, onSave, activeP
         : "Max output must be a positive integer");
       return;
     }
+    setContextWindowError("");
     setMaxOutputError("");
     setSaving(true);
-    await onSave({ name: name.trim(), models, maxOutput: parsedMaxOutput });
+    await onSave({ name: name.trim(), models, contextWindow: parsedContextWindow, maxOutput: parsedMaxOutput });
     setSaving(false);
   };
 
@@ -1413,24 +1430,60 @@ function ComboFormModal({ isOpen, combo, strategy = {}, onClose, onSave, activeP
             </p>
           </div>
 
-          {/* CTX OUT (max output) */}
-          <div>
-            <label htmlFor="combo-max-output" className="text-xs text-text-muted mb-1 block">Max output — CTX OUT (tokens)</label>
-            <input
-              id="combo-max-output"
-              type="number"
-              min="1"
-              max={memberLimit ?? undefined}
-              value={maxOutput}
-              onChange={(e) => { setMaxOutput(e.target.value); setMaxOutputError(""); }}
-              placeholder={memberLimit ? `any up to ${memberLimit}` : "e.g. 64000"}
-              className="w-full rounded-lg border border-black/10 bg-transparent px-3 py-2 text-sm text-text-main outline-none focus:ring-1 focus:ring-primary dark:border-white/15"
-            />
-            <p className={`text-[10px] mt-0.5 ${maxOutputError ? "text-red-500" : "text-text-muted"}`}>
-              {maxOutputError || "Caps the answer length for every member; the members' own ceilings still apply."}
-              {!maxOutputError && memberLimit !== null ? ` Limit across members: ${memberLimit.toLocaleString()} (${limitingMember}).` : ""}
-              {!maxOutputError && memberLimit === null && models.length > 0 ? " Add a model with known output limits to see the bound." : ""}
-            </p>
+          {/* Advanced settings: CTX / CTX OUT, collapsed by default */}
+          <div className="rounded-lg border border-black/10 dark:border-white/10">
+            <button
+              type="button"
+              onClick={() => setShowAdvanced((open) => !open)}
+              className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left"
+            >
+              <span className="text-sm font-medium">Advanced settings</span>
+              <span className="flex items-center gap-1.5 text-[11px] text-text-muted">
+                {advancedConfigured
+                  ? [parsedContextWindow ? `ctx ${parsedContextWindow.toLocaleString()}` : null,
+                     parsedMaxOutput ? `out ${parsedMaxOutput.toLocaleString()}` : null].filter(Boolean).join(" · ")
+                  : "not configured"}
+                <span className="material-symbols-outlined text-[16px]">{showAdvanced ? "expand_less" : "expand_more"}</span>
+              </span>
+            </button>
+            {showAdvanced && (
+              <div className="grid grid-cols-2 gap-2 border-t border-black/10 px-3 py-2 dark:border-white/10">
+                <div>
+                  <label htmlFor="combo-context-window" className="text-xs text-text-muted mb-1 block">Context window — CTX (tokens)</label>
+                  <input
+                    id="combo-context-window"
+                    type="number"
+                    min="1"
+                    max={ctxLimit ?? undefined}
+                    value={contextWindow}
+                    onChange={(e) => { setContextWindow(e.target.value); setContextWindowError(""); }}
+                    placeholder={ctxLimit ? `any up to ${ctxLimit}` : "e.g. 200000"}
+                    className="w-full rounded-lg border border-black/10 bg-transparent px-3 py-2 text-sm text-text-main outline-none focus:ring-1 focus:ring-primary dark:border-white/15"
+                  />
+                  <p className={`text-[10px] mt-0.5 ${contextWindowError ? "text-red-500" : "text-text-muted"}`}>
+                    {contextWindowError || "Advertised context for this Combo; members keep their own limits."}
+                    {!contextWindowError && ctxLimit !== null ? ` Limit across members: ${ctxLimit.toLocaleString()}.` : ""}
+                  </p>
+                </div>
+                <div>
+                  <label htmlFor="combo-max-output" className="text-xs text-text-muted mb-1 block">Max output (tokens)</label>
+                  <input
+                    id="combo-max-output"
+                    type="number"
+                    min="1"
+                    max={memberLimit ?? undefined}
+                    value={maxOutput}
+                    onChange={(e) => { setMaxOutput(e.target.value); setMaxOutputError(""); }}
+                    placeholder={memberLimit ? `any up to ${memberLimit}` : "e.g. 64000"}
+                    className="w-full rounded-lg border border-black/10 bg-transparent px-3 py-2 text-sm text-text-main outline-none focus:ring-1 focus:ring-primary dark:border-white/15"
+                  />
+                  <p className={`text-[10px] mt-0.5 ${maxOutputError ? "text-red-500" : "text-text-muted"}`}>
+                    {maxOutputError || "Caps the answer length for every member; the members' own ceilings still apply."}
+                    {!maxOutputError && memberLimit !== null ? ` Limit across members: ${memberLimit.toLocaleString()} (${limitingMember}).` : ""}
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Models */}
