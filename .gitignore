@@ -97,6 +97,7 @@ wiki-log.md
 .kiro/
 9router-*
 !/public/9router-codex.mjs
+!/public/9router-dsh.mjs
 
 # Local sensitive / temp files
 .engine-token.txt

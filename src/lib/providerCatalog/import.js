@@ -10,7 +10,7 @@ import {
   getProviderConnectionById, getProviderConnections,
   addCustomModelsBulk, updatePricing, setCapsOverridesBulk,
 } from "@/lib/db/index.js";
-import { getProviderModels as getModelsDevProviderModels } from "@/lib/modelsDev/index.js";
+import { getProviderModels as getModelsDevProviderModels, getExactModelFallbacks } from "@/lib/modelsDev/index.js";
 import {
   getProviderAlias, isOpenAICompatibleProvider, isAnthropicCompatibleProvider,
 } from "@/shared/constants/providers";
@@ -87,7 +87,7 @@ export async function importProviderCatalog({ connection, targets = VALID_TARGET
   }
 
   if (!entries) {
-    const fallback = await getModelsDevProviderModels([alias, connection.provider]);
+    const fallback = await getModelsDevProviderModels([alias, connection.provider]) || { models: null };
     if (!fallback.modelsDevId || !fallback.models) {
       // Name the provider's own failure too: "not on models.dev" alone hides a
       // 401 from an expired key behind a catalog that was never the problem.
@@ -108,7 +108,7 @@ export async function importProviderCatalog({ connection, targets = VALID_TARGET
     if (wanted.includes("caps")) {
       const caps = {};
       for (const [id, model] of Object.entries(fallback.models)) caps[id] = model.caps;
-      if (Object.keys(caps).length) await setCapsOverridesBulk(alias, caps);
+      if (Object.keys(caps).length) await setCapsOverridesBulk(alias, caps, { source: "models.dev", updatedAt: new Date(fallback.fetchedAt || Date.now()).toISOString() });
       response.caps = { imported: Object.keys(caps).length };
     }
     if (registerModels) {
@@ -121,19 +121,42 @@ export async function importProviderCatalog({ connection, targets = VALID_TARGET
 
   const pricing = {};
   const caps = {};
+  const sources = {};
   const ids = [];
+  let fallback = { models: null };
+  let exact = {};
+  if (wanted.includes("caps")) {
+    try {
+      fallback = await getModelsDevProviderModels([alias, connection.provider]) || { models: null };
+      exact = await getExactModelFallbacks(entries.map(entry => entry.id));
+    } catch (error) {
+      warning = [warning, `Supplementary catalog unavailable: ${error.message}`].filter(Boolean).join("; ");
+    }
+  }
+  const updatedAt = new Date().toISOString();
   for (const entry of entries) {
     const meta = catalogMetadata(entry);
     if (!meta) continue;
     ids.push(meta.id);
     if (meta.pricing) pricing[meta.id] = meta.pricing;
-    if (meta.caps) caps[meta.id] = meta.caps;
+    const supplemental = fallback.models?.[meta.id] || exact[meta.id];
+    const merged = { ...(supplemental?.caps || {}), ...(meta.caps || {}) };
+    if (Object.keys(merged).length) {
+      caps[meta.id] = merged;
+      sources[meta.id] = Object.fromEntries(Object.keys(merged).map(field => [field,
+        Object.hasOwn(meta.caps || {}, field)
+          ? { source: "provider", provider: alias, updatedAt, verified: true }
+          : { source: "models.dev", provider: supplemental.modelsDevId || fallback.modelsDevId,
+              updatedAt: new Date(supplemental.fetchedAt || fallback.fetchedAt || Date.now()).toISOString(),
+              stale: supplemental.stale ?? fallback.stale ?? false, verified: false },
+      ]));
+    }
   }
   if (wanted.includes("pricing") && Object.keys(pricing).length) {
     await updatePricing({ [alias]: pricing });
   }
   if (wanted.includes("caps") && Object.keys(caps).length) {
-    await setCapsOverridesBulk(alias, caps);
+    await setCapsOverridesBulk(alias, caps, { sources });
   }
   const response = {
     provider: alias,

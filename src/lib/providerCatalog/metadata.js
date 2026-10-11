@@ -1,3 +1,5 @@
+import { REASONING_EFFORT_LEVELS } from "open-sse/providers/thinkingLevels.js";
+
 // Map a provider's own /v1/models entry into 9router's caps + pricing shapes.
 //
 // Aggregators publish everything the dashboard needs in one listing: token
@@ -47,7 +49,7 @@ const PER_MILLION = 1_000_000;
 
 // "1M" / "500K" / 200000 → tokens
 export function parseTokenCount(value) {
-  if (typeof value === "number") return value > 0 ? Math.floor(value) : undefined;
+  if (typeof value === "number") return Number.isFinite(value) && value > 0 ? Math.floor(value) : undefined;
   if (typeof value !== "string") return undefined;
   const m = value.trim().match(/^([\d.]+)\s*([MK])?$/i);
   if (!m) return undefined;
@@ -79,7 +81,7 @@ export function catalogMetadata(entry) {
     entry.context_length ?? entry.context_window ?? entry.contextWindow ?? entry.limit?.context ?? entry.limits?.context,
   );
   const output = parseTokenCount(
-    entry.max_output_tokens ?? entry.maxOutputTokens ?? entry.limit?.output ?? entry.limits?.output,
+    entry.max_output_tokens ?? entry.maxOutputTokens ?? entry.max_completion_tokens ?? entry.max_tokens ?? entry.top_provider?.max_completion_tokens ?? entry.limit?.output ?? entry.limits?.output,
   );
   if (context) caps.contextWindow = context;
   if (output) caps.maxOutput = output;
@@ -93,6 +95,18 @@ export function catalogMetadata(entry) {
     if (typeof nested === "boolean") caps[to] = nested;
     else if (typeof flat === "boolean") caps[to] = flat;
   }
+
+  const rawLevels = entry.reasoning_levels ?? entry.reasoningLevels ?? entry.supported_reasoning_levels
+    ?? entry.reasoning_effort_options ?? entry.supported_reasoning_efforts ?? entry.reasoning_efforts
+    ?? entry.parameters?.reasoning_effort?.enum ?? declared?.reasoning_levels ?? declared?.reasoning?.efforts
+    ?? (entry.reasoningEfforts && typeof entry.reasoningEfforts === "object" ? Object.keys(entry.reasoningEfforts) : undefined);
+  const levels = normalizeReasoningLevels(rawLevels);
+  if (levels !== undefined) {
+    caps.reasoningLevels = levels;
+    if (caps.reasoning === undefined && levels.length) caps.reasoning = true;
+  }
+  const format = entry.thinking_format ?? declared?.thinking_format;
+  if (typeof format === "string" && format.trim()) caps.thinkingFormat = format.trim();
 
   const pricing = {};
   const price = entry.pricing;
@@ -128,4 +142,11 @@ export function catalogMetadata(entry) {
     caps: Object.keys(caps).length ? caps : null,
     pricing: Object.keys(pricing).length ? pricing : null,
   };
+}
+
+export function normalizeReasoningLevels(value) {
+  if (!Array.isArray(value)) return undefined;
+  const levels = value.map(level => typeof level === "string" ? level : level?.effort);
+  if (levels.some(level => !REASONING_EFFORT_LEVELS.includes(level))) return undefined;
+  return REASONING_EFFORT_LEVELS.filter(level => levels.includes(level));
 }

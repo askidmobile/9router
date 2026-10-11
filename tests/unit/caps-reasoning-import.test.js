@@ -1,26 +1,44 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-
-const kv = vi.hoisted(() => ({ getAll: vi.fn(), setMany: vi.fn() }));
+const { storage, kv } = vi.hoisted(() => {
+  const storage = {};
+  return { storage, kv: {
+    getAll: async () => ({...storage}), get: async k => storage[k] || null,
+    setMany: async obj => Object.assign(storage,obj), set: async (k,v) => {storage[k]=v},
+    remove: async k => {delete storage[k]},
+  }};
+});
 vi.mock("../../src/lib/db/helpers/kvStore.js", () => ({ makeKv: () => kv }));
-const { setCapsOverridesBulk } = await import("../../src/lib/db/repos/capsRepo.js");
+const { setCapsOverridesBulk, setCapsOverride, getCapsOverrides, getCapsMetadata, deleteCapsOverride, getManualCapsOverrides } = await import("../../src/lib/db/repos/capsRepo.js");
+beforeEach(() => { for(const k of Object.keys(storage)) delete storage[k]; });
 
-beforeEach(() => { vi.clearAllMocks(); kv.getAll.mockResolvedValue({}); });
-
-describe("models.dev capability import preserves effort settings", () => {
-  it.each([["xhigh", "max"], [], null].map(reasoningLevels => ({ reasoningLevels })))("preserves %j while refreshing other capabilities", async ({ reasoningLevels }) => {
-    kv.getAll.mockResolvedValue({
-      "ocg|space-bunny": { reasoning: true, reasoningLevels, contextWindow: 999 },
-      "openai|space-bunny": { reasoningLevels: ["low"] },
-    });
-    await setCapsOverridesBulk("ocg", { "space-bunny": { reasoning: false, contextWindow: 1000000, tools: true } });
-    expect(kv.setMany).toHaveBeenCalledWith({ "ocg|space-bunny": {
-      reasoning: true, reasoningLevels, contextWindow: 1000000, tools: true,
-    } });
+describe("catalog and manual capability layers", () => {
+  it.each([["xhigh","max"],[],null].map(reasoningLevels=>({reasoningLevels})))("preserves legacy edits and labels uncertain provenance: %j", async ({reasoningLevels}) => {
+    storage["ocg|space-bunny"]={reasoning:true,reasoningLevels,contextWindow:999};
+    await setCapsOverridesBulk("ocg",{"space-bunny":{contextWindow:1000000,reasoning:false,tools:true}});
+    expect((await getCapsOverrides())["ocg|space-bunny"]).toEqual({contextWindow:999,reasoning:true,reasoningLevels,tools:true});
+    expect((await getCapsMetadata())["ocg|space-bunny"].contextWindow).toEqual({source:"legacy",updatedAt:null,verified:false});
   });
-
-  it("keeps ordinary catalog imports unchanged when no custom effort list exists", async () => {
-    const caps = { reasoning: true, contextWindow: 1000000 };
-    await setCapsOverridesBulk("ocg", { "space-bunny": caps });
-    expect(kv.setMany).toHaveBeenCalledWith({ "ocg|space-bunny": caps });
+  it("auto sync updates observations without overwriting explicit CTX, OUT or reasoning edits",async()=>{
+    await setCapsOverridesBulk("p",{m:{contextWindow:1000000,maxOutput:128000,reasoningLevels:["low","high"]}},{source:"provider"});
+    await setCapsOverride("p","m",{maxOutput:32000,reasoningLevels:["high"]});
+    await setCapsOverridesBulk("p",{m:{contextWindow:2000000,maxOutput:256000,reasoningLevels:["low","medium","high"]}},{source:"provider"});
+    expect((await getCapsOverrides())["p|m"]).toEqual({contextWindow:2000000,maxOutput:32000,reasoningLevels:["high"]});
+    const sources=(await getCapsMetadata())["p|m"];
+    expect(sources.contextWindow.source).toBe("provider");
+    expect(sources.maxOutput.source).toBe("manual");
+    expect(sources.maxOutput.updatedAt).toMatch(/^20/);
+    await deleteCapsOverride("p","m");
+    expect((await getCapsOverrides())["p|m"].maxOutput).toBe(256000);
+    expect((await getManualCapsOverrides())["p|m"]).toBeUndefined();
+  });
+  it("retains previously observed output when a subsequent catalog only publishes context",async()=>{
+    await setCapsOverridesBulk("p",{m:{contextWindow:1000000,maxOutput:64000}});
+    await setCapsOverridesBulk("p",{m:{contextWindow:500000}});
+    expect((await getCapsOverrides())["p|m"]).toEqual({contextWindow:500000,maxOutput:64000});
+  });
+  it("null reasoning reset uses refreshed automatic levels",async()=>{
+    await setCapsOverride("p","m",{reasoningLevels:null});
+    await setCapsOverridesBulk("p",{m:{reasoningLevels:["low","high"]}});
+    expect((await getCapsOverrides())["p|m"].reasoningLevels).toEqual(["low","high"]);
   });
 });

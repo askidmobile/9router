@@ -28,6 +28,15 @@ const inputClass =
   "w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary";
 
 export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
+  const [metadataRevision, setMetadataRevision] = useState(0);
+  const [catalogCaps, setCatalogCaps] = useState({});
+  const [manualCaps, setManualCaps] = useState({});
+  const [sources, setSources] = useState({});
+  const baseline = { ...model?.staticCaps, ...catalogCaps };
+  const sourceText = (field) => {
+    const info = sources[field];
+    return info ? `${info.source}${info.updatedAt ? " · " + new Date(info.updatedAt).toLocaleString() : " · date unknown"}${info.verified ? "" : " · unconfirmed"}` : "registry · unconfirmed";
+  };
   const [name, setName] = useState("");
   const [alias, setAlias] = useState("");
   const [contextWindow, setContextWindow] = useState("");
@@ -42,7 +51,7 @@ export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
   const [importMsg, setImportMsg] = useState("");
 
   const catalogLevels = model ? getThinkingLevels(model.providerId || model.providerAlias, model.id, {
-    ...model.staticCaps, reasoning: true,
+    ...baseline, reasoning: true,
   }) || [] : [];
   const orderedLevels = (levels) => REASONING_EFFORT_LEVELS.filter((level) =>
     levels.includes(level) || (level === "high" && levels.includes("thinking"))
@@ -66,6 +75,7 @@ export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
       invalidateModelCapsCache();
       invalidatePricingCache();
       setImportMsg(`Imported ${data.caps?.imported ?? 0} capability sets, ${data.pricing?.imported ?? 0} prices from ${data.source}`);
+      setMetadataRevision(value => value + 1);
       onSaved?.();
     } catch (err) {
       setImportMsg(err.message || "Import failed");
@@ -76,6 +86,27 @@ export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
 
   useEffect(() => {
     if (!isOpen || !model) return;
+    let cancelled = false;
+    setCatalogCaps({});
+    setManualCaps(model.override || {});
+    setSources({});
+    fetch("/api/models/caps").then(res => res.json()).then(data => {
+      if (cancelled) return;
+      const key = `${model.providerAlias}|${model.id}`;
+      const automatic = data.automatic?.[key] || {};
+      const manual = data.overrides?.[key] || {};
+      setCatalogCaps(automatic);
+      setManualCaps(manual);
+      setSources(data.sources?.[key] || {});
+      const effective = { ...model.caps, ...(data.effective?.[key] || {}) };
+      setContextWindow(effective.contextWindow ? String(effective.contextWindow) : "");
+      setMaxOutput(effective.maxOutput ? String(effective.maxOutput) : "");
+      setFlags(Object.fromEntries(BOOL_CAPS.map(([field]) => [field, !!effective[field]])));
+      setUseCatalogLevels(!Array.isArray(manual.reasoningLevels));
+      const levels = Array.isArray(manual.reasoningLevels) ? manual.reasoningLevels
+        : getThinkingLevels(model.providerId || model.providerAlias, model.id, { ...model.staticCaps, ...automatic, reasoning: true }) || [];
+      setReasoningLevels(orderedLevels(levels));
+    }).catch(() => {});
     setName(model.name || model.id);
     setAlias(model.alias || "");
     setContextWindow(model.caps?.contextWindow ? String(model.caps.contextWindow) : "");
@@ -98,7 +129,8 @@ export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
     }
     setPrices(nextPrices);
     setError("");
-  }, [isOpen, model]);
+    return () => { cancelled = true; };
+  }, [isOpen, model, metadataRevision]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -133,22 +165,28 @@ export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
       // 2. Capabilities override = diff vs static caps (empty diff removes the override)
       // Keep less common overrides (thinking format/range, audio/video, etc.)
       // when editing one of the fields exposed by this modal.
-      const override = { ...(model.override || {}) };
+      const override = { ...manualCaps };
       for (const [key] of BOOL_CAPS) {
         const value = !!flags[key];
-        if (value !== !!model.staticCaps?.[key]) override[key] = value;
-        else delete override[key];
+        if (value !== !!model.caps?.[key]) {
+          if (value !== !!baseline[key]) override[key] = value;
+          else delete override[key];
+        }
       }
       const ctx = contextWindow.trim() ? parseInt(contextWindow, 10) : null;
-      if (ctx && ctx !== model.staticCaps?.contextWindow) override.contextWindow = ctx;
-      else delete override.contextWindow;
+      if (ctx !== (model.caps?.contextWindow || null)) {
+        if (ctx && ctx !== baseline.contextWindow) override.contextWindow = ctx;
+        else delete override.contextWindow;
+      }
       const out = maxOutput.trim() ? parseInt(maxOutput, 10) : null;
-      if (out && out !== model.staticCaps?.maxOutput) override.maxOutput = out;
-      else delete override.maxOutput;
-      const reasoningChanged = useCatalogLevels !== !Array.isArray(model.caps?.reasoningLevels)
-        || (!useCatalogLevels && JSON.stringify(reasoningLevels) !== JSON.stringify(orderedLevels(model.caps?.reasoningLevels || [])));
+      if (out !== (model.caps?.maxOutput || null)) {
+        if (out && out !== baseline.maxOutput) override.maxOutput = out;
+        else delete override.maxOutput;
+      }
+      const reasoningChanged = useCatalogLevels !== !Array.isArray(manualCaps.reasoningLevels)
+        || (!useCatalogLevels && JSON.stringify(reasoningLevels) !== JSON.stringify(orderedLevels(manualCaps.reasoningLevels || [])));
       if (!useCatalogLevels) override.reasoningLevels = reasoningLevels;
-      else if (reasoningChanged) override.reasoningLevels = null;
+      else delete override.reasoningLevels;
       const capsChanged = BOOL_CAPS.some(([key]) => !!flags[key] !== !!model.caps?.[key])
         || ctx !== (model.caps?.contextWindow || null)
         || out !== (model.caps?.maxOutput || null)
@@ -350,6 +388,7 @@ export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
                 placeholder="e.g. 200000"
                 className={inputClass}
               />
+              <p className="text-xs text-text-muted mt-1">{sourceText("contextWindow")}</p>
             </div>
             <div>
               <label htmlFor="edit-model-out" className="text-xs text-text-muted mb-1 block">Max output (tokens)</label>
@@ -362,6 +401,7 @@ export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
                 placeholder="e.g. 64000"
                 className={inputClass}
               />
+              <p className="text-xs text-text-muted mt-1">{sourceText("maxOutput")}</p>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-2 mt-3">
@@ -380,6 +420,7 @@ export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
           <fieldset className="mt-4 border-t border-border pt-3" disabled={!flags.reasoning}>
             <legend className="sr-only">Reasoning effort levels</legend>
             <p className="text-sm font-medium text-text-main mb-2">Reasoning effort levels</p>
+            <p className="text-xs text-text-muted mb-2">{sourceText("reasoningLevels")}</p>
             <label className="flex items-center gap-2 text-sm text-text-main cursor-pointer">
               <input
                 type="checkbox"

@@ -16,6 +16,7 @@ export {
   getModelAliases, setModelAlias, deleteModelAlias,
   getCustomModels, addCustomModel, addCustomModelsBulk, deleteCustomModel,
   getCapsOverrides, getCapsOverride, setCapsOverride, deleteCapsOverride, setCapsOverridesBulk,
+  getManualCapsOverrides, getAutomaticCapsOverrides, getCapsMetadata,
   getMitmAlias, setMitmAliasAll,
   getPricing, getPricingForModel, updatePricing, resetPricing, resetAllPricing,
   exportDb, importDb,

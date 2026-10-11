@@ -18,7 +18,7 @@ export function invalidateModelCapsCache() {
   if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(CAPS_CHANGED_EVENT));
 }
 
-function buildMaps(models, overrides) {
+function buildMaps(models, overrides, effective = overrides) {
   const byFull = {};
   const byId = {};
   for (const m of models || []) {
@@ -27,7 +27,7 @@ function buildMaps(models, overrides) {
     if (m.routedModel) byFull[m.routedModel] = m.caps;
     if (m.model) byId[m.model] = m.caps;
   }
-  return { byFull, byId, overrides: overrides || {} };
+  return { byFull, byId, overrides: overrides || {}, effective: effective || {} };
 }
 
 function loadModelCaps() {
@@ -44,7 +44,7 @@ function loadModelCaps() {
     }),
   ])
     .then(([modelsData, capsData]) => {
-      cache = buildMaps(modelsData.models, capsData.overrides);
+      cache = buildMaps(modelsData.models, capsData.overrides, capsData.effective);
       return cache;
     })
     .catch(() => {
@@ -86,6 +86,7 @@ function resolveCaps(byFull, byId, overrides, key) {
 export function useModelCaps() {
   const [byFull, setByFull] = useState(() => cache?.byFull || {});
   const [byId, setById] = useState(() => cache?.byId || {});
+  const [effective, setEffective] = useState(() => cache?.effective || {});
   const [overrides, setOverrides] = useState(() => cache?.overrides || {});
 
   useEffect(() => {
@@ -95,6 +96,7 @@ export function useModelCaps() {
         setByFull(maps.byFull);
         setById(maps.byId);
         setOverrides(maps.overrides);
+        setEffective(maps.effective || maps.overrides);
       }
     };
     if (cache) {
@@ -116,8 +118,8 @@ export function useModelCaps() {
   }, []);
 
   const getCaps = useCallback(
-    (key) => resolveCaps(byFull, byId, overrides, key),
-    [byFull, byId, overrides],
+    (key) => resolveCaps(byFull, byId, effective, key),
+    [byFull, byId, effective],
   );
 
   // overrides exposed for combined-caps computation (combo card mirrors /v1/models)

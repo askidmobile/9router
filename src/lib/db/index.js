@@ -53,6 +53,7 @@ export { getModelNameOverrides, setModelNameOverride } from "./repos/modelNamesR
 // Model capability overrides
 export {
   getCapsOverrides, getCapsOverride, setCapsOverride, deleteCapsOverride, setCapsOverridesBulk,
+  getManualCapsOverrides, getAutomaticCapsOverrides, getCapsMetadata,
 } from "./repos/capsRepo.js";
 
 // Pricing

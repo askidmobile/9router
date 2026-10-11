@@ -8,7 +8,7 @@ import {
 } from "@/shared/constants/providers";
 import { getProviderConnections, getCombos, getCustomModels, getModelAliases, getSettings } from "@/lib/localDb";
 import { getDisabledModels } from "@/lib/disabledModelsDb";
-import { getCapsOverrides } from "@/lib/db/index.js";
+import { getCapsOverrides, getCapsMetadata } from "@/lib/db/index.js";
 import { getKeyAccessContext, filterModelsListForKey } from "@/sse/services/keyAccess.js";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
@@ -692,6 +692,19 @@ export async function buildModelsList(kindFilter, options = {}) {
     dedupedModels.push(model);
   }
 
+  let metadata = {};
+  try { metadata = await getCapsMetadata(); } catch { /* Older test adapters can omit provenance. */ }
+  for (const model of dedupedModels) {
+    const slash = model.id.indexOf("/");
+    const provider = slash < 0 ? null : model.id.slice(0, slash);
+    const id = slash < 0 ? model.id : model.id.slice(slash + 1);
+    const observed = metadata[`${provider}|${id}`] || {};
+    model.capability_sources = Object.fromEntries(Object.keys(model.capabilities || {}).map(field => [
+      field, observed[field] || { source: slash < 0 ? "combo" : "registry", updatedAt: null, verified: false },
+    ]));
+    if (Number.isFinite(model.capabilities?.maxOutput)) model.max_output_tokens = model.capabilities.maxOutput;
+    if (Array.isArray(model.capabilities?.reasoningLevels)) model.reasoning_levels = model.capabilities.reasoningLevels;
+  }
   return dedupedModels;
 }
 

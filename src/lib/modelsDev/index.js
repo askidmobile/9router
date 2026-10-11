@@ -4,6 +4,7 @@
 // caps/pricing shapes. Falls back to a stale cached catalog when the network
 // fetch fails.
 
+import { normalizeReasoningLevels } from "../providerCatalog/metadata.js";
 import { makeKv } from "../db/helpers/kvStore.js";
 import { resolveModelsDevProviderId } from "./providerMap.js";
 
@@ -70,15 +71,20 @@ export function normalizeModel(entry) {
   const output = Array.isArray(entry.modalities?.output) ? entry.modalities.output : [];
   const limit = entry.limit || {};
 
-  const caps = {
-    vision: input.includes("image"),
-    pdf: input.includes("pdf"),
-    audioInput: input.includes("audio"),
-    videoInput: input.includes("video"),
-    imageOutput: output.includes("image"),
-    audioOutput: output.includes("audio"),
-    reasoning: entry.reasoning === true,
-  };
+  const caps = {};
+  if (Array.isArray(entry.modalities?.input)) {
+    caps.vision = input.includes("image");
+    caps.pdf = input.includes("pdf");
+    caps.audioInput = input.includes("audio");
+    caps.videoInput = input.includes("video");
+  }
+  if (Array.isArray(entry.modalities?.output)) {
+    caps.imageOutput = output.includes("image");
+    caps.audioOutput = output.includes("audio");
+  }
+  if (typeof entry.reasoning === "boolean") caps.reasoning = entry.reasoning;
+  const levels = normalizeReasoningLevels(entry.reasoning_levels ?? entry.reasoningLevels);
+  if (levels !== undefined) caps.reasoningLevels = levels;
   // Only override static capabilities when models.dev explicitly reports tool
   // support — an absent tool_call must not clobber an existing `tools: false`.
   if (typeof entry.tool_call === "boolean") caps.tools = entry.tool_call;
@@ -146,4 +152,22 @@ export async function getProviderModels(providerKeys, options = {}) {
 /** Test hook: drop the in-memory cache. */
 export function __resetCacheForTests() {
   memCache = { catalog: null, fetchedAt: 0 };
+}
+
+// Exact upstream ids only; ambiguous cross-provider matches are not guessed.
+export async function getExactModelFallbacks(ids) {
+  const { catalog, fetchedAt, stale } = await getCatalog();
+  const result = {};
+  for (const id of ids) {
+    const upstream = id.startsWith("free/") ? id.slice(5) : id;
+    const candidates = [];
+    for (const [provider, entry] of Object.entries(catalog)) {
+      const raw = entry.models?.[id] || entry.models?.[upstream];
+      if (raw) candidates.push({ provider, model: normalizeModel({ id: upstream, ...raw }) });
+    }
+    const canonical = upstream.includes("/") ? candidates.filter(c => c.provider === upstream.split("/")[0]) : [];
+    const selected = canonical.length === 1 ? canonical[0] : candidates.length === 1 ? candidates[0] : null;
+    if (selected?.model) result[id] = { ...selected.model, modelsDevId: selected.provider, fetchedAt, stale };
+  }
+  return result;
 }

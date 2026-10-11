@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
   updatePricing: vi.fn(async () => ({})),
   setCapsOverridesBulk: vi.fn(async () => {}),
   connections: [],
-  modelsDev: vi.fn(),
+  modelsDev: vi.fn(), exact: vi.fn(async () => ({})),
 }));
 
 vi.mock("next/server", () => ({
@@ -29,7 +29,7 @@ vi.mock("@/lib/db/index.js", () => ({
   setCapsOverridesBulk: mocks.setCapsOverridesBulk,
   addCustomModelsBulk: async ({ ids }) => ({ added: ids.length, skipped: 0 }),
 }));
-vi.mock("@/lib/modelsDev/index.js", () => ({ getProviderModels: mocks.modelsDev }));
+vi.mock("@/lib/modelsDev/index.js", () => ({ getProviderModels: mocks.modelsDev, getExactModelFallbacks: mocks.exact }));
 
 import { catalogMetadata } from "@/lib/providerCatalog/metadata.js";
 import { POST } from "@/app/api/providers/import-models/route.js";
@@ -54,6 +54,7 @@ beforeEach(() => {
   mocks.updatePricing.mockClear();
   mocks.setCapsOverridesBulk.mockClear();
   mocks.modelsDev.mockReset();
+  mocks.exact.mockResolvedValue({});
   mocks.connections = [{
     id: "conn-cheaper", provider: "cheaper", isActive: true, apiKey: "ci_live_x",
     providerSpecificData: {},
@@ -127,8 +128,8 @@ describe("POST /api/providers/import-models", () => {
     });
     expect(mocks.setCapsOverridesBulk).toHaveBeenCalledWith("cheaper", {
       "claude-opus-5.5": { contextWindow: 1000000, maxOutput: 128000, vision: true, reasoning: true, videoInput: false },
-    });
-    expect(mocks.modelsDev).not.toHaveBeenCalled();
+    }, expect.objectContaining({ sources: expect.any(Object) }));
+    expect(mocks.modelsDev).toHaveBeenCalled();
   });
 
   it("falls back to models.dev when the provider catalog is unavailable", async () => {
@@ -156,5 +157,25 @@ describe("POST /api/providers/import-models", () => {
   it("rejects a request without a provider or connection", async () => {
     const res = await POST({ json: async () => ({}) });
     expect(res.status).toBe(400);
+  });
+});
+
+describe("field-wise catalog completion", () => {
+  it("uses exact supplementary OUT/efforts while preserving provider CTX and explicit false", async () => {
+    mocks.fetch.mockResolvedValue({ok:true,json:async()=>({data:[{id:"m",context_length:1000000,capabilities:{vision:false}}]})});
+    mocks.modelsDev.mockResolvedValue({modelsDevId:"vendor",fetchedAt:1700000000000,models:{m:{caps:{contextWindow:1048576,maxOutput:32000,vision:true,reasoningLevels:["low","high"]}}}});
+    const result=await POST({json:async()=>({provider:"cheaper",targets:["caps"]})});
+    expect(result.status).toBe(200);
+    const [,caps,options]=mocks.setCapsOverridesBulk.mock.calls[0];
+    expect(caps.m).toEqual({contextWindow:1000000,maxOutput:32000,vision:false,reasoningLevels:["low","high"]});
+    expect(options.sources.m.contextWindow.source).toBe("provider");
+    expect(options.sources.m.maxOutput.source).toBe("models.dev");
+    expect(options.sources.m.maxOutput.updatedAt).toBe("2023-11-14T22:13:20.000Z");
+  });
+  it("imports declared effort choices without inferring choices from a reasoning boolean",()=>{
+    expect(catalogMetadata({id:"m",supports_reasoning:true}).caps).toEqual({reasoning:true});
+    expect(catalogMetadata({id:"m",reasoning_levels:["high","none","low","high"]}).caps).toEqual({reasoning:true,reasoningLevels:["none","low","high"]});
+    expect(catalogMetadata({id:"m",supported_reasoning_levels:[{effort:"high"},{effort:"low"}]}).caps.reasoningLevels).toEqual(["low","high"]);
+    expect(catalogMetadata({id:"m",reasoning_levels:["vendor-magic"]}).caps).toBeNull();
   });
 });

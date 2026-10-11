@@ -1,44 +1,73 @@
 import { makeKv } from "../helpers/kvStore.js";
 
-// modelCaps: key=`${provider}|${model}`, value=capabilities override object.
-// Overrides are merged over static capabilities in catalogs. Reasoning metadata
-// also reaches the request pipeline; other runtime caps retain their static policy.
 const capsKv = makeKv("modelCaps");
+export const capsKey = (provider, model) => `${provider}|${model}`;
 
-export function capsKey(provider, model) {
-  return `${provider}|${model}`;
+function layers(record) {
+  if (record?.version === 1 && record.manual && record.automatic) return record;
+  // Old imports and hand edits shared one bucket; preserve them without inventing provenance.
+  return { version: 1, manual: record || {}, automatic: {}, sources: {}, manualSources: {} };
 }
-
+function effective(record) {
+  const { manual, automatic } = layers(record);
+  const selected = { ...manual };
+  if (selected.reasoningLevels === null && Object.hasOwn(automatic, "reasoningLevels")) delete selected.reasoningLevels;
+  return { ...automatic, ...selected };
+}
 export async function getCapsOverrides() {
-  return await capsKv.getAll();
+  return Object.fromEntries(Object.entries(await capsKv.getAll()).map(([key, record]) => [key, effective(record)]));
 }
-
+export async function getManualCapsOverrides() {
+  return Object.fromEntries(Object.entries(await capsKv.getAll()).filter(([, record]) => Object.keys(layers(record).manual).length).map(([key, record]) => [key, layers(record).manual]));
+}
+export async function getAutomaticCapsOverrides() {
+  return Object.fromEntries(Object.entries(await capsKv.getAll()).map(([key, record]) => [key, layers(record).automatic]));
+}
+export async function getCapsMetadata() {
+  return Object.fromEntries(Object.entries(await capsKv.getAll()).map(([key, record]) => {
+    const { manual, automatic, sources, manualSources } = layers(record);
+    const metadata = { ...sources };
+    for (const field of Object.keys(manual)) {
+      if (field === "reasoningLevels" && manual[field] === null && Object.hasOwn(automatic, field)) continue;
+      metadata[field] = manualSources[field] || { source: "legacy", updatedAt: null, verified: false };
+    }
+    return [key, metadata];
+  }));
+}
 export async function getCapsOverride(provider, model) {
-  return await capsKv.get(capsKey(provider, model));
+  const record = await capsKv.get(capsKey(provider, model));
+  return record ? effective(record) : null;
 }
-
 export async function setCapsOverride(provider, model, caps) {
-  await capsKv.set(capsKey(provider, model), caps);
+  const key = capsKey(provider, model);
+  const record = layers(await capsKv.get(key));
+  const updatedAt = new Date().toISOString();
+  const manualSources = Object.fromEntries(Object.keys(caps).map(field => [field,
+    Object.hasOwn(record.manual, field) && JSON.stringify(record.manual[field]) === JSON.stringify(caps[field])
+      ? record.manualSources[field] || { source: "legacy", updatedAt: null, verified: false } : { source: "manual", updatedAt, verified: false },
+  ]));
+  await capsKv.set(key, { ...record, manual: caps, manualSources });
 }
-
 export async function deleteCapsOverride(provider, model) {
-  await capsKv.remove(capsKey(provider, model));
+  const key = capsKey(provider, model);
+  const record = layers(await capsKv.get(key));
+  if (Object.keys(record.automatic).length) await capsKv.set(key, { ...record, manual: {}, manualSources: {} });
+  else await capsKv.remove(key);
 }
-
-// entries: { [modelId]: caps } for one provider — single transaction
-export async function setCapsOverridesBulk(provider, entries) {
+// Catalog refresh only writes the automatic layer. Missing fields retain their last observation.
+export async function setCapsOverridesBulk(provider, entries, options = {}) {
   const existing = await capsKv.getAll();
+  const updatedAt = options.updatedAt || new Date().toISOString();
   const obj = {};
   for (const [model, caps] of Object.entries(entries)) {
     const key = capsKey(provider, model);
-    const previous = existing[key];
-    // models.dev imports refresh catalog metadata, not the user's explicit
-    // effort choices (including an empty list or a reset to automatic).
-    const reasoning = previous && Object.hasOwn(previous, "reasoningLevels") ? {
-      reasoningLevels: previous.reasoningLevels,
-      ...(typeof previous.reasoning === "boolean" ? { reasoning: previous.reasoning } : {}),
-    } : {};
-    obj[key] = { ...caps, ...reasoning };
+    const record = layers(existing[key]);
+    const sources = { ...record.sources };
+    for (const field of Object.keys(caps)) {
+      sources[field] = options.sources?.[model]?.[field]
+        || { source: options.source || "models.dev", updatedAt, verified: false };
+    }
+    obj[key] = { ...record, automatic: { ...record.automatic, ...caps }, sources };
   }
   await capsKv.setMany(obj);
 }

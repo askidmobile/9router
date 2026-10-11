@@ -62,7 +62,7 @@ export async function POST(request) {
         capsEntries[modelId] = model.caps;
       }
       if (Object.keys(capsEntries).length > 0) {
-        await setCapsOverridesBulk(alias, capsEntries);
+        await setCapsOverridesBulk(alias, capsEntries, { source: "models.dev", updatedAt: new Date(result.fetchedAt || Date.now()).toISOString() });
       }
       response.caps = { imported: Object.keys(capsEntries).length };
     }
