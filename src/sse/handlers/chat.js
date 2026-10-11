@@ -17,7 +17,7 @@ import { getTransform as getPxpipeTransform } from "@/lib/pxpipe/loader.js";
 import { appendPxpipeEvent } from "@/lib/pxpipe/events.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { upstreamResponseHeaders } from "open-sse/utils/upstreamHeaders.js";
-import { handleComboChat, handleFusionChat, detectRequiredCapabilities } from "open-sse/services/combo.js";
+import { handleComboChat, handleFusionChat, detectRequiredCapabilities, clampComboMaxOutput } from "open-sse/services/combo.js";
 import { augmentModelsWithCapacityAdapter, withCapacityAdapterStripping, getActiveAdapterStrategy } from "open-sse/services/capacityAdapter.js";
 import { handleBypassRequest } from "open-sse/utils/bypassHandler.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
@@ -153,6 +153,7 @@ export async function handleChat(request, clientRawRequest = null, requestOption
       handleSingleModel: withCapacityAdapterStripping(
         (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, {
           ...rootExecution, combo: true, visitedCombos: [modelStr],
+          comboMaxOutput: comboStrategies[modelStr]?.maxOutput,
         }),
         adapterAdded
       ),
@@ -199,6 +200,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     request = { url: request?.url, headers: request?.headers, signal: execution.signal };
   }
   if (request?.signal?.aborted) return errorResponse(499, "Request aborted");
+  if (execution.comboMaxOutput) clampComboMaxOutput(body, execution.comboMaxOutput);
   const modelInfo = execution.resolvedModelInfo || await getModelInfo(modelStr);
 
   // If provider is null, this might be a combo name - check and handle

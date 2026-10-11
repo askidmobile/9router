@@ -405,6 +405,16 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
   );
 }
 
+// Optional per-Combo output cap ("CTX OUT"). It only lowers what the caller
+// already asked for; each member's own ceiling still applies later.
+export function clampComboMaxOutput(body, maxOutput) {
+  const cap = Number.isSafeInteger(maxOutput) && maxOutput > 0 ? maxOutput : null;
+  if (!cap || !body || typeof body !== "object") return body;
+  if (Number.isFinite(body.max_tokens)) body.max_tokens = Math.min(body.max_tokens, cap);
+  if (Number.isFinite(body.max_output_tokens)) body.max_output_tokens = Math.min(body.max_output_tokens, cap);
+  return body;
+}
+
 function comboFailureSummary(failures) {
   if (!Array.isArray(failures) || failures.length < 2) return null;
   const entries = failures.slice(0, 6).map(({ model, status, error }) => {

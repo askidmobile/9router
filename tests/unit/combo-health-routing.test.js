@@ -161,6 +161,13 @@ describe("Combo health through the public chat route", () => {
     expect(mocks.freeze).not.toHaveBeenCalled();
   });
 
+  it("applies the per-Combo CTX OUT cap to member requests", async () => {
+    mocks.settings = { comboStrategies: { "combo-health-test": { maxOutput: 24 } } };
+    const response = await handleChat(request(undefined, { max_tokens: 4096 }));
+    expect(response.status).toBe(200);
+    expect(JSON.parse(mocks.transport.mock.calls[0][1].body).max_tokens).toBe(24);
+  });
+
   it("summarizes a multi-member failure instead of returning one opaque provider body", async () => {
     mocks.transport.mockImplementation(async (url) => url.includes("commandcode")
       ? new Response("Request Entity Too Large\n\nFUNCTION_PAYLOAD_TOO_LARGE\nfra1::abc-1791703234172", { status: 413 })

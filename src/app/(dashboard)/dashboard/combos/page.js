@@ -314,14 +314,28 @@ export default function CombosPage() {
     }
   };
 
+  // Per-Combo extras (currently the CTX OUT cap) live in settings.comboStrategies.
+  const persistComboExtras = async (name, maxOutput) => {
+    const updated = { ...comboStrategies };
+    const next = { ...(updated[name] || {}) };
+    if (Number.isSafeInteger(maxOutput) && maxOutput > 0) next.maxOutput = maxOutput;
+    else delete next.maxOutput;
+    const extras = Object.keys(next).filter((key) => key !== "fallbackStrategy");
+    if ((!next.fallbackStrategy || next.fallbackStrategy === "fallback") && extras.length === 0) delete updated[name];
+    else updated[name] = next;
+    await persistComboStrategies(updated);
+  };
+
   const handleCreate = async (data) => {
+    const { maxOutput, ...comboData } = data || {};
     try {
       const res = await fetch("/api/combos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify(comboData),
       });
       if (res.ok) {
+        await persistComboExtras(comboData.name, maxOutput);
         await fetchData();
         setShowCreateModal(false);
       } else {
@@ -334,13 +348,15 @@ export default function CombosPage() {
   };
 
   const handleUpdate = async (id, data) => {
+    const { maxOutput, ...comboData } = data || {};
     try {
       const res = await fetch(`/api/combos/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify(comboData),
       });
       if (res.ok) {
+        await persistComboExtras(comboData.name, maxOutput);
         await fetchData();
         setEditingCombo(null);
       } else {
@@ -433,7 +449,8 @@ export default function CombosPage() {
       const updated = { ...comboStrategies };
       const next = { ...(updated[comboName] || {}), ...patch };
       // Prune to keep settings clean: default fallback with no extras = no entry.
-      if (!next.fallbackStrategy || next.fallbackStrategy === "fallback") {
+      const extras = Object.keys(next).filter((key) => key !== "fallbackStrategy");
+      if ((!next.fallbackStrategy || next.fallbackStrategy === "fallback") && extras.length === 0) {
         delete updated[comboName];
       } else {
         updated[comboName] = next;
@@ -646,6 +663,11 @@ export default function CombosPage() {
           onClose={() => setShowCreateModal(false)}
           onSave={handleCreate}
           activeProviders={activeProviders}
+          getCaps={getCaps}
+          capsOverrides={overrides}
+          modelCaps={modelCaps}
+          aliasCandidates={aliasCandidates}
+          allCombos={combos}
         />
       )}
 
@@ -654,9 +676,15 @@ export default function CombosPage() {
           key={editingCombo.id}
           isOpen={!!editingCombo}
           combo={editingCombo}
+          strategy={comboStrategies[editingCombo.name] || {}}
           onClose={() => setEditingCombo(null)}
           onSave={(data) => handleUpdate(editingCombo.id, data)}
           activeProviders={activeProviders}
+          getCaps={getCaps}
+          capsOverrides={overrides}
+          modelCaps={modelCaps}
+          aliasCandidates={aliasCandidates}
+          allCombos={combos}
         />
       )}
 
@@ -1228,14 +1256,41 @@ function ModelItem({ id, index, model, isFirst, isLast, onEdit, onMoveUp, onMove
   );
 }
 
-function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindFilter = null }) {
+function ComboFormModal({ isOpen, combo, strategy = {}, onClose, onSave, activeProviders, kindFilter = null, getCaps = null, capsOverrides = {}, modelCaps = null, aliasCandidates = null, allCombos = [] }) {
   // Initialize state with combo values - key prop on parent handles reset on remount
   const [name, setName] = useState(combo?.name || "");
   const [models, setModels] = useState(combo?.models || []);
   const [showModelSelect, setShowModelSelect] = useState(false);
   const [saving, setSaving] = useState(false);
   const [nameError, setNameError] = useState("");
+  const [maxOutput, setMaxOutput] = useState(strategy?.maxOutput ? String(strategy.maxOutput) : "");
+  const [maxOutputError, setMaxOutputError] = useState("");
   const [modelAliases, setModelAliases] = useState({});
+
+  // The members' own ceilings bound this Combo cap, so the UI hints the limit
+  // using exactly the conservative caps the cards display.
+  const comboByName = new Map((allCombos || []).map((entry) => [entry.name, entry]));
+  const resolveNestedCombo = (memberName, seen = new Set()) => {
+    const nested = comboByName.get(memberName);
+    if (!nested || seen.has(memberName)) return null;
+    seen.add(memberName);
+    return getConservativeComboCapabilities(nested.models || [], capsOverrides, {
+      nestedResolver: (next) => resolveNestedCombo(next, seen),
+      aliasCandidates,
+      modelCaps,
+    });
+  };
+  const comboCaps = getConservativeComboCapabilities(models, capsOverrides, {
+    nestedResolver: resolveNestedCombo,
+    aliasCandidates,
+    modelCaps,
+  });
+  const memberLimit = Number.isSafeInteger(comboCaps?.maxOutput) && comboCaps.maxOutput > 0 ? comboCaps.maxOutput : null;
+  const limitingMember = memberLimit === null ? null : models.find((member) => {
+    const caps = getCaps?.(member);
+    return Number(caps?.maxOutput) === memberLimit;
+  }) || null;
+  const parsedMaxOutput = maxOutput.trim() ? Number.parseInt(maxOutput, 10) : null;
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -1321,8 +1376,16 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
 
   const handleSave = async () => {
     if (!validateName(name)) return;
+    if (parsedMaxOutput !== null && (!Number.isSafeInteger(parsedMaxOutput) || parsedMaxOutput < 1
+      || (memberLimit !== null && parsedMaxOutput > memberLimit))) {
+      setMaxOutputError(memberLimit !== null
+        ? `Max output must be between 1 and ${memberLimit.toLocaleString()} (limited by ${limitingMember})`
+        : "Max output must be a positive integer");
+      return;
+    }
+    setMaxOutputError("");
     setSaving(true);
-    await onSave({ name: name.trim(), models });
+    await onSave({ name: name.trim(), models, maxOutput: parsedMaxOutput });
     setSaving(false);
   };
 
@@ -1347,6 +1410,26 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
             />
             <p className="text-[10px] text-text-muted mt-0.5">
               Only letters, numbers, -, _ and . allowed
+            </p>
+          </div>
+
+          {/* CTX OUT (max output) */}
+          <div>
+            <label htmlFor="combo-max-output" className="text-xs text-text-muted mb-1 block">Max output — CTX OUT (tokens)</label>
+            <input
+              id="combo-max-output"
+              type="number"
+              min="1"
+              max={memberLimit ?? undefined}
+              value={maxOutput}
+              onChange={(e) => { setMaxOutput(e.target.value); setMaxOutputError(""); }}
+              placeholder={memberLimit ? `any up to ${memberLimit}` : "e.g. 64000"}
+              className="w-full rounded-lg border border-black/10 bg-transparent px-3 py-2 text-sm text-text-main outline-none focus:ring-1 focus:ring-primary dark:border-white/15"
+            />
+            <p className={`text-[10px] mt-0.5 ${maxOutputError ? "text-red-500" : "text-text-muted"}`}>
+              {maxOutputError || "Caps the answer length for every member; the members' own ceilings still apply."}
+              {!maxOutputError && memberLimit !== null ? ` Limit across members: ${memberLimit.toLocaleString()} (${limitingMember}).` : ""}
+              {!maxOutputError && memberLimit === null && models.length > 0 ? " Add a model with known output limits to see the bound." : ""}
             </p>
           </div>
 
