@@ -95,6 +95,25 @@ describe("dashboard alias resolution", () => {
   });
 });
 
+describe("saved pricing lookup", () => {
+  // The dashboard stores prices under the alias; the request pipeline and the
+  // usage journal hand back the registry id. Requesty (`requesty` vs `req`) is
+  // the case that exposed this — without the alias fallback its saved prices
+  // were invisible and the journal priced the call from a static table.
+  it("finds a price saved under the alias when asked by the provider id", async () => {
+    const { makeKv } = await import("../../src/lib/db/helpers/kvStore.js");
+    const kv = makeKv("pricing");
+    const probe = { input: 1.25, output: 5.5 };
+    await kv.set("req", { "vertex/gemini-3.8-flash": probe });
+    try {
+      const { getPricingForModel } = await import("../../src/lib/db/repos/pricingRepo.js");
+      expect(await getPricingForModel("requesty", "vertex/gemini-3.8-flash")).toEqual(probe);
+    } finally {
+      await kv.remove("req");
+    }
+  });
+});
+
 describe("registry additions", () => {
   it("keeps every id unique", () => {
     const ids = REGISTRY.map((e) => e.id);

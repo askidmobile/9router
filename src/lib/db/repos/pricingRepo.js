@@ -51,7 +51,17 @@ export async function getPricing() {
 export async function getPricingForModel(provider, model) {
   if (!model) return null;
   const userPricing = await getUserPricing();
-  if (provider && userPricing[provider]?.[model]) return userPricing[provider][model];
+  if (provider) {
+    // Saved prices are keyed by the ALIAS the dashboard writes (see
+    // getProviderAlias() consumers), while callers hand us the registry id the
+    // request pipeline uses — `requesty` vs `req`, `github` vs `gh`. Without
+    // this second lookup a saved price is invisible to exactly the providers
+    // whose id and alias differ, and the journal falls back to a static rate.
+    const { PROVIDER_ID_TO_ALIAS } = await import("open-sse/config/providerModels.js");
+    const alias = PROVIDER_ID_TO_ALIAS[provider] || provider;
+    if (userPricing[provider]?.[model]) return userPricing[provider][model];
+    if (alias !== provider && userPricing[alias]?.[model]) return userPricing[alias][model];
+  }
   const { getPricingForModel: resolveConst } = await import("open-sse/providers/pricing.js");
   return resolveConst(provider, model);
 }
