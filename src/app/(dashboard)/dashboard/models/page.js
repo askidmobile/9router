@@ -374,10 +374,13 @@ export default function ModelsPage() {
     });
   };
 
-  const handleModelsDevImport = async (group) => {
+  // The provider's own catalog is the authority (real per-key prices, limits,
+  // capabilities); models.dev is only the fallback for providers that publish
+  // nothing. The API reports which source answered.
+  const handleCatalogImport = async (group) => {
     setMdAction((prev) => ({ ...prev, [group.key]: { loading: true } }));
     try {
-      const res = await fetch("/api/models-dev/import", {
+      const res = await fetch("/api/providers/import-models", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ provider: group.providerId || group.key }),
@@ -389,7 +392,7 @@ export default function ModelsPage() {
         setMdAction((prev) => ({
           ...prev,
           [group.key]: {
-            message: `Imported ${data.pricing?.imported ?? 0} prices, ${data.caps?.imported ?? 0} capability sets`,
+            message: `Imported ${data.pricing?.imported ?? 0} prices, ${data.caps?.imported ?? 0} capability sets from ${data.source}`,
           },
         }));
         invalidateModelCapsCache();
@@ -529,15 +532,15 @@ export default function ModelsPage() {
                   <h3 className="font-semibold text-text-main truncate">{group.name}</h3>
                   <span className="text-xs text-text-muted px-1.5 py-0.5 rounded bg-surface-2">{group.models.length}</span>
                 </button>
-                {mdTarget && (
+                {(mdTarget || activeProviderAliases.has(group.providerId) || activeProviderAliases.has(group.key)) && (
                   <Button
                     size="sm"
                     variant="secondary"
                     icon="download"
-                    onClick={() => handleModelsDevImport(group)}
+                    onClick={() => handleCatalogImport(group)}
                     disabled={action?.loading}
                   >
-                    {action?.loading ? "Importing..." : "Import from models.dev"}
+                    {action?.loading ? "Importing..." : "Import pricing & capabilities"}
                   </Button>
                 )}
               </div>

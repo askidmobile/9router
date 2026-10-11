@@ -48,14 +48,15 @@ export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
     levels.includes(level) || (level === "high" && levels.includes("thinking"))
   );
 
-  // Pull caps/pricing for this model's provider from the models.dev catalog
-  // and write them as overrides. Exact values beat manual guessing.
-  const handleImportFromModelsDev = async () => {
+  // Pull caps/pricing for this model's provider from the provider's own catalog
+  // (falling back to models.dev) and write them as overrides. The provider knows
+  // the price actually charged on this key; models.dev lags behind it.
+  const handleImportFromCatalog = async () => {
     setImporting(true);
     setImportMsg("");
     setError("");
     try {
-      const res = await fetch("/api/models-dev/import", {
+      const res = await fetch("/api/providers/import-models", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ provider: model.providerAlias, targets: ["caps", "pricing"] }),
@@ -64,7 +65,7 @@ export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
       if (!res.ok) throw new Error(data.error || "Import failed");
       invalidateModelCapsCache();
       invalidatePricingCache();
-      setImportMsg(`Imported ${data.caps?.imported ?? 0} capability sets, ${data.pricing?.imported ?? 0} prices from models.dev`);
+      setImportMsg(`Imported ${data.caps?.imported ?? 0} capability sets, ${data.pricing?.imported ?? 0} prices from ${data.source}`);
       onSaved?.();
     } catch (err) {
       setImportMsg(err.message || "Import failed");
@@ -318,12 +319,12 @@ export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
             <p className="text-sm font-medium text-text-main">Capabilities</p>
             <div className="flex items-center gap-3">
               <button
-                onClick={handleImportFromModelsDev}
+                onClick={handleImportFromCatalog}
                 disabled={importing}
                 className="text-xs text-primary hover:underline disabled:opacity-50"
-                title="Fill capabilities from the models.dev catalog for this provider"
+                title="Fill pricing and capabilities from the provider's own model catalog"
               >
-                {importing ? "Importing..." : "Import from models.dev"}
+                {importing ? "Importing..." : "Import from provider"}
               </button>
               {model?.override && (
                 <button
