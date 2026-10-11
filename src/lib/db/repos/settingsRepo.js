@@ -64,6 +64,10 @@ const DEFAULT_SETTINGS = {
   pxpipeTimeoutMs: 15000,
   // Per-provider user header overrides applied at dispatch: { [providerId]: { headers: {..} } }
   providerOverrides: {},
+  // Provider aliases whose own /v1/models keeps prices and limits fresh on a timer.
+  // Opt-in per provider: a public feed like OpenRouter lists 400+ ids, so
+  // enabling everything by default would write rows nobody asked for.
+  catalogSyncProviders: [],
 };
 
 async function readRaw() {

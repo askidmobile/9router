@@ -18,9 +18,16 @@ vi.mock("@/lib/localDb", () => ({
   getProviderConnectionById: async (id) => mocks.connections.find((c) => c.id === id) || null,
   getProviderConnections: async () => mocks.connections,
 }));
+// The endpoint is a thin wrapper over src/lib/providerCatalog/import.js, which
+// reads adapters directly.
+vi.mock("@/lib/db/repos/settingsRepo.js", () => ({ getSettings: async () => ({}) }));
+// The import module reads connections and adapters from this barrel.
 vi.mock("@/lib/db/index.js", () => ({
+  getProviderConnectionById: async (id) => mocks.connections.find((c) => c.id === id) || null,
+  getProviderConnections: async () => mocks.connections,
   updatePricing: mocks.updatePricing,
   setCapsOverridesBulk: mocks.setCapsOverridesBulk,
+  addCustomModelsBulk: async () => ({ added: 0, skipped: 0 }),
 }));
 vi.mock("@/lib/modelsDev/index.js", () => ({ getProviderModels: mocks.modelsDev }));
 

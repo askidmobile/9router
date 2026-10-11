@@ -13,6 +13,7 @@ export default function ImportModelsModal({
   isOpen,
   onClose,
   connectionId,
+  providerAlias,
   providerStorageAlias,
   existingIds,
   transformId,
@@ -27,6 +28,7 @@ export default function ImportModelsModal({
   const [search, setSearch] = useState("");
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState(null);
+  const [scheduled, setScheduled] = useState(false);
 
   useEffect(() => {
     if (!isOpen || !connectionId) return;
@@ -38,6 +40,13 @@ export default function ImportModelsModal({
     setSelected(new Set());
     setSearch("");
     setResult(null);
+
+    if (providerAlias) {
+      fetch("/api/providers/catalog-sync", { cache: "no-store" })
+        .then((res) => res.json())
+        .then((data) => { if (!cancelled) setScheduled((data.providers || []).includes(providerAlias)); })
+        .catch(() => {});
+    }
 
     fetch(`/api/providers/${connectionId}/models`, { cache: "no-store" })
       .then(async (res) => ({ ok: res.ok, data: await res.json() }))
@@ -65,7 +74,7 @@ export default function ImportModelsModal({
       .finally(() => { if (!cancelled) setLoading(false); });
 
     return () => { cancelled = true; };
-  }, [isOpen, connectionId, transformId]);
+  }, [isOpen, connectionId, providerAlias, transformId]);
 
   const rows = useMemo(
     () => models.map((m) => ({ ...m, added: existingIds?.has(m.id) === true })),
@@ -103,6 +112,31 @@ export default function ImportModelsModal({
     });
   };
 
+  // Keep this provider's prices/limits fresh on the server's schedule, so the
+  // numbers do not go stale between manual imports.
+  const handleToggleSchedule = async () => {
+    if (!providerAlias) return;
+    const next = !scheduled;
+    setScheduled(next);
+    try {
+      const current = await fetch("/api/providers/catalog-sync", { cache: "no-store" })
+        .then((res) => res.json())
+        .then((data) => data.providers || [])
+        .catch(() => []);
+      const providers = next
+        ? [...new Set([...current, providerAlias])]
+        : current.filter((p) => p !== providerAlias);
+      const res = await fetch("/api/providers/catalog-sync", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ providers }),
+      });
+      if (!res.ok) throw new Error("save failed");
+    } catch {
+      setScheduled(!next);
+    }
+  };
+
   const handleImport = async () => {
     if (importing || selected.size === 0) return;
     setImporting(true);
@@ -118,6 +152,16 @@ export default function ImportModelsModal({
         setError(data.error || "Import failed");
         return;
       }
+      // Adding ids is not enough: without prices and limits the rows render
+      // bare and combos fall back to guessed context windows.
+      try {
+        const metaRes = await fetch("/api/providers/import-models", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ provider: providerStorageAlias, targets: ["pricing", "caps"] }),
+        });
+        if (metaRes.ok) data.meta = await metaRes.json();
+      } catch { /* the models are added either way; pricing can be refreshed later */ }
       setResult(data);
       if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("customModelChanged"));
       onImported?.();
@@ -137,6 +181,12 @@ export default function ImportModelsModal({
               Imported {result.added} model{result.added === 1 ? "" : "s"}
               {result.skipped > 0 ? `, ${result.skipped} already existed` : ""}.
             </p>
+            {result.meta && (
+              <p className="text-xs text-text-muted">
+                {result.meta.pricing?.imported ?? 0} prices and {result.meta.caps?.imported ?? 0} limit/capability sets
+                came from {result.meta.source}.
+              </p>
+            )}
             <Button onClick={onClose} fullWidth>Done</Button>
           </>
         ) : (
@@ -198,6 +248,17 @@ export default function ImportModelsModal({
                     <p className="py-4 text-center text-xs text-text-muted">No models match the search</p>
                   )}
                 </div>
+                {providerAlias && (
+                  <label className="flex cursor-pointer items-center gap-2 text-xs text-text-muted hover:text-primary">
+                    <input
+                      type="checkbox"
+                      checked={scheduled}
+                      onChange={handleToggleSchedule}
+                      className="h-3.5 w-3.5 rounded border-gray-300 text-primary focus:ring-primary"
+                    />
+                    {t("Auto sync prices and limits twice a day")}
+                  </label>
+                )}
                 <div className="flex gap-2">
                   <Button onClick={handleImport} fullWidth disabled={selected.size === 0 || importing}>
                     {importing ? t("Importing...") : t("Import Selected ({count})", { count: selected.size })}
@@ -221,6 +282,7 @@ ImportModelsModal.propTypes = {
   isOpen: PropTypes.bool.isRequired,
   onClose: PropTypes.func.isRequired,
   connectionId: PropTypes.string,
+  providerAlias: PropTypes.string,
   providerStorageAlias: PropTypes.string.isRequired,
   existingIds: PropTypes.instanceOf(Set),
   transformId: PropTypes.func,

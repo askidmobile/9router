@@ -10,5 +10,9 @@ export async function register() {
 
     const { startModelCatalogSync } = await import("@/lib/modelCatalog/sync.js");
     startModelCatalogSync();
+
+    // Prices and limits from each provider's own catalog (opt-in per provider).
+    const { startProviderCatalogSync } = await import("@/lib/providerCatalog/sync.js");
+    startProviderCatalogSync();
   }
 }

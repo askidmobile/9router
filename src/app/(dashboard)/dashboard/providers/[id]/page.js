@@ -1949,6 +1949,7 @@ export default function ProviderDetailPage() {
         isOpen={showImportModels}
         onClose={() => setShowImportModels(false)}
         connectionId={modelsSourceId}
+        providerAlias={providerAlias}
         providerStorageAlias={providerStorageAlias}
         existingIds={importExistingIds}
         transformId={providerId === "qoder" ? stripQoderPrefix : undefined}

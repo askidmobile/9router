@@ -35,12 +35,13 @@ export default function ModelsPage() {
   const [confirmState, setConfirmState] = useState(null);
   const [mdAction, setMdAction] = useState({});
   const [refreshing, setRefreshing] = useState(false);
+  const [catalogSync, setCatalogSync] = useState(null);
   const { getCaps } = useModelCaps();
   const { getName, overrides: nameOverrides } = useModelNames();
 
   const fetchData = useCallback(async () => {
     try {
-      const [customRes, disabledRes, aliasRes, pricingRes, capsRes, mdRes, provRes, nodesRes] = await Promise.all([
+      const [customRes, disabledRes, aliasRes, pricingRes, capsRes, mdRes, provRes, nodesRes, syncRes] = await Promise.all([
         fetch("/api/models/custom"),
         fetch("/api/models/disabled"),
         fetch("/api/models/alias"),
@@ -49,6 +50,7 @@ export default function ModelsPage() {
         fetch("/api/models-dev"),
         fetch("/api/providers"),
         fetch("/api/provider-nodes"),
+        fetch("/api/providers/catalog-sync"),
       ]);
       if (customRes.ok) {
         const data = await customRes.json();
@@ -77,6 +79,10 @@ export default function ModelsPage() {
       if (nodesRes.ok) {
         const data = await nodesRes.json();
         setProviderNodes(Array.isArray(data) ? data : data.nodes || []);
+      }
+      if (syncRes.ok) {
+        const data = await syncRes.json();
+        setCatalogSync(data);
       }
     } catch (error) {
       console.log("Error fetching models data:", error);
@@ -377,13 +383,16 @@ export default function ModelsPage() {
   // The provider's own catalog is the authority (real per-key prices, limits,
   // capabilities); models.dev is only the fallback for providers that publish
   // nothing. The API reports which source answered.
+  //
+  // registerModels adds every imported id to the model list: a catalog of 90
+  // models is unusable if only the 10 hand-written ids are selectable.
   const handleCatalogImport = async (group) => {
     setMdAction((prev) => ({ ...prev, [group.key]: { loading: true } }));
     try {
       const res = await fetch("/api/providers/import-models", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider: group.providerId || group.key }),
+        body: JSON.stringify({ provider: group.providerId || group.key, registerModels: true }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -392,7 +401,8 @@ export default function ModelsPage() {
         setMdAction((prev) => ({
           ...prev,
           [group.key]: {
-            message: `Imported ${data.pricing?.imported ?? 0} prices, ${data.caps?.imported ?? 0} capability sets from ${data.source}`,
+            message: `Imported ${data.pricing?.imported ?? 0} prices, ${data.caps?.imported ?? 0} capability sets from ${data.source}`
+              + (data.registered?.added ? ` · added ${data.registered.added} models` : ""),
           },
         }));
         invalidateModelCapsCache();
@@ -401,6 +411,27 @@ export default function ModelsPage() {
       }
     } catch {
       setMdAction((prev) => ({ ...prev, [group.key]: { error: "Import failed" } }));
+    }
+  };
+
+  // Opt this provider into (or out of) the scheduled catalog refresh.
+  const handleToggleCatalogSync = async (group) => {
+    const alias = group.providerId || group.key;
+    const current = catalogSync?.providers || [];
+    const next = current.includes(alias)
+      ? current.filter((p) => p !== alias)
+      : [...current, alias];
+    setCatalogSync((prev) => ({ ...(prev || {}), providers: next }));
+    try {
+      const res = await fetch("/api/providers/catalog-sync", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ providers: next }),
+      });
+      if (!res.ok) throw new Error("save failed");
+      await fetchData();
+    } catch {
+      setCatalogSync((prev) => ({ ...(prev || {}), providers: current }));
     }
   };
 
@@ -517,6 +548,9 @@ export default function ModelsPage() {
               resolveModelsDevProviderId(group.key, catalogIds)
             : null;
           const action = mdAction[group.key];
+          const scheduled = (catalogSync?.providers || []).some(
+            (p) => p === group.providerId || p === group.key
+          );
           const isCollapsed = collapsedGroups.has(group.key);
           return (
             <Card key={group.key}>
@@ -533,15 +567,34 @@ export default function ModelsPage() {
                   <span className="text-xs text-text-muted px-1.5 py-0.5 rounded bg-surface-2">{group.models.length}</span>
                 </button>
                 {(mdTarget || activeProviderAliases.has(group.providerId) || activeProviderAliases.has(group.key)) && (
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    icon="download"
-                    onClick={() => handleCatalogImport(group)}
-                    disabled={action?.loading}
-                  >
-                    {action?.loading ? "Importing..." : "Import pricing & capabilities"}
-                  </Button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleCatalogSync(group)}
+                      title={scheduled
+                        ? "Prices and limits refresh automatically twice a day"
+                        : "Refresh prices, limits and the model list from this provider twice a day"}
+                      className={`inline-flex h-8 items-center gap-1 rounded-lg border px-2.5 text-xs transition-colors ${
+                        scheduled
+                          ? "border-primary/40 bg-primary/5 text-primary"
+                          : "border-border text-text-muted hover:border-primary/40 hover:text-primary"
+                      }`}
+                    >
+                      <span className="material-symbols-outlined text-[16px]">
+                        {scheduled ? "autorenew" : "schedule"}
+                      </span>
+                      {scheduled ? "Auto" : "Auto sync"}
+                    </button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      icon="download"
+                      onClick={() => handleCatalogImport(group)}
+                      disabled={action?.loading}
+                    >
+                      {action?.loading ? "Importing..." : "Import pricing & capabilities"}
+                    </Button>
+                  </>
                 )}
               </div>
               {action?.message && <p className="text-xs text-green-600 my-2">{action.message}</p>}
