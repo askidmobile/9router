@@ -5,7 +5,7 @@ import PropTypes from "prop-types";
 import { Card, Button, CardSkeleton, ConfirmModal, CapacityBadges, SegmentedControl } from "@/shared/components";
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import { PROVIDER_MODELS, getModelKind } from "@/shared/constants/models";
-import { getProviderAlias, getProviderByAlias } from "@/shared/constants/providers";
+import { getProviderAlias, getProviderByAlias, resolveProviderId } from "@/shared/constants/providers";
 import { useModelCaps, invalidateModelCapsCache } from "@/shared/hooks/useModelCaps";
 import { invalidatePricingCache } from "@/shared/hooks/usePricing";
 import { resolveModelsDevProviderId } from "@/lib/modelsDev/providerMap.js";
@@ -416,11 +416,12 @@ export default function ModelsPage() {
 
   // Opt this provider into (or out of) the scheduled catalog refresh.
   const handleToggleCatalogSync = async (group) => {
-    const alias = group.providerId || group.key;
+    // The API stores registry ids; a group can be labelled by its alias (`req`).
+    const id = resolveProviderId(group.providerId || group.key);
     const current = catalogSync?.providers || [];
-    const next = current.includes(alias)
-      ? current.filter((p) => p !== alias)
-      : [...current, alias];
+    const next = current.includes(id)
+      ? current.filter((p) => p !== id)
+      : [...current, id];
     setCatalogSync((prev) => ({ ...(prev || {}), providers: next }));
     try {
       const res = await fetch("/api/providers/catalog-sync", {
@@ -431,7 +432,7 @@ export default function ModelsPage() {
       if (!res.ok) throw new Error("save failed");
       // Opting in should show current numbers now, not after the first timer
       // tick — the two-day interval makes a wait indistinguishable from a bug.
-      if (!current.includes(alias)) {
+      if (!current.includes(id)) {
         await fetch("/api/providers/catalog-sync", { method: "POST" }).catch(() => {});
       }
       await fetchData();
@@ -554,7 +555,7 @@ export default function ModelsPage() {
             : null;
           const action = mdAction[group.key];
           const scheduled = (catalogSync?.providers || []).some(
-            (p) => p === group.providerId || p === group.key
+            (p) => p === resolveProviderId(group.providerId) || p === resolveProviderId(group.key)
           );
           const isCollapsed = collapsedGroups.has(group.key);
           return (

@@ -1,20 +1,22 @@
 import { NextResponse } from "next/server";
 import { getSettings, updateSettings } from "@/lib/localDb";
-import { getProviderAlias } from "@/shared/constants/providers";
+import { resolveProviderId } from "@/shared/constants/providers";
 import { getRegistryEntry } from "@/lib/providerModels/deriveModelsEndpoint.js";
 import { syncProviderCatalogs, getCatalogSyncState, SYNC_INTERVAL_MS } from "@/lib/providerCatalog/sync.js";
 
 export const dynamic = "force-dynamic";
 
 // Which providers can be scheduled: those whose catalog this router can fetch
-// (a connection is checked at run time, not here).
+// (a connection is checked at run time, not here). Entries are canonicalised to
+// the registry id, so an alias ("req") and its id ("requesty") can never end up
+// in the list twice and be synced twice per run.
 function normalizeProviders(input) {
   if (!Array.isArray(input)) return null;
   const out = [];
   for (const raw of input) {
-    if (typeof raw !== "string") continue;
-    const alias = getProviderAlias(raw) || raw;
-    if (!out.includes(alias)) out.push(alias);
+    if (typeof raw !== "string" || !raw.trim()) continue;
+    const id = resolveProviderId(raw.trim());
+    if (!out.includes(id)) out.push(id);
   }
   return out;
 }

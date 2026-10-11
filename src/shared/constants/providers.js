@@ -22,6 +22,11 @@ function buildProviderEntry(r) {
     ...display,
     id: r.id,
     alias: r.uiAlias || r.alias,
+    // Extra routing tokens from the registry. Routing resolves them through
+    // open-sse ALIAS_TO_PROVIDER_ID, so the dashboard must see the same list —
+    // otherwise an alias like `apx` routes requests but is invisible to
+    // getProviderByAlias(), rejecting it wherever the UI validates input.
+    ...(r.aliases ? { aliases: r.aliases } : {}),
     ...(r.hidden ? { hidden: true } : {}),
     ...mediaFields,
     ...(r.priority !== undefined ? { priority: r.priority } : {}),
@@ -116,7 +121,7 @@ export const AUTH_METHODS = {
 // Helper: Get provider by alias
 export function getProviderByAlias(alias) {
   for (const provider of Object.values(AI_PROVIDERS)) {
-    if (provider.alias === alias || provider.id === alias) {
+    if (provider.alias === alias || provider.id === alias || provider.aliases?.includes(alias)) {
       return provider;
     }
   }

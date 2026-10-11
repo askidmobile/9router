@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import PropTypes from "prop-types";
 import { Modal, Button } from "@/shared/components";
 import { useTranslation } from "@/i18n/useTranslation";
+import { resolveProviderId } from "@/shared/constants/providers";
 
 // Generic "import models from the provider's /models endpoint" modal.
 // Fetches GET /api/providers/{connectionId}/models, lets the user pick models
@@ -44,7 +45,7 @@ export default function ImportModelsModal({
     if (providerAlias) {
       fetch("/api/providers/catalog-sync", { cache: "no-store" })
         .then((res) => res.json())
-        .then((data) => { if (!cancelled) setScheduled((data.providers || []).includes(providerAlias)); })
+        .then((data) => { if (!cancelled) setScheduled((data.providers || []).includes(resolveProviderId(providerAlias))); })
         .catch(() => {});
     }
 
@@ -123,9 +124,10 @@ export default function ImportModelsModal({
         .then((res) => res.json())
         .then((data) => data.providers || [])
         .catch(() => []);
+      const id = resolveProviderId(providerAlias);
       const providers = next
-        ? [...new Set([...current, providerAlias])]
-        : current.filter((p) => p !== providerAlias);
+        ? [...new Set([...current, id])]
+        : current.filter((p) => p !== id);
       const res = await fetch("/api/providers/catalog-sync", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },

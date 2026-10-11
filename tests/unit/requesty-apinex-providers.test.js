@@ -9,6 +9,7 @@ import { DefaultExecutor } from "../../open-sse/executors/default.js";
 import { deriveModelsEndpoint } from "../../src/lib/providerModels/deriveModelsEndpoint.js";
 import { parseModel, resolveProviderAlias } from "../../open-sse/services/model.js";
 import { resolveTransport } from "../../open-sse/services/provider.js";
+import { resolveProviderId, getProviderByAlias } from "../../src/shared/constants/providers.js";
 
 describe("Requesty provider", () => {
   const entry = REGISTRY.find((e) => e.id === "requesty");
@@ -74,6 +75,23 @@ describe("APInex Bond provider", () => {
     const ids = (PROVIDER_MODELS.apinex || []).map((m) => m.id);
     expect(ids).toContain("claude-opus-5.5");
     expect(ids.some((id) => id.startsWith("free/"))).toBe(true);
+  });
+});
+
+describe("dashboard alias resolution", () => {
+  // Routing (open-sse ALIAS_TO_PROVIDER_ID) honours registry `aliases[]`, so the
+  // dashboard must resolve them too: otherwise a provider routes fine but the
+  // schedule validator and the provider page call the alias unknown.
+  it("resolves an extra alias to its provider id", () => {
+    expect(resolveProviderId("apx")).toBe("apinex");
+    expect(resolveProviderId("apinex-bond")).toBe("apinex");
+    expect(resolveProviderId("req")).toBe("requesty");
+    expect(getProviderByAlias("apx")?.id).toBe("apinex");
+  });
+
+  it("still resolves the primary alias and the id itself", () => {
+    expect(resolveProviderId("apinex")).toBe("apinex");
+    expect(resolveProviderId("requesty")).toBe("requesty");
   });
 });
 

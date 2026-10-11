@@ -98,6 +98,17 @@ describe("scheduled provider catalog sync", () => {
     expect(result).toMatchObject({ synced: 1, failed: 1 });
   });
 
+  it("syncs an alias entry through its connection only once", async () => {
+    // Combos and the UI label Requesty by its alias `req`; the schedule stores
+    // registry ids, so a request for `req` must resolve to the `requesty`
+    // connection rather than being looked up as an unknown provider.
+    mocks.settings = { catalogSyncProviders: ["requesty"] };
+    mocks.connections = [{ id: "c1", provider: "requesty", isActive: true, apiKey: "k", providerSpecificData: {} }];
+    mocks.fetch.mockResolvedValue({ ok: true, json: async () => CATALOG });
+    const result = await syncProviderCatalogs();
+    expect(result.providers.requesty).toMatchObject({ status: "ok" });
+  });
+
   it("reads the opt-in list from settings and filters junk", async () => {
     mocks.settings = { catalogSyncProviders: ["cheaper", "", 42, null, "groq"] };
     expect(await getSyncProviders()).toEqual(["cheaper", "groq"]);
