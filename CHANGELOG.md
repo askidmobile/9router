@@ -1,6 +1,7 @@
 # v0.5.99 (2026-10-08)
 
 ## Askid fork
+- **Pricing**: a saved price now resolves through the provider alias, so providers whose id and alias differ (github/gh, kiro/kr, cloudflare-ai/cf, requesty/req) no longer fall back to a static rate in usage accounting.
 - **Providers**: Requesty (`req`) and APInex Bond (`apinex`, alias `apx`) are native providers with chat, Responses and Anthropic Messages transports, live catalog import of prices/limits and the scheduled refresh. Their `req`/`apinex` openai-compatible nodes were migrated in place, so existing combo members kept working.
 - **Model catalog**: catalog metadata detection now covers three published shapes — `pricing.*_per_million`, APInex's flat `dollarsPer1M`, and Requesty's bare per-token rates — plus `context_window` limits and flat `supports_*` capability flags.
 - **Model catalog**: importing a provider's catalog now also registers every listed model, so the whole catalog is selectable instead of only the hand-written ids, and the import dialog offers a per-provider `Auto sync` that refreshes prices, limits and the model list twice a day (`settings.catalogSyncProviders`). The schedule is opt-in per provider because a public feed like OpenRouter lists 450+ ids.
