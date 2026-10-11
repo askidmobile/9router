@@ -699,9 +699,20 @@ export async function buildModelsList(kindFilter, options = {}) {
     const provider = slash < 0 ? null : model.id.slice(0, slash);
     const id = slash < 0 ? model.id : model.id.slice(slash + 1);
     const observed = metadata[`${provider}|${id}`] || {};
-    model.capability_sources = Object.fromEntries(Object.keys(model.capabilities || {}).map(field => [
-      field, observed[field] || { source: slash < 0 ? "combo" : "registry", updatedAt: null, verified: false },
-    ]));
+    const combo = slash < 0 ? combos.find(combo => combo.name === model.id) : null;
+    model.capability_sources = Object.fromEntries(Object.keys(model.capabilities || {}).map(field => {
+      if (observed[field]) return [field, observed[field]];
+      if (combo) {
+        const memberSources = combo.models.map(member => {
+          const cut = member.indexOf("/");
+          return metadata[`${member.slice(0, cut)}|${member.slice(cut + 1)}`]?.[field];
+        });
+        const dates = memberSources.map(info => info?.updatedAt).filter(Boolean).sort();
+        return [field, { source: "combo", updatedAt: dates.at(-1) || null,
+          verified: memberSources.length > 0 && memberSources.every(info => info?.verified === true), members: combo.models }];
+      }
+      return [field, { source: "registry", updatedAt: null, verified: false }];
+    }));
     if (Number.isFinite(model.capabilities?.maxOutput)) model.max_output_tokens = model.capabilities.maxOutput;
     if (Array.isArray(model.capabilities?.reasoningLevels)) model.reasoning_levels = model.capabilities.reasoningLevels;
   }

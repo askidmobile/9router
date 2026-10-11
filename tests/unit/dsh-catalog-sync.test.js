@@ -50,6 +50,10 @@ describe("DSH model catalog synchronization", () => {
     expect(next.text).toContain("contextWindow: 900000");
     expect(next.text).toContain("maxTokens: 64000");
   });
+  it("refreshes a Combo using the router's derived limit", () => {
+    const out = syncDshProfile(profile,[{...model,capability_sources:{...sources,contextWindow:{source:"combo",verified:false}}}]);
+    expect(out.text).toContain("contextWindow: 1000000");
+  });
   it("does not turn unknown registry estimates into confirmed client settings", () => {
     const out = syncDshProfile(profile,[{...model,capability_sources:{}}]);
     expect(out.text).toBe(profile);
