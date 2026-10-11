@@ -1,6 +1,7 @@
 # v0.5.99 (2026-10-08)
 
 ## Askid fork
+- **Model catalog**: `POST /api/providers/import-models` reads pricing and capabilities from the provider's own `/v1/models` (limits, vision/reasoning, discount-adjusted per-million prices) and falls back to models.dev only when the provider publishes nothing. The Models page and the model editor now offer "Import pricing & capabilities" instead of a models.dev-only import.
 - **Cheaper Inference**: native provider (`cheaper`, alias `ci`) replacing the user-defined openai-compatible node — OpenAI Chat Completions plus the stateless Responses layer for Codex. Declares the documented 4.5 MB request-body cap as `transport.quirks.maxRequestBodyBytes`; BaseExecutor enforces it on the serialized body, so an oversized request answers 413 with the limit and the real size instead of an opaque edge error, and a Combo skips that member without locking the account.
 - **Response accounting**: expose the actual provider/model and USD `usage.cost` in JSON, SSE and Responses replies, including Combo fallback winners; Fusion replies include completed panel and judge calls in `usage.cost_details.requests`.
 - **Pricing**: honor saved prices and upstream-reported costs; use raw billable tokens, preserve explicit zero cache rates, and distinguish unavailable prices from free routes.
