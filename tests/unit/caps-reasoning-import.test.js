@@ -5,6 +5,7 @@ const { storage, kv } = vi.hoisted(() => {
     getAll: async () => ({...storage}), get: async k => storage[k] || null,
     setMany: async obj => Object.assign(storage,obj), set: async (k,v) => {storage[k]=v},
     remove: async k => {delete storage[k]},
+    updateMany: async (keys, update) => {for (const key of keys) {const value=update(storage[key]||null,key);if(value===null) delete storage[key];else storage[key]=value}},
   }};
 });
 vi.mock("../../src/lib/db/helpers/kvStore.js", () => ({ makeKv: () => kv }));

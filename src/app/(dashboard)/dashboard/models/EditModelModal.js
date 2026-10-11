@@ -28,6 +28,7 @@ const inputClass =
   "w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary";
 
 export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
+  const [metadataLoading, setMetadataLoading] = useState(true);
   const [metadataRevision, setMetadataRevision] = useState(0);
   const [catalogCaps, setCatalogCaps] = useState({});
   const [manualCaps, setManualCaps] = useState({});
@@ -91,6 +92,7 @@ export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
   useEffect(() => {
     if (!isOpen || !model) return;
     let cancelled = false;
+    setMetadataLoading(true);
     setCatalogCaps({});
     setManualCaps(model.override || {});
     setSources({});
@@ -112,7 +114,7 @@ export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
       const levels = Array.isArray(manual.reasoningLevels) ? manual.reasoningLevels
         : getThinkingLevels(model.providerId || model.providerAlias, model.id, { ...model.staticCaps, ...automatic, reasoning: true }) || [];
       setReasoningLevels(orderedLevels(levels));
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => { if (!cancelled) setMetadataLoading(false); });
     setName(model.name || model.id);
     setAlias(model.alias || "");
     setContextWindow(model.caps?.contextWindow ? String(model.caps.contextWindow) : "");
@@ -312,7 +314,7 @@ export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
           <Button variant="ghost" onClick={onClose} disabled={saving}>
             Cancel
           </Button>
-          <Button onClick={handleSave} loading={saving}>
+          <Button onClick={handleSave} loading={saving} disabled={metadataLoading}>
             Save
           </Button>
         </>
@@ -364,7 +366,7 @@ export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
             <div className="flex items-center gap-3">
               <button
                 onClick={handleImportFromCatalog}
-                disabled={importing}
+                disabled={importing || metadataLoading}
                 className="text-xs text-primary hover:underline disabled:opacity-50"
                 title="Fill pricing and capabilities from the provider's own model catalog"
               >
@@ -387,6 +389,7 @@ export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
               <label htmlFor="edit-model-ctx" className="text-xs text-text-muted mb-1 block">Context window (tokens)</label>
               <input
                 id="edit-model-ctx"
+                disabled={metadataLoading}
                 type="number"
                 min="1"
                 value={contextWindow}
@@ -400,6 +403,7 @@ export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
               <label htmlFor="edit-model-out" className="text-xs text-text-muted mb-1 block">Max output (tokens)</label>
               <input
                 id="edit-model-out"
+                disabled={metadataLoading}
                 type="number"
                 min="1"
                 value={maxOutput}
@@ -415,6 +419,7 @@ export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
               <label key={key} className="flex items-center gap-2 text-sm text-text-main cursor-pointer">
                 <input
                   type="checkbox"
+                  disabled={metadataLoading}
                   checked={!!flags[key]}
                   onChange={(e) => setFlags((prev) => ({ ...prev, [key]: e.target.checked }))}
                   className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
@@ -423,7 +428,7 @@ export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
               </label>
             ))}
           </div>
-          <fieldset className="mt-4 border-t border-border pt-3" disabled={!flags.reasoning}>
+          <fieldset className="mt-4 border-t border-border pt-3" disabled={!flags.reasoning || metadataLoading}>
             <legend className="sr-only">Reasoning effort levels</legend>
             <p className="text-sm font-medium text-text-main mb-2">Reasoning effort levels</p>
             <p className="text-xs text-text-muted mb-2">{sourceText("reasoningLevels")}</p>
