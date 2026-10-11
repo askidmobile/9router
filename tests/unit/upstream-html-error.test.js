@@ -41,11 +41,11 @@ describe("sanitizeUpstreamBody", () => {
 });
 
 describe("error parsing", () => {
-  it("sanitizes an HTML error page", async () => {
+  it("sanitizes an HTML error page and names the delivered status", async () => {
     const response = new Response(INTERSTITIAL, { status: 502, headers: { "content-type": "text/html" } });
     const parsed = await parseUpstreamError(response, new BaseExecutor("apinex", {}));
     expect(parsed.statusCode).toBe(502);
-    expect(parsed.message).toBe("503 Service Temporarily Unavailable");
+    expect(parsed.message).toBe("HTTP 502 from the edge: 503 Service Temporarily Unavailable");
     expect(parsed.message).not.toContain("<");
   });
 
@@ -82,7 +82,7 @@ describe("HTML interstitial retry policy", () => {
     expect(out.response.status).toBe(502);
     const parsed = await parseUpstreamError(out.response, new BaseExecutor("apinex", {}));
     expect(parsed.statusCode).toBe(502);
-    expect(parsed.message).toBe("503 Service Temporarily Unavailable");
+    expect(parsed.message).toBe("Edge HTML page instead of a completion: 503 Service Temporarily Unavailable");
     expect(parsed.message).not.toContain("<");
   });
 

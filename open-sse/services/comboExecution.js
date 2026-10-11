@@ -1,3 +1,4 @@
+import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { COMBO_HEALTH_CONFIG } from "../config/comboHealth.js";
 import { GEMINI_FLEX_TIMEOUT_MS } from "../config/gemini.js";
 import { getComboHealth, freezeComboModel, clearComboModel } from "./comboHealth.js";
@@ -257,7 +258,11 @@ export async function runComboModelExecution({
 
   try {
     const requestPolicy = {
-      maxRetries: 0,
+      // Retry transient failures once within the original first-response window.
+      maxRetries: 1,
+      deadlineAtMs: Date.now() + firstMs,
+      // Quota errors and timeouts fall through immediately.
+      retryStatuses: [HTTP_STATUS.BAD_GATEWAY, HTTP_STATUS.SERVICE_UNAVAILABLE],
       headersTimeoutMs: firstMs,
       strictCompletion: true,
       ...(timeoutFloorMs ? { headersTimeoutFloorMs: timeoutFloorMs } : {}),

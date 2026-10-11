@@ -120,7 +120,10 @@ export class BaseExecutor {
       } catch { /* truncated or non-JSON despite the first character */ }
     }
     const message = sanitizeUpstreamBody(raw, contentType);
-    return { status: response.status, message: message || `HTTP ${response.status}` };
+    // The HTTP status may differ from the status printed in an edge page.
+    const stated = /^(\d{3})\b/.exec(message)?.[1];
+    const prefix = stated && Number(stated) !== response.status ? `HTTP ${response.status} from the edge: ` : "";
+    return { status: response.status, message: message ? prefix + message : `HTTP ${response.status}` };
   }
 
   async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, requestPolicy, providerOverrides = null }) {
@@ -137,9 +140,12 @@ export class BaseExecutor {
     // response (optional) lets a subclass hook compute a dynamic delay (e.g. antigravity Retry-After).
     const tryRetry = async (urlIndex, statusKey, reason, response = null) => {
       throwIfAborted(signal);
-      if (requestPolicy?.maxRetries === 0) return false;
+      const retryCap = Number.isFinite(requestPolicy?.maxRetries) ? requestPolicy.maxRetries : Infinity;
+      if (retryCap <= 0) return false;
+      const allowedStatuses = requestPolicy?.retryStatuses;
+      if (allowedStatuses && !allowedStatuses.includes(statusKey)) return false;
       const { attempts, delayMs } = resolveRetryEntry(retryConfig[statusKey]);
-      if (attempts <= 0 || retryAttemptsByUrl[urlIndex] >= attempts) return false;
+      if (attempts <= 0 || retryAttemptsByUrl[urlIndex] >= Math.min(attempts, retryCap)) return false;
       // Hook: subclass may derive delay from the response (headers/body). null → skip retry, use fallback.
       let waitMs = delayMs;
       if (response && this.computeRetryDelay) {
@@ -148,10 +154,20 @@ export class BaseExecutor {
         if (dynamic === false) return false; // hook vetoes retry (e.g. Retry-After too long)
         if (dynamic != null) waitMs = dynamic;
       }
+      const retryAfter = response?.headers?.get?.("retry-after");
+      if (retryAfter) {
+        const retryAt = Number.isFinite(Number(retryAfter))
+          ? Date.now() + Number(retryAfter) * 1000 : Date.parse(retryAfter);
+        if (Number.isFinite(retryAt)) waitMs = Math.max(waitMs, retryAt - Date.now());
+      }
+      // Do not spend the remaining member window waiting for a retry.
+      const deadlineAtMs = requestPolicy?.deadlineAtMs;
+      if (Number.isFinite(deadlineAtMs) && Date.now() + waitMs >= deadlineAtMs) return false;
       retryAttemptsByUrl[urlIndex]++;
       log?.debug?.("RETRY", `${reason} retry ${retryAttemptsByUrl[urlIndex]}/${attempts} after ${waitMs / 1000}s`);
+      await response?.body?.cancel?.().catch(() => {});
       await abortableDelay(waitMs, signal);
-      return true;
+      return !Number.isFinite(deadlineAtMs) || Date.now() < deadlineAtMs;
     };
 
     for (let urlIndex = 0; urlIndex < fallbackCount; urlIndex++) {
@@ -171,7 +187,9 @@ export class BaseExecutor {
         : this.getRequestTimeoutMs(model, transformedBody);
       const timeoutFloorMs = Number.isSafeInteger(requestPolicy?.headersTimeoutFloorMs)
         && requestPolicy.headersTimeoutFloorMs > 0 ? requestPolicy.headersTimeoutFloorMs : 0;
-      const timeoutMs = Math.max(cappedTimeoutMs, timeoutFloorMs);
+      const remainingMs = Number.isFinite(requestPolicy?.deadlineAtMs)
+        ? Math.max(1, requestPolicy.deadlineAtMs - Date.now()) : Infinity;
+      const timeoutMs = Math.min(Math.max(cappedTimeoutMs, timeoutFloorMs), remainingMs);
       const connectTimer = setTimeout(() => connectCtrl.abort(new Error("fetch connect timeout")), timeoutMs);
       const mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
 
@@ -231,7 +249,8 @@ export class BaseExecutor {
             continue;
           }
           const bodyText = await response.text().catch(() => "");
-          const message = sanitizeUpstreamBody(bodyText, "text/html") || `HTTP ${response.status} from the edge`;
+          const page = sanitizeUpstreamBody(bodyText, "text/html");
+          const message = page ? `Edge HTML page instead of a completion: ${page}` : `HTTP ${response.status} from the edge`;
           dbg("FETCH", `${this.provider.toUpperCase()} ✖ html interstitial: ${message}`);
           return {
             response: new Response(JSON.stringify({ error: { message } }), {

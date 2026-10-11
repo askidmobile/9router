@@ -30,6 +30,7 @@ vi.mock("@/lib/localDb", () => ({
     ? [{ id: "openai-compatible-chat-test", prefix: "cheaper-test", type: "openai-compatible" }] : [],
 }));
 vi.mock("@/lib/disabledModelsDb", () => ({ getDisabledModels: async () => ({}) }));
+vi.mock("@/lib/modelReasoning.js", () => ({ getModelReasoningCaps: async () => ({}) }));
 vi.mock("@/lib/pxpipe/loader.js", () => ({ getTransform: async () => null }));
 vi.mock("@/lib/pxpipe/events.js", () => ({ appendPxpipeEvent: vi.fn() }));
 vi.mock("@/lib/usageDb.js", () => ({
@@ -95,7 +96,7 @@ beforeEach(() => {
   mocks.settings = {};
   mocks.combos.clear(); mocks.circuits.clear(); mocks.executors.clear();
   mocks.combos.set("combo-health-test", [`cmc/${MODEL}`, "openai/gpt-4o-mini"]);
-  for (const provider of ["commandcode", "openai", CUSTOM, RESPONSES, "gemini"]) {
+  for (const provider of ["commandcode", "openai", CUSTOM, RESPONSES, "gemini", "apinex"]) {
     const executor = new DefaultExecutor(provider);
     executor.config = { ...executor.config, timeoutMs: 60_000, retry: { 502: { attempts: 2, delayMs: 1000 } } };
     mocks.executors.set(provider, executor);
@@ -121,16 +122,55 @@ afterEach(async () => {
 });
 
 describe("Combo health through the public chat route", () => {
-  it("freezes a failed provider once, immediately tries the next provider, and skips the frozen pair on a later request", async () => {
-    mocks.transport.mockImplementation(async (url, options) => url.includes("commandcode") ? new Response("Unavailable", { status: 502 }) : success(options));
-    const first = await handleChat(request());
-    expect(first.status).toBe(200);
+  it("recovers an APInex 503 HTML response through the same member before fallback", async () => {
+    mocks.combos.set("apinex-retry", ["apinex/free/muse-spark-1.3", "openai/gpt-4o-mini"]);
+    mocks.transport.mockResolvedValueOnce(new Response(
+      "<html><title>503 Service Temporarily Unavailable</title></html>",
+      { status: 503, headers: { "content-type": "text/html" } },
+    ));
+    const task = handleChat(request("apinex-retry", { stream: true }));
+    await pumpUntil(() => mocks.logger.debug.mock.calls.some(([scope]) => scope === "RETRY"));
+    await vi.advanceTimersByTimeAsync(2_000);
+    const response = await task;
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain('"content":"OK"');
     expect(mocks.transport).toHaveBeenCalledTimes(2);
+    expect(mocks.credentials.mock.calls.map(([provider]) => provider)).toEqual(["apinex"]);
+    expect(mocks.freeze).not.toHaveBeenCalled();
+    expect(mocks.clear).toHaveBeenCalledWith({ provider: "apinex", model: "free/muse-spark-1.3" });
+  });
+
+  it("returns a clean 503 after APInex exhausts its single reconnect", async () => {
+    mocks.combos.set("apinex-retry", ["apinex/free/muse-spark-1.3"]);
+    mocks.transport.mockImplementation(async () => new Response(
+      "<html><title>503 Service Temporarily Unavailable</title></html>",
+      { status: 503, headers: { "content-type": "text/html" } },
+    ));
+    const task = handleChat(request("apinex-retry"));
+    await pumpUntil(() => mocks.logger.debug.mock.calls.some(([scope]) => scope === "RETRY"));
+    await vi.advanceTimersByTimeAsync(2_000);
+    const response = await task;
+    expect(response.status).toBe(503);
+    const text = await response.text();
+    expect(text).toContain("503 Service Temporarily Unavailable");
+    expect(text).not.toContain("<html");
+    expect(mocks.transport).toHaveBeenCalledTimes(2);
+    expect(mocks.freeze).toHaveBeenCalledOnce();
+  });
+
+  it("freezes a failed provider once, reconnects it once, then tries the next provider and skips the frozen pair later", async () => {
+    mocks.transport.mockImplementation(async (url, options) => url.includes("commandcode") ? new Response("Unavailable", { status: 502 }) : success(options));
+    const task = handleChat(request());
+    await pumpUntil(() => mocks.logger.debug.mock.calls.some(([scope]) => scope === "RETRY"));
+    await vi.advanceTimersByTimeAsync(1_000); // the member's single reconnect
+    const first = await task;
+    expect(first.status).toBe(200);
+    expect(mocks.transport).toHaveBeenCalledTimes(3); // two for the member, one for the next
     expect(mocks.freeze).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ provider: "commandcode", model: MODEL, status: 502 }));
     expect(mocks.credentials.mock.calls.map(([provider]) => provider)).toEqual(["commandcode", "openai"]);
     expect(mocks.lockAccount).not.toHaveBeenCalled();
     expect((await handleChat(request())).status).toBe(200);
-    expect(mocks.transport).toHaveBeenCalledTimes(3);
+    expect(mocks.transport).toHaveBeenCalledTimes(4);
     expect(mocks.freeze).toHaveBeenCalledTimes(1);
     expect(mocks.credentials.mock.calls.map(([provider]) => provider)).toEqual(["commandcode", "openai", "openai"]);
   });
@@ -278,13 +318,16 @@ describe("Combo health through the public chat route", () => {
     mocks.settings = { capacityAdapter: { vision: { enabled: true, models: ["openai/gpt-4o-mini"] } } };
     mocks.transport.mockImplementation(async (url, options) => url.includes("api.openai.com")
       ? new Response("Adapter unavailable", { status: 502 }) : success(options));
-    const response = await handleChat(request("cmc/deepseek-chat", { messages: [{ role: "user", content: [
+    const task = handleChat(request("cmc/deepseek-chat", { messages: [{ role: "user", content: [
       { type: "text", text: "Describe this image." }, { type: "image_url", image_url: { url: "data:image/png;base64,dGVzdA==" } },
     ] }] }));
+    await pumpUntil(() => mocks.logger.debug.mock.calls.some(([scope]) => scope === "RETRY"));
+    await vi.advanceTimersByTimeAsync(1_000); // the adapter's single reconnect
+    const response = await task;
     expect(response.status).toBe(200);
     expect((await response.json()).choices[0].message.content).toBe("OK");
     expect(mocks.credentials.mock.calls.map(([provider]) => provider)).toEqual(["openai", "commandcode"]);
-    expect(mocks.transport.mock.calls.map(([, options]) => JSON.parse(options.body).model)).toEqual(["gpt-4o-mini", "deepseek-chat"]);
+    expect(mocks.transport.mock.calls.map(([, options]) => JSON.parse(options.body).model)).toEqual(["gpt-4o-mini", "gpt-4o-mini", "deepseek-chat"]);
     expect(mocks.getHealth).toHaveBeenCalledExactlyOnceWith("openai", "gpt-4o-mini");
     expect(mocks.freeze).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ provider: "openai", model: "gpt-4o-mini", status: 502 }));
     expect(mocks.circuits.has(key("commandcode", "deepseek-chat"))).toBe(false);
@@ -305,10 +348,11 @@ describe("Combo health through the public chat route", () => {
       { type: "text", text: "Describe this image." }, { type: "image_url", image_url: { url: "data:image/png;base64,dGVzdA==" } },
     ] }] }));
     await pumpUntil(() => mocks.logger.debug.mock.calls.some(([scope]) => scope === "RETRY"));
-    await vi.advanceTimersByTimeAsync(2_001);
+    await vi.advanceTimersByTimeAsync(3_001);
     expect((await task).status).toBe(exhausted ? 502 : 200);
     expect(originalAttempts).toBe(exhausted ? 3 : 2);
-    expect(mocks.transport).toHaveBeenCalledTimes(originalAttempts + 1);
+    // the adapter member's own reconnect plus the direct model's attempts
+    expect(mocks.transport).toHaveBeenCalledTimes(originalAttempts + 2);
     expect(mocks.getHealth).toHaveBeenCalledExactlyOnceWith("openai", "gpt-4o-mini");
     expect(mocks.freeze).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ provider: "openai", model: "gpt-4o-mini" }));
     expect(mocks.circuits.has(key("commandcode", "deepseek-chat"))).toBe(false);

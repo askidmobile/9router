@@ -87,11 +87,11 @@ describe("Combo member execution admission and deadlines", () => {
     expect(health.clear).toHaveBeenCalledWith({ provider: "commandcode", model: "z-ai/glm-5.3-flash" });
   });
 
-  it("uses one executor attempt and passes the bounded header policy", async () => {
+  it("issues one attempt by default and passes the header/deadline policy", async () => {
     const response = await run();
     expect(await response.json()).toEqual(completion);
     expect(execute).toHaveBeenCalledExactlyOnceWith(expect.any(AbortSignal), {
-      maxRetries: 0, headersTimeoutMs: 40, strictCompletion: true,
+      maxRetries: 1, deadlineAtMs: NOW + 40, retryStatuses: [502, 503], headersTimeoutMs: 40, strictCompletion: true,
     });
     expect(health.freeze).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1000);
@@ -108,7 +108,7 @@ describe("Combo member execution admission and deadlines", () => {
     const response = await task;
     expect(response.status).toBe(200);
     expect(execute).toHaveBeenCalledExactlyOnceWith(expect.any(AbortSignal), {
-      maxRetries: 0, headersTimeoutMs: 200, headersTimeoutFloorMs: 200, strictCompletion: true,
+      maxRetries: 1, deadlineAtMs: NOW + 200, retryStatuses: [502, 503], headersTimeoutMs: 200, headersTimeoutFloorMs: 200, strictCompletion: true,
     });
     expect(health.freeze).not.toHaveBeenCalled();
   });

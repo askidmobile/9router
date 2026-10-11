@@ -45,6 +45,69 @@ describe("BaseExecutor.execute — retry by status (config-driven)", () => {
   });
 });
 
+describe("BaseExecutor.execute — caller deadline", () => {
+  it("honors Retry-After instead of reconnecting before the provider allows it", async () => {
+    const ex = makeExec({ baseUrl: "https://x/api", retry: { 503: { attempts: 2, delayMs: 0 } } });
+    fetchMock.mockImplementation(async () => new Response("Unavailable", {
+      status: 503, headers: { "retry-after": "120" },
+    }));
+    const out = await ex.execute({
+      model: "m", body: {}, stream: false, credentials: creds,
+      requestPolicy: { maxRetries: 1, deadlineAtMs: Date.now() + 60_000, retryStatuses: [502, 503] },
+    });
+    expect(out.response.status).toBe(503);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("caps a caller's retries without changing the direct provider policy", async () => {
+    const ex = makeExec({ baseUrl: "https://x/api", retry: { 503: { attempts: 3, delayMs: 0 } } });
+    fetchMock.mockImplementation(async () => new Response("Unavailable", { status: 503 }));
+    const out = await ex.execute({
+      model: "m", body: {}, stream: false, credentials: creds,
+      requestPolicy: { maxRetries: 1, deadlineAtMs: Date.now() + 60_000 },
+    });
+    expect(out.response.status).toBe(503);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries only the statuses the caller allows", async () => {
+    const ex = makeExec({ baseUrl: "https://x/api", retry: { 429: { attempts: 2, delayMs: 0 }, 503: { attempts: 2, delayMs: 0 } } });
+    fetchMock
+      .mockResolvedValueOnce(res(429))
+      .mockResolvedValueOnce(res(200));
+    const out = await ex.execute({
+      model: "m", body: {}, stream: false, credentials: creds,
+      requestPolicy: { deadlineAtMs: Date.now() + 60_000, retryStatuses: [502, 503] },
+    });
+    expect(out.response.status).toBe(429);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries a 503 inside the caller's window", async () => {
+    const ex = makeExec({ baseUrl: "https://x/api", retry: { 503: { attempts: 2, delayMs: 0 } } });
+    fetchMock
+      .mockResolvedValueOnce(res(503))
+      .mockResolvedValueOnce(res(200));
+    const out = await ex.execute({
+      model: "m", body: {}, stream: false, credentials: creds,
+      requestPolicy: { deadlineAtMs: Date.now() + 60_000, retryStatuses: [502, 503] },
+    });
+    expect(out.response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("declines a retry whose delay does not fit the window", async () => {
+    const ex = makeExec({ baseUrl: "https://x/api", retry: { 503: { attempts: 2, delayMs: 5_000 } } });
+    fetchMock.mockResolvedValue(res(503));
+    const out = await ex.execute({
+      model: "m", body: {}, stream: false, credentials: creds,
+      requestPolicy: { deadlineAtMs: Date.now() + 1_000, retryStatuses: [502, 503] },
+    });
+    expect(out.response.status).toBe(503);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("BaseExecutor.execute — baseUrls fallback", () => {
   it("falls over to the next url on 429 (shouldRetry)", async () => {
     const ex = makeExec({ baseUrls: ["https://a/api", "https://b/api"], retry: { 429: { attempts: 0 } } });
