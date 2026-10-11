@@ -60,6 +60,11 @@ describe("DSH model catalog synchronization", () => {
     expect(first.text).toContain("reasoningEfforts: false");
     expect(syncDshProfile(first.text,[{...model,reasoning_levels:[]}],first.state).changes).toEqual([]);
   });
+  it("respects a manually disabled reasoning flag over automatic effort choices", () => {
+    const out = syncDshProfile(profile,[{...model,capabilities:{reasoning:false},capability_sources:{...sources,reasoning:{source:"manual"}}}]);
+    expect(out.text).toContain("reasoningEfforts: false");
+    expect(out.text).not.toContain('high: "high"');
+  });
   it("does not pretend DSH supports an unavailable ultra control", () => {
     const out = syncDshProfile(profile,[{...model,reasoning_levels:["high","ultra"]}]);
     expect(out.unsupported).toEqual([{id:model.id,levels:["ultra"]}]);

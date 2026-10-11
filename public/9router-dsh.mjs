@@ -81,12 +81,14 @@ export function syncDshProfile(text, models, previous = {}, provider = "nine-rou
       if (Number.isSafeInteger(value) && value > 0 && OBSERVED.has(sources[field]?.source)) offered[wire] = value;
     }
     const raw = model.reasoning_levels ?? caps.reasoningLevels;
-    if (Array.isArray(raw) && OBSERVED.has(sources.reasoningLevels?.source)) {
+    if (caps.reasoning === false && OBSERVED.has(sources.reasoning?.source)) {
+      offered.reasoningEfforts = false;
+    } else if (Array.isArray(raw) && OBSERVED.has(sources.reasoningLevels?.source)) {
       const mapped = Object.fromEntries(raw.filter(l => l === "none" || LEVELS.includes(l)).map(l => [l === "none" ? "off" : l, l]));
       const unavailable = raw.filter(l => l !== "none" && !LEVELS.includes(l));
       if (unavailable.length) unsupported.push({ id, levels: unavailable });
       offered.reasoningEfforts = Object.keys(mapped).some(l => l !== "off") ? mapped : false;
-    } else if (caps.reasoning === false && OBSERVED.has(sources.reasoning?.source)) offered.reasoningEfforts = false;
+    }
     const remembered = { ...previous[id] };
     for (const [field, value] of Object.entries(offered)) {
       const current = readField(block, field, depth), last = previous[id]?.[field];

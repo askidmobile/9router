@@ -81,7 +81,7 @@ export function catalogMetadata(entry) {
     entry.context_length ?? entry.context_window ?? entry.contextWindow ?? entry.limit?.context ?? entry.limits?.context,
   );
   const output = parseTokenCount(
-    entry.max_output_tokens ?? entry.maxOutputTokens ?? entry.max_completion_tokens ?? entry.max_tokens ?? entry.top_provider?.max_completion_tokens ?? entry.limit?.output ?? entry.limits?.output,
+    entry.max_output_tokens ?? entry.maxOutputTokens ?? entry.max_completion_tokens ?? entry.top_provider?.max_completion_tokens ?? entry.limit?.output ?? entry.limits?.output,
   );
   if (context) caps.contextWindow = context;
   if (output) caps.maxOutput = output;
