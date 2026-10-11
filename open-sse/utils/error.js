@@ -7,6 +7,7 @@ import { ERROR_TYPES, DEFAULT_ERROR_MESSAGES } from "../config/errorConfig.js";
  * @returns {object} Error response object
  */
 export function buildErrorBody(statusCode, message) {
+  message = readableErrorMessage(message);
   const errorInfo = ERROR_TYPES[statusCode] || 
     (statusCode >= 500 
       ? { type: "server_error", code: "internal_server_error" }
@@ -128,6 +129,16 @@ export function sanitizeUpstreamBody(bodyText, contentType = "") {
   return stripped ? `HTML error page: ${stripped.slice(0, 160)}` : "HTML error page";
 }
 
+// Persisted account errors and JSON-wrapped gateway pages can bypass upstream parsing.
+function readableErrorMessage(message) {
+  if (typeof message !== "string") return message;
+  const html = /<\s*(?:!doctype|html|head|body|title)\b/i.exec(message);
+  if (!html) return message;
+  const prefix = message.slice(0, html.index).trim().slice(0, 200);
+  const page = sanitizeUpstreamBody(message.slice(html.index), "text/html");
+  return prefix ? `${prefix} ${page}` : page;
+}
+
 /**
  * Parse upstream provider error response
  * @param {Response} response - Fetch response from provider
@@ -203,7 +214,7 @@ export function createErrorResult(statusCode, message, resetsAtMs, extraHeaders 
  */
 export function unavailableResponse(statusCode, message, retryAfter, retryAfterHuman, extraHeaders = null) {
   const retryAfterSec = Math.max(Math.ceil((new Date(retryAfter).getTime() - Date.now()) / 1000), 1);
-  const msg = `${message} (${retryAfterHuman})`;
+  const msg = `${readableErrorMessage(message)} (${retryAfterHuman})`;
   return new Response(
     JSON.stringify({ error: { message: msg } }),
     {

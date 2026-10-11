@@ -1,6 +1,7 @@
 # v0.5.99 (2026-10-08)
 
 ## Askid fork
+- **Error boundary**: sanitize HTML embedded in JSON errors or persisted account cooldown messages before sending JSON/SSE to clients, retaining the provider/model prefix and the page title.
 - **Combo recovery**: retry an upstream 502/503 once within the original first-response window, respecting Retry-After. Quota errors/timeouts fall through immediately; exhausted HTML errors remain clean JSON with the actual HTTP status.
 - **Errors**: an upstream HTML page (Cloudflare interstitial, nginx error page) is never echoed to the client — the page's own title/heading is extracted instead, and a 2xx HTML body is retried under the 502 policy before surfacing as a clean `502`.
 - **Pricing**: a saved price now resolves through the provider alias, so providers whose id and alias differ (github/gh, kiro/kr, cloudflare-ai/cf, requesty/req) no longer fall back to a static rate in usage accounting.

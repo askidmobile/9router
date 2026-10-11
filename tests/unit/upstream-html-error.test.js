@@ -8,7 +8,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 const { fetchMock } = vi.hoisted(() => ({ fetchMock: vi.fn() }));
 vi.mock("../../open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: (...args) => fetchMock(...args) }));
 
-const { parseUpstreamError, sanitizeUpstreamBody } = await import("../../open-sse/utils/error.js");
+const { parseUpstreamError, sanitizeUpstreamBody, errorResponse, unavailableResponse, writeStreamError } = await import("../../open-sse/utils/error.js");
 const { BaseExecutor } = await import("../../open-sse/executors/base.js");
 
 const INTERSTITIAL = `<!DOCTYPE html><html><head><title>503 Service Temporarily Unavailable</title></head>
@@ -92,5 +92,42 @@ describe("HTML interstitial retry policy", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(out.response.status).toBe(200);
     expect((await out.response.json()).choices[0].message.content).toBe("ok");
+  });
+});
+
+describe("client error boundary for Cloudflare pages", () => {
+  const page = `<!DOCTYPE html>
+<!--[if lt IE 7]> <html class="no-js ie6 oldie" lang="en-US"> <![endif]-->
+<html><head><title>apinex.bond | 502: Bad gateway</title></head>
+<body><div>2026-10-11 09:48:22 UTC</div><div class="cf-error-source">Host error</div>
+${"<div>Cloudflare layout</div>".repeat(200)}</body></html>`;
+  const prefix = "[openai-compatible-chat-a7560c5d-68ba-4525-a8e5-d0af3ea77fad/free/minimax-m3.1] [502]:";
+  const message = prefix + " " + page;
+
+  it("cleans a persisted upstream 502 surfaced as account-unavailable 503", async () => {
+    const response = unavailableResponse(503, message, new Date(Date.now()+60000).toISOString(), "reset after 60s");
+    expect(response.status).toBe(503);
+    expect((await response.json()).error.message).toBe(prefix + " apinex.bond | 502: Bad gateway (reset after 60s)");
+  });
+
+  it("cleans HTML nested inside a JSON provider error before returning it to the client", async () => {
+    const parsed = await parseUpstreamError(Response.json({error:{message:page}}, {status:502}), new BaseExecutor("apinex", {}));
+    const response = errorResponse(parsed.statusCode, parsed.message);
+    expect(response.status).toBe(502);
+    expect((await response.json()).error.message).toBe("apinex.bond | 502: Bad gateway");
+  });
+
+  it("also cleans the final SSE error message", async () => {
+    const write = vi.fn(async () => {});
+    await writeStreamError({write},503,message);
+    const text = new TextDecoder().decode(write.mock.calls[0][0]);
+    expect(text).toContain("apinex.bond | 502: Bad gateway");
+    expect(text).not.toContain("<html");
+    expect(text).not.toContain("DOCTYPE");
+  });
+
+  it("preserves plain diagnostic messages including schema notation", async () => {
+    const message = "Invalid argument <parameter>: " + "details ".repeat(100);
+    expect((await errorResponse(400,message).json()).error.message).toBe(message);
   });
 });
