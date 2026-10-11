@@ -49,14 +49,15 @@ function writeField(lines, name, value, depth) {
     : [pad + name + ": " + String(value)];
   return [...lines.slice(0, start < 0 ? lines.length : start), ...inserted, ...lines.slice(end)];
 }
-export function connectionFromProfile(text, provider = "nine-router") {
+export function connectionFromProfile(text, provider = "nine-router", credentialRefs = {}) {
   const lines = text.split("\n"), s = section(lines, provider);
   const read = key => {
     const line = lines.slice(s.start + 1, s.end).find(l => indent(l) === s.indent + 2 && l.trimStart().startsWith(key + ":"));
     return line ? scalar(line.trim().slice(key.length + 1)) : null;
   };
   const url = read("baseURL") || read("baseUrl");
-  const key = read("apiKey") || (read("apiKeyEnv") ? process.env[read("apiKeyEnv")] : null);
+  const reference = read("apiKeyEnv");
+  const key = read("apiKey") || (reference ? process.env[reference] || credentialRefs[reference] : null);
   if (!url || !key) throw new Error("DSH 9router base URL/API key is not statically configured");
   const parsed = new URL(url);
   if (parsed.protocol !== "https:" && !(parsed.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(parsed.hostname))) throw new Error("Use HTTPS for the DSH catalog connection");
@@ -113,7 +114,17 @@ export async function syncDsh({ home = path.join(os.homedir(), "Library/Applicat
   const dir = path.join(home, "profiles/web"), statePath = path.join(home, "9router-catalog-sync.json");
   const profilePath = path.join(dir, "cordis.patch.yml");
   const original = await fs.readFile(profilePath, "utf8");
-  const connection = connectionFromProfile(original, provider);
+  let credentialRefs = {};
+  try {
+    const lines = (await fs.readFile(path.join(home, ".credentials.yaml"), "utf8")).split("\n");
+    const refs = section(lines, "refs");
+    for (const line of lines.slice(refs.start + 1, refs.end)) {
+      if (indent(line) !== refs.indent + 2) continue;
+      const cut = line.indexOf(":");
+      if (cut >= 0) credentialRefs[scalar(line.slice(0, cut))] = scalar(line.slice(cut + 1));
+    }
+  } catch (error) { if (error.code !== "ENOENT") throw new Error("Cannot read DSH credential references"); }
+  const connection = connectionFromProfile(original, provider, credentialRefs);
   const response = await fetch(connection.url, { headers: { authorization: "Bearer " + connection.key, "x-9r-internal-models-fetch": "1" }, signal: AbortSignal.timeout(60000) });
   if (!response.ok) throw new Error("9router model catalog responded " + response.status);
   const data = await response.json();

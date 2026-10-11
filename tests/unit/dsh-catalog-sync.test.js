@@ -81,6 +81,11 @@ describe("DSH model catalog synchronization", () => {
     expect(out.unsupported).toEqual([{id:model.id,levels:["ultra"]}]);
     expect(out.text).not.toContain("ultra:");
   });
+  it("resolves DSH's existing credential reference without copying a key into the profile", () => {
+    const referenced = profile.replace('apiKey: "fixture"','apiKeyEnv: DSH_FIXTURE_KEY_92');
+    expect(connectionFromProfile(referenced,"nine-router",{DSH_FIXTURE_KEY_92:"fixture"}).key).toBe("fixture");
+    expect(referenced).not.toContain('apiKey:');
+  });
   it("reads the configured route without logging or embedding its credentials elsewhere", () => {
     expect(connectionFromProfile(profile)).toEqual({url:"https://router.test/v1/models",key:"fixture"});
     expect(()=>connectionFromProfile(profile.replace("https://router.test/v1","http://router.test/v1"))).toThrow("HTTPS");
