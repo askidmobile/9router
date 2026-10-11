@@ -1,6 +1,7 @@
 # v0.5.99 (2026-10-08)
 
 ## Askid fork
+- **Errors**: an upstream HTML page (Cloudflare interstitial, nginx error page) is never echoed to the client — the page's own title/heading is extracted instead, and a 2xx HTML body is retried under the 502 policy before surfacing as a clean `502`.
 - **Pricing**: a saved price now resolves through the provider alias, so providers whose id and alias differ (github/gh, kiro/kr, cloudflare-ai/cf, requesty/req) no longer fall back to a static rate in usage accounting.
 - **Providers**: Requesty (`req`) and APInex Bond (`apinex`, alias `apx`) are native providers with chat, Responses and Anthropic Messages transports, live catalog import of prices/limits and the scheduled refresh. Their `req`/`apinex` openai-compatible nodes were migrated in place, so existing combo members kept working.
 - **Model catalog**: catalog metadata detection now covers three published shapes — `pricing.*_per_million`, APInex's flat `dollarsPer1M`, and Requesty's bare per-token rates — plus `context_window` limits and flat `supports_*` capability flags.
