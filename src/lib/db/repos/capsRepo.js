@@ -32,7 +32,9 @@ export async function getCapsMetadata() {
     const metadata = { ...sources };
     for (const field of Object.keys(manual)) {
       if (field === "reasoningLevels" && manual[field] === null && Object.hasOwn(automatic, field)) continue;
-      metadata[field] = manualSources[field] || { source: "legacy", updatedAt: null, verified: false };
+      metadata[field] = { ...(manualSources[field] || { source: "legacy", updatedAt: null, verified: false }),
+        ...(Object.hasOwn(automatic, field) ? { catalog: { value: automatic[field], ...sources[field] } } : {}),
+      };
     }
     return [key, metadata];
   }));

@@ -17,7 +17,7 @@ describe("catalog and manual capability layers", () => {
     storage["ocg|space-bunny"]={reasoning:true,reasoningLevels,contextWindow:999};
     await setCapsOverridesBulk("ocg",{"space-bunny":{contextWindow:1000000,reasoning:false,tools:true}});
     expect((await getCapsOverrides())["ocg|space-bunny"]).toEqual({contextWindow:999,reasoning:true,reasoningLevels,tools:true});
-    expect((await getCapsMetadata())["ocg|space-bunny"].contextWindow).toEqual({source:"legacy",updatedAt:null,verified:false});
+    expect((await getCapsMetadata())["ocg|space-bunny"].contextWindow).toMatchObject({source:"legacy",updatedAt:null,verified:false,catalog:{value:1000000}});
   });
   it("auto sync updates observations without overwriting explicit CTX, OUT or reasoning edits",async()=>{
     await setCapsOverridesBulk("p",{m:{contextWindow:1000000,maxOutput:128000,reasoningLevels:["low","high"]}},{source:"provider"});
