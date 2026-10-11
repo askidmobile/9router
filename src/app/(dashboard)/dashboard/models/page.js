@@ -429,6 +429,11 @@ export default function ModelsPage() {
         body: JSON.stringify({ providers: next }),
       });
       if (!res.ok) throw new Error("save failed");
+      // Opting in should show current numbers now, not after the first timer
+      // tick — the two-day interval makes a wait indistinguishable from a bug.
+      if (!current.includes(alias)) {
+        await fetch("/api/providers/catalog-sync", { method: "POST" }).catch(() => {});
+      }
       await fetchData();
     } catch {
       setCatalogSync((prev) => ({ ...(prev || {}), providers: current }));
