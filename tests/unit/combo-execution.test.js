@@ -113,7 +113,7 @@ describe("Combo member execution admission and deadlines", () => {
     expect(health.freeze).not.toHaveBeenCalled();
   });
 
-  it("aborts a first-response timeout before headers and freezes once with 504", async () => {
+  it("aborts a first-response timeout before headers without freezing the pair", async () => {
     execute.mockImplementation(() => new Promise(() => {}));
     const task = run({ body: { stream: true } });
     await vi.advanceTimersByTimeAsync(41);
@@ -121,12 +121,9 @@ describe("Combo member execution admission and deadlines", () => {
     expect(response.status).toBe(504);
     expect(await response.text()).toContain("First response timeout");
     expect(execute.mock.calls[0][0].aborted).toBe(true);
-    expect(health.freeze).toHaveBeenCalledExactlyOnceWith({
-      provider: "commandcode", model: "z-ai/glm-5.3-flash", status: 504,
-      reason: "First response timeout", retryAfterMs: undefined,
-    });
+    expect(health.freeze).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1000);
-    expect(health.freeze).toHaveBeenCalledTimes(1);
+    expect(health.freeze).not.toHaveBeenCalled();
   });
 
   it("covers a stalled JSON body with the full-response deadline after HTTP 200", async () => {
@@ -139,9 +136,7 @@ describe("Combo member execution admission and deadlines", () => {
     expect(response.status).toBe(504);
     expect(await response.text()).toContain("Response deadline exceeded");
     expect(execute.mock.calls[0][0].aborted).toBe(true);
-    expect(health.freeze).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
-      status: 504, reason: "Response deadline exceeded",
-    }));
+    expect(health.freeze).not.toHaveBeenCalled();
   });
 
   it.each([new Error("client went away"), "custom client reason"])("keeps caller cancellation neutral for %s", async (reason) => {
@@ -176,9 +171,7 @@ describe("Combo member execution admission and deadlines", () => {
     const response = await task;
     expect(response.status).toBe(504);
     expect(await response.text()).toContain("Response deadline exceeded");
-    expect(health.freeze).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
-      status: 504, reason: "Response deadline exceeded",
-    }));
+    expect(health.freeze).not.toHaveBeenCalled();
     expect(execute.mock.calls[0][0].aborted).toBe(true);
   });
 
@@ -192,7 +185,7 @@ describe("Combo member execution admission and deadlines", () => {
     resolveExecute(upstream.response);
     await pump();
     expect(upstream.cancel).toHaveBeenCalledTimes(1);
-    expect(health.freeze).toHaveBeenCalledTimes(1);
+    expect(health.freeze).not.toHaveBeenCalled();
   });
 });
 
@@ -206,7 +199,15 @@ describe("Combo HTTP failure classification", () => {
     expect(health.freeze).not.toHaveBeenCalled();
   });
 
-  it.each([401, 402, 403, 404, 408, 429, 500, 502, 503, 504])("freezes HTTP %s exactly once", async (status) => {
+  it("passes HTTP 504 through without freezing the provider/model", async () => {
+    execute.mockResolvedValue(new Response("Gateway timeout", { status: 504 }));
+    const response = await run();
+    expect(response.status).toBe(504);
+    expect(await response.text()).toBe("Gateway timeout");
+    expect(health.freeze).not.toHaveBeenCalled();
+  });
+
+  it.each([401, 402, 403, 404, 408, 429, 500, 502, 503])("freezes HTTP %s exactly once", async (status) => {
     execute.mockResolvedValue(new Response("Provider unavailable", { status }));
     const response = await run();
     expect(response.status).toBe(status);
@@ -313,7 +314,7 @@ describe("Combo streaming output guard", () => {
     expect(resolved).toBe(false);
     await vi.advanceTimersByTimeAsync(2);
     expect((await task).status).toBe(504);
-    expect(health.freeze).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ reason: "First response timeout", status: 504 }));
+    expect(health.freeze).not.toHaveBeenCalled();
     expect(upstream.cancel).toHaveBeenCalledTimes(1);
   });
 
@@ -406,7 +407,7 @@ describe("Combo streaming output guard", () => {
     await vi.advanceTimersByTimeAsync(31);
     expect(await pendingRead).toBeInstanceOf(Error);
     expect(response.status).toBe(200);
-    expect(health.freeze).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ status: 504, reason: "Stream stalled" }));
+    expect(health.freeze).not.toHaveBeenCalled();
     expect(execute).toHaveBeenCalledTimes(1);
     expect(execute.mock.calls[0][0].aborted).toBe(true);
     expect(upstream.cancel).toHaveBeenCalledTimes(1);
@@ -466,7 +467,7 @@ describe("Combo streaming output guard", () => {
     next = reader.read().then(() => null, (error) => error);
     await vi.advanceTimersByTimeAsync(16);
     expect(await next).toBeInstanceOf(Error);
-    expect(health.freeze).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ reason: "Stream stalled" }));
+    expect(health.freeze).not.toHaveBeenCalled();
   });
 
   it("treats caller abort after streamed output as neutral", async () => {

@@ -6,7 +6,9 @@ import { isComboDeadlineError } from "../utils/abort.js";
 
 /** These are provider outcomes, not malformed input or caller cancellation. */
 export function isComboHealthFailure(status) {
-  return [401, 402, 403, 404, 408, 429].includes(status) || status >= 500;
+  // A 504 only says the request timed out, not that the provider is down:
+  // slow free models stay in rotation instead of being frozen by a timeout.
+  return [401, 402, 403, 404, 408, 429].includes(status) || (status >= 500 && status !== 504);
 }
 
 export function comboRetryAfter(response, payload, now = Date.now()) {
@@ -203,6 +205,7 @@ export async function runComboModelExecution({
     if (cleaned) return;
     cleaned = true;
     clearTimeout(timer);
+    clearTimeout(deadlineTimer);
     signal?.removeEventListener("abort", onParentAbort);
     controller.signal.removeEventListener("abort", onAbort);
   };
@@ -215,6 +218,14 @@ export async function runComboModelExecution({
     timer.unref?.();
   };
   const wait = (promise) => Promise.race([promise, aborted]);
+  // The executor may convert its own header timeout into a 502 response. Mark
+  // the elapsed deadline so a slow request is still never mistaken for a
+  // provider outage and frozen.
+  let deadlineTimer;
+  const markDeadline = (ms, reason) => {
+    deadlineTimer = setTimeout(() => { timeoutReason ||= reason; }, ms);
+    deadlineTimer.unref?.();
+  };
   let failureRecorded = false;
   let cleared = false;
   const succeed = () => {
@@ -223,7 +234,9 @@ export async function runComboModelExecution({
     Promise.resolve().then(() => health.clear?.({ provider, model })).catch(() => {});
   };
   const fail = async (status, reason, retryAfterMs) => {
-    if (failureRecorded || consumerCancelled ||
+    // A deadline/timeout is a property of this request, never of the provider:
+    // do not freeze a pair because it answered too slowly this time.
+    if (failureRecorded || consumerCancelled || timeoutReason ||
       (signal?.aborted && !isComboDeadlineError(signal.reason)) || !isComboHealthFailure(status)) return;
     failureRecorded = true;
     await health.freeze({ provider, model, status, reason, retryAfterMs });
@@ -240,6 +253,7 @@ export async function runComboModelExecution({
   const fullMs = Math.max(flex ? GEMINI_FLEX_TIMEOUT_MS : config.requestTimeoutMs, timeoutFloorMs);
   const wantsStream = body.stream === true || Array.isArray(body.contents) || !!body.request?.contents;
   arm(wantsStream ? firstMs : fullMs, wantsStream ? "First response timeout" : "Response deadline exceeded");
+  markDeadline(firstMs, "First response timeout");
 
   try {
     const requestPolicy = {
@@ -348,7 +362,7 @@ export async function runComboModelExecution({
     try {
       // Timeouts and named upstream failures still open the circuit; a defect of
       // ours is request-scoped and must not take a working provider offline.
-      const providerFailure = completionError ? error.healthFailure : !!timeoutReason;
+      const providerFailure = completionError && error.healthFailure;
       if (providerFailure) await fail(status, reason);
       else log?.warn?.("COMBO", `Rejected ${provider}/${model} response without opening its circuit: ${reason}`);
       if (!completionError && !timeoutReason && status !== 499) log?.warn?.("COMBO", `Unexpected ${provider}/${model} failure`, { stack: error?.stack });

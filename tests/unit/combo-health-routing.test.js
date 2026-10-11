@@ -189,7 +189,7 @@ describe("Combo health through the public chat route", () => {
     expect(response.status).toBe(200);
     expect(await response.text()).toContain('"content":"OK"');
     expect(mocks.transport).toHaveBeenCalledTimes(2);
-    expect(mocks.freeze).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ status: 504 }));
+    expect(mocks.freeze).not.toHaveBeenCalled();
     expect(mocks.transport.mock.calls[0][1].signal.aborted).toBe(true);
   });
 
@@ -201,7 +201,7 @@ describe("Combo health through the public chat route", () => {
     expect((await task).status).toBe(200);
     expect(mocks.transport).toHaveBeenCalledTimes(2);
     expect(mocks.credentials.mock.calls.filter(([provider]) => provider === "commandcode")).toHaveLength(1);
-    expect(mocks.freeze).toHaveBeenCalledTimes(1);
+    expect(mocks.freeze).not.toHaveBeenCalled();
     expect(mocks.lockAccount).not.toHaveBeenCalled();
   });
 
@@ -212,7 +212,7 @@ describe("Combo health through the public chat route", () => {
     await vi.advanceTimersByTimeAsync(120_001);
     expect((await task).status).toBe(200);
     expect(mocks.transport).toHaveBeenCalledTimes(2);
-    expect(mocks.freeze).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ status: 504 }));
+    expect(mocks.freeze).not.toHaveBeenCalled();
     expect(mocks.pending.mock.calls.map((args) => args[3])).toEqual([true, false, true, false]);
   });
 

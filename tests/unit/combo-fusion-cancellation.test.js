@@ -246,9 +246,7 @@ describe("Fusion with the production Combo execution guard", () => {
     expect((await response).status).toBe(hardTimeout ? 503 : 200);
     await vi.advanceTimersByTimeAsync(0);
     if (hardTimeout) {
-      expect(health.freeze).toHaveBeenCalledTimes(2);
-      expect(health.freeze).toHaveBeenCalledWith(expect.objectContaining({ provider: "p", model: "a", status: 504 }));
-      expect(health.freeze).toHaveBeenCalledWith(expect.objectContaining({ provider: "p", model: "b", status: 504 }));
+      expect(health.freeze).not.toHaveBeenCalled();
     } else {
       expect(health.freeze).not.toHaveBeenCalled();
     }
