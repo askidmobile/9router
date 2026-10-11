@@ -311,6 +311,7 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
   let lastError = null;
   let earliestRetryAfter = null;
   let lastStatus = null;
+  const failures = [];
 
   for (let i = 0; i < rotatedModels.length; i++) {
     if (signal?.aborted) return errorResponse(499, "Request aborted");
@@ -368,12 +369,14 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
 
       // Fallback to next model
       lastError = errorText || String(result.status);
+      failures.push({ model: modelStr, status: result.status, error: lastError });
       if (!lastStatus) lastStatus = result.status;
       log.warn("COMBO", `Model ${modelStr} failed, trying next`, { status: result.status });
     } catch (error) {
       if (signal?.aborted) return errorResponse(499, "Request aborted");
       // Catch unexpected exceptions to ensure fallback continues
       lastError = error.message || String(error);
+      failures.push({ model: modelStr, status: null, error: lastError });
       if (!lastStatus) lastStatus = 500;
       log.warn("COMBO", `Model ${modelStr} threw error, trying next`, { error: lastError });
     }
@@ -385,7 +388,9 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
   // or have no active credentials. 503 is more accurate and retryable by clients.
   const allDisabled = lastError && lastError.toLowerCase().includes("no credentials");
   const status = allDisabled ? 503 : (lastStatus || 503);
-  const msg = lastError || "All combo models unavailable";
+  // One provider's opaque body (Vercel "FUNCTION_PAYLOAD_TOO_LARGE" and friends)
+  // must not be the whole answer for a multi-member failure.
+  const msg = comboFailureSummary(failures) || lastError || "All combo models unavailable";
 
   if (earliestRetryAfter) {
     const retryHuman = formatRetryAfter(earliestRetryAfter);
@@ -398,6 +403,17 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
     JSON.stringify({ error: { message: msg } }),
     { status, headers: { "Content-Type": "application/json" } }
   );
+}
+
+function comboFailureSummary(failures) {
+  if (!Array.isArray(failures) || failures.length < 2) return null;
+  const entries = failures.slice(0, 6).map(({ model, status, error }) => {
+    const reason = status === 413 ? "413 request body exceeds this provider's limit"
+      : `${status || ""}${error ? ` ${String(error).replace(/\s+/g, " ").trim().slice(0, 80)}` : ""}`.trim() || "failed";
+    return `${model} → ${reason}`;
+  });
+  return `All ${failures.length} Combo members failed: ${entries.join("; ")}`
+    + (failures.length > 6 ? ` (+${failures.length - 6} more)` : "");
 }
 
 /**

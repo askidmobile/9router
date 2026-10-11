@@ -161,6 +161,20 @@ describe("Combo health through the public chat route", () => {
     expect(mocks.freeze).not.toHaveBeenCalled();
   });
 
+  it("summarizes a multi-member failure instead of returning one opaque provider body", async () => {
+    mocks.transport.mockImplementation(async (url) => url.includes("commandcode")
+      ? new Response("Request Entity Too Large\n\nFUNCTION_PAYLOAD_TOO_LARGE\nfra1::abc-1791703234172", { status: 413 })
+      : new Response("Invalid request", { status: 400 }));
+    const response = await handleChat(request());
+    expect(response.status).toBe(413);
+    const body = await response.json();
+    expect(body.error.message).toContain("All 2 Combo members failed");
+    expect(body.error.message).toContain("413 request body exceeds this provider's limit");
+    expect(body.error.message).toContain(`cmc/${MODEL}`);
+    expect(body.error.message).toContain("openai/gpt-4o-mini");
+    expect(body.error.message).not.toContain("FUNCTION_PAYLOAD_TOO_LARGE");
+  });
+
   it.each([400, 413, 422])("does not lock or freeze the provider for caller HTTP %s", async (status) => {
     mocks.transport.mockImplementation(async () => Response.json({ error: { message: "Invalid input" } }, { status }));
     expect((await handleChat(request())).status).toBe(status);
