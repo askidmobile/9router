@@ -18,9 +18,10 @@ import { getRegistryEntry, deriveModelsEndpoint, parseOpenAIStyleModels } from "
 import { catalogMetadata } from "./metadata.js";
 
 export const VALID_TARGETS = ["pricing", "caps"];
-// Same ceiling the bulk-add route enforces; a runaway catalog must not write
-// thousands of rows in one pass.
-const MAX_REGISTERED_MODELS = 500;
+// A runaway catalog must not write tens of thousands of rows in one pass.
+// Requesty publishes 784 ids today, so the ceiling sits above a real gateway's
+// catalog; anything beyond it is reported instead of being dropped silently.
+const MAX_REGISTERED_MODELS = 2000;
 
 function catalogRequest(connection) {
   if (isOpenAICompatibleProvider(connection.provider)) {
@@ -111,8 +112,9 @@ export async function importProviderCatalog({ connection, targets = VALID_TARGET
       response.caps = { imported: Object.keys(caps).length };
     }
     if (registerModels) {
-      const ids = Object.keys(fallback.models).slice(0, MAX_REGISTERED_MODELS);
-      response.registered = await addCustomModelsBulk({ providerAlias: alias, type: "llm", ids });
+      const all = Object.keys(fallback.models);
+      response.registered = await addCustomModelsBulk({ providerAlias: alias, type: "llm", ids: all.slice(0, MAX_REGISTERED_MODELS) });
+      if (all.length > MAX_REGISTERED_MODELS) response.registered.truncated = all.length - MAX_REGISTERED_MODELS;
     }
     return response;
   }
@@ -145,6 +147,10 @@ export async function importProviderCatalog({ connection, targets = VALID_TARGET
     response.registered = await addCustomModelsBulk({
       providerAlias: alias, type: "llm", ids: ids.slice(0, MAX_REGISTERED_MODELS),
     });
+    // Never let a ceiling look like "the whole catalog is selectable".
+    if (ids.length > MAX_REGISTERED_MODELS) {
+      response.registered.truncated = ids.length - MAX_REGISTERED_MODELS;
+    }
   }
   return response;
 }

@@ -402,7 +402,8 @@ export default function ModelsPage() {
           ...prev,
           [group.key]: {
             message: `Imported ${data.pricing?.imported ?? 0} prices, ${data.caps?.imported ?? 0} capability sets from ${data.source}`
-              + (data.registered?.added ? ` · added ${data.registered.added} models` : ""),
+              + (data.registered?.added ? ` · added ${data.registered.added} models` : "")
+              + (data.registered?.truncated ? ` (${data.registered.truncated} beyond the per-run limit)` : ""),
           },
         }));
         invalidateModelCapsCache();

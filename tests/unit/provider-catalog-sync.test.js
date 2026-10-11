@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({
   fetch: vi.fn(),
   settings: { catalogSyncProviders: [] },
   connections: [],
-  addedBulk: vi.fn(async () => ({ added: 3, skipped: 0 })),
+  addedBulk: vi.fn(async ({ ids }) => ({ added: ids.length, skipped: 0 })),
 }));
 
 vi.mock("next/server", () => ({
@@ -75,8 +75,8 @@ describe("scheduled provider catalog sync", () => {
     mocks.settings = { catalogSyncProviders: ["cheaper"] };
     mocks.fetch.mockResolvedValue({ ok: true, json: async () => CATALOG });
     const result = await syncProviderCatalogs();
-    expect(result.providers.cheaper.models).toBe(3);
     expect(mocks.addedBulk).toHaveBeenCalledWith({ providerAlias: "cheaper", type: "llm", ids: ["glm-5.3", "new-model-1"] });
+    expect(result.providers.cheaper.models).toBe(2);
   });
 
   it("isolates one provider's failure from the rest", async () => {
@@ -122,7 +122,7 @@ describe("import with registration", () => {
     const result = await importProviderCatalog({ connection, registerModels: true });
     expect(result.source).toBe("provider");
     expect(result.pricing).toEqual({ imported: 2 });
-    expect(result.registered).toEqual({ added: 3, skipped: 0 });
+    expect(result.registered).toEqual({ added: 2, skipped: 0 });
   });
 
   it("leaves the model list alone without registerModels", async () => {

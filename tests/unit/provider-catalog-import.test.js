@@ -27,7 +27,7 @@ vi.mock("@/lib/db/index.js", () => ({
   getProviderConnections: async () => mocks.connections,
   updatePricing: mocks.updatePricing,
   setCapsOverridesBulk: mocks.setCapsOverridesBulk,
-  addCustomModelsBulk: async () => ({ added: 0, skipped: 0 }),
+  addCustomModelsBulk: async ({ ids }) => ({ added: ids.length, skipped: 0 }),
 }));
 vi.mock("@/lib/modelsDev/index.js", () => ({ getProviderModels: mocks.modelsDev }));
 
