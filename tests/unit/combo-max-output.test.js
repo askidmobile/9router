@@ -1,7 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { clampComboMaxOutput, applyComboCapOverrides } from "../../open-sse/services/combo.js";
+import { clampComboMaxOutput } from "../../open-sse/services/combo.js";
+import { applyComboCapOverrides } from "../../src/shared/utils/comboHealth.js";
 
 describe("Combo CTX OUT cap", () => {
   it("lowers the caller's limits and never raises them", () => {

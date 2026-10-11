@@ -1,3 +1,15 @@
+// Dashboard "Advanced settings" for a Combo: CTX and CTX OUT are caps, so a
+// configured value can never exceed the members' conservative capability.
+export function applyComboCapOverrides(caps, override) {
+  if (!caps || !override) return caps;
+  const next = { ...caps };
+  const contextWindow = Number.isSafeInteger(override.contextWindow) && override.contextWindow > 0 ? override.contextWindow : null;
+  const maxOutput = Number.isSafeInteger(override.maxOutput) && override.maxOutput > 0 ? override.maxOutput : null;
+  if (contextWindow) next.contextWindow = Number.isFinite(next.contextWindow) ? Math.min(next.contextWindow, contextWindow) : contextWindow;
+  if (maxOutput) next.maxOutput = Number.isFinite(next.maxOutput) ? Math.min(next.maxOutput, maxOutput) : maxOutput;
+  return next;
+}
+
 import REGISTRY from "open-sse/providers/registry/index.js";
 
 // Use the same built-in aliases as routing. Custom prefixes cannot shadow them.

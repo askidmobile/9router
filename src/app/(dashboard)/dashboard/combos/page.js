@@ -9,9 +9,9 @@ import { Card, Button, Modal, Input, CardSkeleton, ModelSelectModal, ConfirmModa
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { getConservativeComboCapabilities } from "open-sse/providers/capabilities.js";
-import { applyComboCapOverrides } from "open-sse/services/combo.js";
+import { buildComboProviderMap, getComboMemberCircuit, applyComboCapOverrides } from "@/shared/utils/comboHealth";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, getProviderAlias } from "@/shared/constants/providers";
-import { buildComboProviderMap, getComboMemberCircuit } from "@/shared/utils/comboHealth";
+
 
 // Validate combo name: only a-z, A-Z, 0-9, -, _
 const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
