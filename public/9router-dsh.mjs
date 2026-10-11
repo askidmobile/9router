@@ -9,7 +9,9 @@ const OBSERVED = new Set(["provider", "models.dev", "manual", "legacy", "combo"]
 const LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
 const scalar = value => {
   const s = value.trim();
-  if (s.startsWith('"')) return JSON.parse(s);
+  if (s.startsWith('"')) {
+    try { return JSON.parse(s); } catch { throw new Error("Invalid quoted value in DSH configuration"); }
+  }
   if (s.startsWith("'") && s.endsWith("'")) return s.slice(1, -1).replace(/''/g, "'");
   if (s.startsWith("!") || s.includes("\n")) throw new Error("Dynamic YAML values need an explicit static connection");
   return s;
