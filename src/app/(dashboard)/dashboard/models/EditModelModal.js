@@ -31,11 +31,15 @@ export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
   const [metadataRevision, setMetadataRevision] = useState(0);
   const [catalogCaps, setCatalogCaps] = useState({});
   const [manualCaps, setManualCaps] = useState({});
+  const [catalogSources, setCatalogSources] = useState({});
   const [sources, setSources] = useState({});
   const baseline = { ...model?.staticCaps, ...catalogCaps };
   const sourceText = (field) => {
     const info = sources[field];
-    return info ? `${info.source}${info.updatedAt ? " · " + new Date(info.updatedAt).toLocaleString() : " · date unknown"}${info.verified ? "" : " · unconfirmed"}` : "registry · unconfirmed";
+    const origin = info ? `${info.source}${info.updatedAt ? " · " + new Date(info.updatedAt).toLocaleString() : " · date unknown"}${info.verified ? "" : " · unconfirmed"}` : "registry · unconfirmed";
+    const observed = catalogSources[field];
+    return observed && ["manual", "legacy"].includes(info?.source)
+      ? `${origin} · catalog: ${JSON.stringify(catalogCaps[field])} (${observed.source}${observed.updatedAt ? ", " + new Date(observed.updatedAt).toLocaleString() : ""})` : origin;
   };
   const [name, setName] = useState("");
   const [alias, setAlias] = useState("");
@@ -90,6 +94,7 @@ export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
     setCatalogCaps({});
     setManualCaps(model.override || {});
     setSources({});
+    setCatalogSources({});
     fetch("/api/models/caps").then(res => res.json()).then(data => {
       if (cancelled) return;
       const key = `${model.providerAlias}|${model.id}`;
@@ -98,6 +103,7 @@ export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
       setCatalogCaps(automatic);
       setManualCaps(manual);
       setSources(data.sources?.[key] || {});
+      setCatalogSources(data.automaticSources?.[key] || {});
       const effective = { ...model.caps, ...(data.effective?.[key] || {}) };
       setContextWindow(effective.contextWindow ? String(effective.contextWindow) : "");
       setMaxOutput(effective.maxOutput ? String(effective.maxOutput) : "");

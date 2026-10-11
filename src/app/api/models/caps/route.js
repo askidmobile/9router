@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { REASONING_EFFORT_LEVELS } from "open-sse/providers/thinkingLevels.js";
 import {
-  getCapsOverrides, getManualCapsOverrides, getAutomaticCapsOverrides, getCapsMetadata,
+  getCapsOverrides, getManualCapsOverrides, getAutomaticCapsOverrides, getCapsMetadata, getAutomaticCapsMetadata,
   setCapsOverride,
   deleteCapsOverride,
 } from "@/lib/db/index.js";
@@ -47,10 +47,10 @@ function validateCaps(caps) {
 // GET /api/models/caps - all capability overrides ({ "provider|model": caps })
 export async function GET() {
   try {
-    const [overrides, effective, automatic, sources] = await Promise.all([
-      getManualCapsOverrides(), getCapsOverrides(), getAutomaticCapsOverrides(), getCapsMetadata(),
+    const [overrides, effective, automatic, sources, automaticSources] = await Promise.all([
+      getManualCapsOverrides(), getCapsOverrides(), getAutomaticCapsOverrides(), getCapsMetadata(), getAutomaticCapsMetadata(),
     ]);
-    return NextResponse.json({ overrides, effective, automatic, sources });
+    return NextResponse.json({ overrides, effective, automatic, sources, automaticSources });
   } catch (error) {
     console.log("Error fetching caps overrides:", error);
     return NextResponse.json({ error: "Failed to fetch caps overrides" }, { status: 500 });

@@ -23,6 +23,9 @@ export async function getManualCapsOverrides() {
 export async function getAutomaticCapsOverrides() {
   return Object.fromEntries(Object.entries(await capsKv.getAll()).map(([key, record]) => [key, layers(record).automatic]));
 }
+export async function getAutomaticCapsMetadata() {
+  return Object.fromEntries(Object.entries(await capsKv.getAll()).map(([key, record]) => [key, layers(record).sources]));
+}
 export async function getCapsMetadata() {
   return Object.fromEntries(Object.entries(await capsKv.getAll()).map(([key, record]) => {
     const { manual, automatic, sources, manualSources } = layers(record);
