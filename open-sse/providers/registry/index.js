@@ -136,6 +136,8 @@ import p132 from "./zai.js";
 import p133 from "./zed.js";
 // Appended rather than renumbered: no generator script maintains this file.
 import p134 from "./cheaper.js";
+import p135 from "./requesty.js";
+import p136 from "./apinex.js";
 
 export default [
   p0,
@@ -273,4 +275,6 @@ export default [
   p132,
   p133,
   p134,
+  p135,
+  p136,
 ];

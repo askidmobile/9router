@@ -86,6 +86,33 @@ describe("catalogMetadata", () => {
     const meta = catalogMetadata({ id: "m", pricing: { input_per_million: "n/a", output_per_million: "-3" } });
     expect(meta.pricing).toBeNull();
   });
+
+  it("converts Requesty's per-token rates to per-million", () => {
+    const meta = catalogMetadata({
+      id: "openai/gpt-4o", context_window: 128000, max_output_tokens: 16384,
+      input_price: 2.5e-6, cached_price: 1.25e-6, output_price: 1e-5,
+      supports_vision: true, supports_tool_calling: true,
+    });
+    expect(meta.pricing).toEqual({ input: 2.5, output: 10, cached: 1.25 });
+    expect(meta.caps).toEqual({ contextWindow: 128000, maxOutput: 16384, vision: true, tools: true });
+  });
+
+  it("reads APInex's flat per-million rate and short-form context", () => {
+    const meta = catalogMetadata({ id: "glm-5.3-flash", contextWindow: "1M", dollarsPer1M: 0.05 });
+    expect(meta.pricing).toEqual({ input: 0.05, output: 0.05 });
+    expect(meta.caps).toEqual({ contextWindow: 1000000 });
+  });
+
+  it("keeps a zero price free instead of dropping it", () => {
+    const meta = catalogMetadata({ id: "free/kimi-k3", contextWindow: "500K", dollarsPer1M: 0 });
+    expect(meta.pricing).toEqual({ input: 0, output: 0 });
+    expect(meta.caps.contextWindow).toBe(500000);
+  });
+
+  it("does not invent a false capability from an absent flag", () => {
+    const meta = catalogMetadata({ id: "m", capabilities: { vision: true } });
+    expect(Object.keys(meta.caps)).toEqual(["vision"]);
+  });
 });
 
 describe("POST /api/providers/import-models", () => {
