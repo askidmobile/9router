@@ -3,6 +3,9 @@
 import { DatabaseSync } from 'node:sqlite';
 const db = new DatabaseSync(process.env.DB_PATH || '/app/data/db/data.sqlite');
 if (!process.env.BASELINE_DB) throw new Error('BASELINE_DB is required');
+if (db.prepare("SELECT 1 FROM kv WHERE scope='migrations' AND key='catalog-selection-v1'").get()) {
+ console.log(JSON.stringify({status:'already applied'}));process.exit(0);
+}
 const baseline = new DatabaseSync(process.env.BASELINE_DB, {readOnly:true});
 const aliases = {req:'req',requesty:'req',apinex:'apinex',cheaper:'cheaper'};
 const nodeAliases = new Map(baseline.prepare('SELECT id,data FROM providerNodes').all().map(row=>[row.id,JSON.parse(row.data).prefix]));
@@ -34,7 +37,7 @@ if(process.env.APPLY==='1'&&candidates.length){
  db.exec(`VACUUM INTO '${backup}'`);
  const set=db.prepare("UPDATE kv SET value=? WHERE scope='customModels' AND key=?");
  db.exec('BEGIN IMMEDIATE');
- try {for(const row of candidates)set.run(JSON.stringify({...row.value,catalogOnly:true}),row.key);db.exec('COMMIT');}
+ try {for(const row of candidates)set.run(JSON.stringify({...row.value,catalogOnly:true}),row.key);db.prepare("INSERT INTO kv(scope,key,value) VALUES('migrations','catalog-selection-v1',?)").run(JSON.stringify({appliedAt:new Date().toISOString(),counts}));db.exec('COMMIT');}
  catch(error){db.exec('ROLLBACK');throw error;}
 }
 console.log(JSON.stringify({applied:process.env.APPLY==='1',counts,preservedReferences:preserved.size,backup,quickCheck:db.prepare('PRAGMA quick_check').get().quick_check}));
