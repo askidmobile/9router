@@ -1,5 +1,7 @@
 import { PROVIDERS } from "../config/providers.js";
 import { OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE } from "../providers/shared.js";
+import { FORMATS } from "../translator/formats.js";
+import { RESPONSES_ITEM } from "../translator/schema/index.js";
 
 const OPENAI_COMPATIBLE_PREFIX = "openai-compatible-";
 const OPENAI_COMPATIBLE_DEFAULTS = {
@@ -145,10 +147,21 @@ export function getTargetFormat(provider, credentials = null) {
 // Resolve which transport to use for a provider given the client sourceFormat.
 // Multi-endpoint providers (transport.transports[]) pick the entry matching sourceFormat
 // to avoid lossy translation; falls back to the default transport when no match.
-export function resolveTransport(provider, sourceFormat) {
+export function resolveTransport(provider, sourceFormat, body = null) {
   const config = PROVIDERS[provider];
   const transports = config?.transports;
   if (!Array.isArray(transports) || !transports.length) return null;
+  if (sourceFormat === FORMATS.OPENAI_RESPONSES && config.quirks?.responsesCustomToolsViaChat) {
+    const hasCustomTools = tools => Array.isArray(tools) && tools.some(tool =>
+      tool?.type === RESPONSES_ITEM.CUSTOM_TOOL || hasCustomTools(tool?.tools));
+    const input = Array.isArray(body?.input) ? body.input : [];
+    const hasStoredHistory = body?.previous_response_id || input.some(item => item?.type === RESPONSES_ITEM.ITEM_REFERENCE);
+    const needsCustomTools = hasCustomTools(body?.tools) || input.some(item =>
+      item?.type === RESPONSES_ITEM.CUSTOM_TOOL_CALL || item?.type === RESPONSES_ITEM.CUSTOM_TOOL_CALL_OUTPUT ||
+      item?.type === RESPONSES_ITEM.ADDITIONAL_TOOLS && hasCustomTools(item.tools));
+    // APInex Responses can render custom calls as prose; the Chat adapter restores their raw input and namespace.
+    if (needsCustomTools && !hasStoredHistory) return transports.find(t => t.format === FORMATS.OPENAI) || null;
+  }
   return transports.find(t => t.format === sourceFormat) || null;
 }
 

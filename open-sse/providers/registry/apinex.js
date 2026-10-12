@@ -27,6 +27,7 @@ export default {
   category: "apikey",
   authType: "apikey",
   transport: {
+    quirks: { responsesCustomToolsViaChat: true },
     baseUrl: "https://api.apinex.bond/v1/chat/completions",
     validateUrl: "https://api.apinex.bond/v1/models",
     retry: {

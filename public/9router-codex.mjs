@@ -15,6 +15,12 @@ import { pipeline } from "node:stream/promises";
 
 const exec = promisify(execFile);
 const PREFIX = "9router/";
+const CODEX_TOOL_TURN_INSTRUCTIONS = `## Tool execution through 9router
+
+The client ends your turn when you return a response without tool calls. A progress update or a promise to act does not schedule another response.
+For an action request that needs tools, include an actual tool call in the same response as any initial progress update. After tool results arrive, continue using tools until the requested work is complete or a concrete blocker requires user input.
+Do not end a turn with only an intention such as "I will check", "I will fix", or "I will create" while an authorized next action is available. Use the provided structured tool interface; writing a tool name or command in prose does not execute it.
+Text-only answers are appropriate for completed work, questions that need no tools, or a necessary clarification or approval. Respect the user's scope, sandbox, and permission rules.`;
 const MAX_BODY = 64 * 1024 * 1024;
 const OWNED = ["model_provider", "openai_base_url", "model_catalog_json"];
 const json = value => `${JSON.stringify(value, null, 2)}\n`;
@@ -154,7 +160,7 @@ export function mergeCatalog(nativeModels, manifest) {
     priority: minPriority - manifest.models.length + index,
     additional_speed_tiers: [], service_tiers: [], default_service_tier: null,
     availability_nux: null, upgrade: null,
-    base_instructions: baseInstructions, model_messages: { multi_agent: multiAgentMessages },
+    base_instructions: `${baseInstructions}\n\n${CODEX_TOOL_TURN_INSTRUCTIONS}`, model_messages: { multi_agent: multiAgentMessages },
     include_skills_usage_instructions: true, include_plugin_usage_instructions: true,
     include_apps_usage_instructions: true, supports_reasoning_summary_parameter: false,
     supports_reasoning_summaries: false, default_reasoning_summary: "auto",

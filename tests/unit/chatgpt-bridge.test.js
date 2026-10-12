@@ -76,6 +76,16 @@ describe("catalog and endpoint validation", () => {
     });
     expect(mergeCatalog(combined.models, manifest).models).toEqual(combined.models);
   });
+  it("adapts external model instructions to the client's tool-driven turn loop", () => {
+    const combined = mergeCatalog(native, manifest);
+    const instructions = combined.models[0].base_instructions;
+    expect(instructions).toContain(native[0].base_instructions);
+    expect(instructions).toContain("include an actual tool call in the same response");
+    expect(instructions).toContain("necessary clarification or approval");
+    expect(instructions).toContain("Respect the user's scope, sandbox, and permission rules");
+    expect(combined.models[1]).toEqual(native[0]);
+    expect(mergeCatalog(combined.models, manifest)).toEqual(combined);
+  });
   it.each(["http://example.com/api/chatgpt/v1", "https://user:password@example.com/api/chatgpt/v1", "https://example.com/v1", "https://example.com/api/chatgpt/v1?key=secret"])('rejects unsafe or wrong endpoint %s', url => {
     expect(() => validateRouterUrl(url)).toThrow();
   });
