@@ -1,4 +1,5 @@
 "use client";
+import { selectedModelIds } from "@/shared/utils/modelSelection";
 
 import { useState, useMemo, useEffect } from "react";
 import PropTypes from "prop-types";
@@ -160,7 +161,7 @@ export default function ModelSelectModal({
       const res = await fetch("/api/models/custom");
       if (!res.ok) throw new Error(`Failed to fetch custom models: ${res.status}`);
       const data = await res.json();
-      setCustomModels(data.models || []);
+      setCustomModels((data.models || []).filter(model => model.catalogOnly !== true).map(model => ({ ...model, providerAlias: getProviderAlias(model.providerAlias) })));
     } catch (error) {
       console.error("Error fetching custom models:", error);
       setCustomModels([]);
@@ -440,11 +441,13 @@ export default function ModelSelectModal({
         ...model,
         name: model.isPlaceholder ? model.name : getName(providerId, model.id, getName(group.alias, model.id, model.name)),
       }));
+      const selected = selectedModelIds(activeProviders.filter(connection => connection.provider === providerId), [group.alias, aliasKey, providerId]);
+      if (selected) group.models = group.models.filter(model => selected.has(model.id));
       const disabledIds = new Set([
+        ...(disabledModels[group.alias] || []),
         ...(disabledModels[aliasKey] || []),
         ...(disabledModels[providerId] || []),
       ]);
-      if (disabledIds.size === 0) return;
       group.models = group.models.filter((m) => !disabledIds.has(m.id));
       if (group.models.length === 0) delete groups[providerId];
     });

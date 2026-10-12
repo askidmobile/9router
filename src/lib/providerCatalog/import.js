@@ -67,7 +67,7 @@ export async function resolveProviderCatalog(connection) {
  * @param {boolean} [params.registerModels] - also add ids to the model list
  * @returns {Promise<{provider: string, source: string, models?: number, pricing?: object, caps?: object, registered?: object, warning?: string}>}
  */
-export async function importProviderCatalog({ connection, targets = VALID_TARGETS, registerModels = false }) {
+export async function importProviderCatalog({ connection, targets = VALID_TARGETS, registerModels = false, refreshOfficialSources = false, catalogOnly = false }) {
   const alias = getProviderAlias(connection.provider) || connection.provider;
   const wanted = targets.filter((t) => VALID_TARGETS.includes(t));
   if (wanted.length === 0) throw new Error("No valid targets; expected pricing and/or caps");
@@ -88,12 +88,12 @@ export async function importProviderCatalog({ connection, targets = VALID_TARGET
   }
 
   if (!entries) {
-    const fallback = await getModelsDevProviderModels([alias, connection.provider]) || { models: null };
+    const fallback = await getModelsDevProviderModels([alias, connection.provider], { forceRefresh: refreshOfficialSources }) || { models: null };
     if (!fallback.modelsDevId || !fallback.models) {
       // Providers without a listing can still supplement their configured registry IDs.
       const configured = getRegistryEntry(alias)?.models || [];
       if (wanted.includes("caps") && configured.length) {
-        const additional = await getSupplementaryMetadata(configured.map(model => model.id));
+        const additional = await getSupplementaryMetadata(configured.map(model => model.id), { refresh: refreshOfficialSources });
         const caps = {}, sources = {};
         for (const [id, model] of Object.entries(additional.models)) {
           caps[id] = model.caps;
@@ -125,7 +125,7 @@ export async function importProviderCatalog({ connection, targets = VALID_TARGET
     }
     if (wanted.includes("caps")) {
       const caps = {}, sources = {};
-      const additional = await getSupplementaryMetadata(Object.keys(fallback.models));
+      const additional = await getSupplementaryMetadata(Object.keys(fallback.models), { refresh: refreshOfficialSources });
       if (additional.warning) response.warning = [response.warning, additional.warning].filter(Boolean).join("; ");
       for (const [id, model] of Object.entries(fallback.models)) {
         const merged = mergeModelCapabilities(null, model, fallback, additional.models[id], alias);
@@ -137,7 +137,7 @@ export async function importProviderCatalog({ connection, targets = VALID_TARGET
     }
     if (registerModels) {
       const all = Object.keys(fallback.models);
-      response.registered = await addCustomModelsBulk({ providerAlias: alias, type: "llm", ids: all.slice(0, MAX_REGISTERED_MODELS) });
+      response.registered = await addCustomModelsBulk({ providerAlias: alias, type: "llm", catalogOnly, ids: all.slice(0, MAX_REGISTERED_MODELS) });
       if (all.length > MAX_REGISTERED_MODELS) response.registered.truncated = all.length - MAX_REGISTERED_MODELS;
     }
     return response;
@@ -151,13 +151,13 @@ export async function importProviderCatalog({ connection, targets = VALID_TARGET
   let exact = {};
   if (wanted.includes("caps")) {
     try {
-      fallback = await getModelsDevProviderModels([alias, connection.provider]) || { models: null };
+      fallback = await getModelsDevProviderModels([alias, connection.provider], { forceRefresh: refreshOfficialSources }) || { models: null };
       exact = await getExactModelFallbacks(entries.map(entry => entry.id));
     } catch (error) {
       warning = [warning, `Supplementary catalog unavailable: ${error.message}`].filter(Boolean).join("; ");
     }
   }
-  const additional = wanted.includes("caps") ? await getSupplementaryMetadata(entries.map(entry => entry.id)) : { models: {} };
+  const additional = wanted.includes("caps") ? await getSupplementaryMetadata(entries.map(entry => entry.id), { refresh: refreshOfficialSources }) : { models: {} };
   if (additional.warning) warning = [warning, additional.warning].filter(Boolean).join("; ");
   const updatedAt = new Date().toISOString();
   for (const entry of entries) {
@@ -188,7 +188,7 @@ export async function importProviderCatalog({ connection, targets = VALID_TARGET
   };
   if (registerModels) {
     response.registered = await addCustomModelsBulk({
-      providerAlias: alias, type: "llm", ids: ids.slice(0, MAX_REGISTERED_MODELS),
+      providerAlias: alias, type: "llm", catalogOnly, ids: ids.slice(0, MAX_REGISTERED_MODELS),
     });
     // Never let a ceiling look like "the whole catalog is selectable".
     if (ids.length > MAX_REGISTERED_MODELS) {

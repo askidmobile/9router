@@ -580,7 +580,7 @@ export default function ModelsPage() {
                       onClick={() => handleToggleCatalogSync(group)}
                       title={scheduled
                         ? "Prices and limits refresh automatically twice a day"
-                        : "Refresh prices, limits and the model list from this provider twice a day"}
+                        : "Refresh prices and available models twice a day; capabilities refresh manually"}
                       className={`inline-flex h-8 items-center gap-1 rounded-lg border px-2.5 text-xs transition-colors ${
                         scheduled
                           ? "border-primary/40 bg-primary/5 text-primary"

@@ -313,8 +313,24 @@ export default function ProviderDetailPage() {
     });
   };
 
+  const handleClearModels = () => setConfirmState({
+    title: "Удалить все модели",
+    message: "Очистить выбранный список моделей провайдера? Соединения, ключи и параметры сохранятся. Модели можно добавить повторно.",
+    confirmText: "Удалить все модели",
+    onConfirm: async () => {
+      setConfirmState(null);
+      try {
+        const response = await fetch("/api/models/selection", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ providerAlias: providerStorageAlias, action: "clear" }) });
+        if (!response.ok) throw new Error("Не удалось очистить список моделей");
+        await Promise.all([fetchCustomModels(), fetchDisabledModels(), fetchConnections()]);
+      } catch (error) { setModelsTestError(error.message); }
+    },
+  });
+
   const handleEnableAll = async () => {
     try {
+      const reset = await fetch("/api/models/selection", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ providerAlias: providerStorageAlias, action: "reset" }) });
+      if (!reset.ok) throw new Error("Could not reset model selection");
       const res = await fetch(`/api/models/disabled?providerAlias=${encodeURIComponent(providerStorageAlias)}`, { method: "DELETE" });
       if (res.ok) await fetchDisabledModels();
     } catch (error) {
@@ -1163,7 +1179,7 @@ export default function ProviderDetailPage() {
       providerAlias: providerStorageAlias,
       builtInModels: models,
       type: "llm",
-    });
+    }).filter(model => !disabledSet.has(model.id));
 
     return (
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -1778,7 +1794,7 @@ export default function ProviderDetailPage() {
               </select>
             )}
           </div>
-          {!isCompatible && (() => {
+          {(() => {
             const allIds = [
               ...models,
               ...kiloFreeModels.filter((fm) => !models.some((m) => m.id === fm.id)),
@@ -1786,6 +1802,7 @@ export default function ProviderDetailPage() {
             const activeIds = allIds.filter((id) => !disabledModelIds.includes(id));
             return (
               <div className="flex gap-2">
+                <Button size="sm" variant="secondary" icon="delete_sweep" onClick={handleClearModels}>Удалить все модели</Button>
                 {disabledModelIds.length > 0 && (
                   <Button size="sm" variant="secondary" icon="restart_alt" onClick={handleEnableAll}>
                     Active All

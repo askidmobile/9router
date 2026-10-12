@@ -35,6 +35,8 @@ vi.mock("@/lib/db/repos/settingsRepo.js", () => ({
   getSettings: async () => mocks.settings,
 }));
 
+vi.mock("@/lib/modelSources/index.js", async (importOriginal) => ({ ...(await importOriginal()), getSupplementaryMetadata: async () => ({ models: {} }) }));
+
 import { importProviderCatalog, findImportConnection } from "@/lib/providerCatalog/import.js";
 import { syncProviderCatalogs, getSyncProviders } from "@/lib/providerCatalog/sync.js";
 
@@ -68,14 +70,14 @@ describe("scheduled provider catalog sync", () => {
     mocks.fetch.mockResolvedValue({ ok: true, json: async () => CATALOG });
     const result = await syncProviderCatalogs();
     expect(result.providers.groq).toMatchObject({ status: "skipped" });
-    expect(result.providers.cheaper).toMatchObject({ status: "ok", pricing: 2, caps: 2 });
+    expect(result.providers.cheaper).toMatchObject({ status: "ok", pricing: 2, caps: 0 });
   });
 
   it("registers newly listed models so they become selectable", async () => {
     mocks.settings = { catalogSyncProviders: ["cheaper"] };
     mocks.fetch.mockResolvedValue({ ok: true, json: async () => CATALOG });
     const result = await syncProviderCatalogs();
-    expect(mocks.addedBulk).toHaveBeenCalledWith({ providerAlias: "cheaper", type: "llm", ids: ["glm-5.3", "new-model-1"] });
+    expect(mocks.addedBulk).toHaveBeenCalledWith({ providerAlias: "cheaper", type: "llm", catalogOnly: true, ids: ["glm-5.3", "new-model-1"] });
     expect(result.providers.cheaper.models).toBe(2);
   });
 

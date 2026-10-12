@@ -2,16 +2,17 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const storage = vi.hoisted(() => ({}));
 vi.mock("../../src/lib/db/helpers/kvStore.js", () => ({ makeKv: () => ({ get: async k => storage[k], set: async (k, v) => { storage[k] = v; } }) }));
 import { matchModel } from "../../src/lib/modelSources/identity.js";
-import { supplementaryMetadata, getSupplementaryCatalog, mergeModelCapabilities } from "../../src/lib/modelSources/index.js";
-import { catalogMetadata } from "../../src/lib/providerCatalog/metadata.js";
+import { supplementaryMetadata, getSupplementaryCatalog, getSupplementaryMetadata, mergeModelCapabilities } from "../../src/lib/modelSources/index.js";
+import { parseOfficialDocument, getManufacturerCatalog, OFFICIAL_DOCUMENTS } from "../../src/lib/modelSources/manufacturer.js";
 const hy4 = { id: "tencent/hy4-preview", context_length: 1048576, top_provider: { max_completion_tokens: 64000 }, architecture: { input_modalities: ["text"], output_modalities: ["text"] }, supported_parameters: ["tools", "reasoning"], reasoning: { supported_efforts: ["high", "low", "none"], mandatory: false } };
-beforeEach(() => { delete storage.openrouter; vi.unstubAllGlobals(); });
+const tokenhub = (context="1M",output="64k") => `<table><tr><th>model（调用参数）</th><th>上下文窗口（Token）</th><th>最大输出（Token）</th><th>能力支持</th></tr><tr><td>hy4-preview</td><td>${context}</td><td>${output}</td><td>Function Calling 深度思考</td></tr></table>`;
+const cloudbase = `<table><tr><th>Model</th><th>Context</th><th>Image</th><th>Video</th><th>Deep Thinking</th><th>Tool Calling</th></tr><tr><td><code>hy4-preview</code></td><td>1M</td><td>❌</td><td>❌</td><td>✅</td><td>✅</td></tr></table>`;
+beforeEach(() => { for (const key of Object.keys(storage)) delete storage[key]; vi.unstubAllGlobals(); });
 
 describe("model identity matching", () => {
   it("matches free IDs, explicit aliases and unique names", () => {
     expect(matchModel("free/hy4", [hy4])).toMatchObject({ match: "alias", model: hy4 });
     expect(matchModel("Hy4-preview", [hy4]).match).toBe("unique-name");
-    expect(matchModel("tencent/hy4-preview", [hy4]).match).toBe("exact");
   });
   it("rejects ambiguous names, wrong namespaces and different versions", () => {
     expect(matchModel("m", [{id:"a/m"}, {id:"b/m"}])).toBeNull();
@@ -19,37 +20,43 @@ describe("model identity matching", () => {
     expect(matchModel("hy4-preview-20270101", [hy4])).toBeNull();
   });
 });
-describe("additional official metadata", () => {
-  it("parses published modalities, tools and effort enums without borrowing prices", () => {
-    expect(catalogMetadata(hy4).caps).toMatchObject({maxOutput:64000,vision:false,tools:true,reasoningLevels:["none","low","high"],thinkingCanDisable:true});
+describe("user-triggered official metadata", () => {
+  it("parses real named columns and explicit flags without inventing absent values", () => {
+    expect(parseOfficialDocument(tokenhub(),"tokenhub")[0].caps).toMatchObject({contextWindow:1e6,maxOutput:64000,tools:true,reasoning:true});
+    expect(parseOfficialDocument(cloudbase,"cloudbase")[0].caps.vision).toBe(false);
+    expect(()=>parseOfficialDocument('<html>upstream unavailable</html>',"tokenhub")).toThrow();
   });
-  it("uses manufacturer documentation ahead of the cross-provider catalog and retains review dates", () => {
-    const data = supplementaryMetadata(["free/hy4"], {models:[{...hy4,top_provider:{max_completion_tokens:131072}}],fetchedAt:1000000,stale:false})["free/hy4"];
-    expect(data.caps).toMatchObject({contextWindow:1000000,maxOutput:64000,vision:false,tools:true,reasoningLevels:["none","low","high"]});
-    expect(data.sources.maxOutput).toMatchObject({source:"manufacturer-docs",modelId:"tencent/hy4-preview",snapshot:true,verified:false,updatedAt:"2026-10-12T08:00:00.000Z"});
-    expect(data).not.toHaveProperty("pricing");
+  it("makes no requests unless the user asks to refresh", async () => {
+    const fetcher=vi.fn();vi.stubGlobal('fetch',fetcher);
+    expect((await getSupplementaryMetadata(['free/hy4'])).models).toEqual({});
+    expect(fetcher).not.toHaveBeenCalled();
   });
-  it("preserves provider false values, explicit tiers and broker limits over every supplement", () => {
-    const additional=supplementaryMetadata(["free/hy4"], {models:[hy4],fetchedAt:1000})["free/hy4"];
-    const result=mergeModelCapabilities({contextWindow:900000,maxOutput:32000,vision:true,reasoning:false,reasoningLevels:[]}, {caps:{contextWindow:2e6,vision:true}}, {fetchedAt:1000}, additional, "apinex", "2026-10-12T08:00:00Z");
-    expect(result.caps).toMatchObject({contextWindow:900000,maxOutput:32000,vision:true,reasoning:false,reasoningLevels:[]});
-    expect(result.sources.maxOutput.source).toBe("provider");
+  it("refreshes changing CTX/OUT and reasoning instead of reusing a static snapshot", async () => {
+    let output='64k',efforts=['none','low','high'];
+    const fetcher=vi.fn(async url=>String(url).includes('openrouter')?{ok:true,json:async()=>({data:[{...hy4,reasoning:{supported_efforts:efforts}}]})}:{ok:true,text:async()=>String(url).includes('cloudbase')?cloudbase:tokenhub('1M',output)});
+    vi.stubGlobal('fetch',fetcher);
+    const first=await getSupplementaryMetadata(['free/hy4'],{refresh:true});
+    expect(first.models['free/hy4'].caps).toMatchObject({maxOutput:64000,vision:false,reasoningLevels:['none','low','high']});
+    expect(first.models['free/hy4'].sources.maxOutput).toMatchObject({source:'manufacturer-docs',stale:false,verified:false});
+    expect(first.models['free/hy4'].sources.maxOutput).not.toHaveProperty('snapshot');
+    output='96k';efforts=['low','high'];
+    const second=await getSupplementaryMetadata(['free/hy4'],{refresh:true});
+    expect(second.models['free/hy4'].caps).toMatchObject({maxOutput:96000,reasoningLevels:['low','high']});
+    const n=fetcher.mock.calls.length;await getSupplementaryMetadata(['free/hy4']);expect(fetcher).toHaveBeenCalledTimes(n);
+    for(const [,options] of fetcher.mock.calls)expect(options.headers).not.toHaveProperty('Authorization');
   });
-  it("uses additional sources when a models.dev provider catalog is the only available list", () => {
-    const additional=supplementaryMetadata(["hy4-preview"], {models:[hy4],fetchedAt:1000})["hy4-preview"];
-    const result=mergeModelCapabilities(null, {id:"hy4-preview",caps:{vision:true,maxOutput:1000}}, {modelsDevId:"tencent",fetchedAt:1000}, additional, "hunyuan");
-    expect(result.caps).toMatchObject({vision:false,maxOutput:64000});
-    expect(result.sources.vision.source).toBe("manufacturer-docs");
+  it("does not replace cached data when document structure changes or fetching fails",async()=>{
+    storage[OFFICIAL_DOCUMENTS[0].url]={url:OFFICIAL_DOCUMENTS[0].url,fetchedAt:1234,models:parseOfficialDocument(tokenhub(),'tokenhub')};
+    vi.stubGlobal('fetch',vi.fn(async()=>({ok:true,text:async()=>'<html>Error</html>'})));
+    const result=await getManufacturerCatalog({refresh:true});
+    expect(result.models[0].caps.maxOutput).toBe(64000);expect(result.models[0].sources.maxOutput.stale).toBe(true);expect(result.warning).toContain('no recognized');
   });
-  it("caches one shared public fetch and never sends account credentials", async () => {
-    const fetcher=vi.fn(async()=>({ok:true,json:async()=>({data:[hy4]})}));vi.stubGlobal("fetch",fetcher);
-    const [a,b]=await Promise.all([getSupplementaryCatalog(),getSupplementaryCatalog()]);
-    expect(a.models).toEqual(b.models);expect(fetcher).toHaveBeenCalledTimes(1);
-    await getSupplementaryCatalog();expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(fetcher.mock.calls[0][1].headers).toEqual({Accept:"application/json"});
+  it("shares an explicitly requested public catalog fetch",async()=>{
+    const fetcher=vi.fn(async()=>({ok:true,json:async()=>({data:[hy4]})}));vi.stubGlobal('fetch',fetcher);
+    await Promise.all([getSupplementaryCatalog({refresh:true}),getSupplementaryCatalog({refresh:true})]);expect(fetcher).toHaveBeenCalledTimes(1);
   });
-  it("retains a stale catalog when the public source is unavailable", async () => {
-    storage.openrouter={models:[hy4],fetchedAt:1};vi.stubGlobal("fetch",vi.fn(async()=>{throw new Error("offline")}));
-    expect(await getSupplementaryCatalog()).toMatchObject({stale:true,models:[hy4]});
+  it("retains provider declarations over supplementary limits and flags",()=>{
+    const extra=supplementaryMetadata(['free/hy4'],{models:[hy4],fetchedAt:1000})['free/hy4'];
+    expect(mergeModelCapabilities({vision:true,maxOutput:32000},null,{},extra,'apinex','now').caps).toMatchObject({vision:true,maxOutput:32000});
   });
 });

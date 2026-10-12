@@ -54,7 +54,7 @@ export async function PUT(request) {
 
 // POST /api/providers/catalog-sync — run the scheduled sync now
 export async function POST() {
-  const result = await syncProviderCatalogs();
+  const result = await syncProviderCatalogs({ refreshOfficialSources: true });
   if (!result) return NextResponse.json({ error: "sync in progress" }, { status: 503 });
   return NextResponse.json({ success: true, ...result, state: getCatalogSyncState() });
 }

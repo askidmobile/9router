@@ -1,3 +1,4 @@
+import { selectedModelIds } from "@/shared/utils/modelSelection";
 import { PROVIDER_MODELS, PROVIDER_ID_TO_ALIAS, getModelKind } from "@/shared/constants/models";
 import {
   ALIAS_TO_ID,
@@ -295,7 +296,7 @@ export async function buildModelsList(kindFilter, options = {}) {
 
   let customModels = [];
   try {
-    customModels = await getCustomModels();
+    customModels = (await getCustomModels()).filter(model => model.catalogOnly !== true);
   } catch (e) {
     console.log("Could not fetch custom models");
   }
@@ -450,9 +451,10 @@ export async function buildModelsList(kindFilter, options = {}) {
         || staticAlias
       ).trim();
       const providerModels = PROVIDER_MODELS[staticAlias] || [];
-      const enabledModels = conn?.providerSpecificData?.enabledModels;
+      const selected = selectedModelIds(connections.filter(connection => connection.provider === providerId), [outputAlias, staticAlias, providerId]);
+      const enabledModels = selected ? [...selected] : null;
       const hasExplicitEnabledModels =
-        Array.isArray(enabledModels) && enabledModels.length > 0;
+        Array.isArray(enabledModels);
       const isCompatibleProvider =
         isOpenAICompatibleProvider(providerId) || isAnthropicCompatibleProvider(providerId);
 
@@ -491,7 +493,7 @@ export async function buildModelsList(kindFilter, options = {}) {
         })
         .filter((modelId) => modelId !== "");
 
-      if (isCompatibleProvider && rawModelIds.length === 0 && customModelIds.length === 0 && !skipDynamicFetch) {
+      if (isCompatibleProvider && !hasExplicitEnabledModels && rawModelIds.length === 0 && customModelIds.length === 0 && !skipDynamicFetch) {
         rawModelIds = await fetchCompatibleModelIds(conn);
       }
 
@@ -557,7 +559,7 @@ export async function buildModelsList(kindFilter, options = {}) {
         })
         .filter((modelId) => typeof modelId === "string" && modelId.trim() !== "");
 
-      const mergedModelIds = Array.from(new Set([...modelIds, ...customModelIds, ...aliasModelIds]));
+      const mergedModelIds = hasExplicitEnabledModels ? Array.from(new Set(modelIds)) : Array.from(new Set([...modelIds, ...customModelIds, ...aliasModelIds]));
 
       for (const modelId of mergedModelIds) {
         // Resolve kind: prefer custom/live metadata, then static, then ID heuristics.
@@ -567,7 +569,7 @@ export async function buildModelsList(kindFilter, options = {}) {
         // imageToText custom models stay in the LLM list (vision-capable chat models)
         const allowAsLlm = kind === "imageToText" && kindFilter.includes(LLM_KIND);
         if (!kindFilter.includes(kind) && !allowAsLlm) continue;
-        if (isDisabled(outputAlias, modelId) || isDisabled(staticAlias, modelId)) continue;
+        if (isDisabled(outputAlias, modelId) || isDisabled(staticAlias, modelId) || isDisabled(providerId, modelId)) continue;
 
         const model = {
           id: `${outputAlias}/${modelId}`,

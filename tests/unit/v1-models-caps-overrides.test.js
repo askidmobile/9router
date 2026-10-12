@@ -44,6 +44,15 @@ describe("GET /v1/models — caps overrides and model aliases", () => {
     mocks.getCapsOverrides.mockResolvedValue({});
   });
 
+  it("does not expose catalog-only rows or merge them into explicit selections", async () => {
+    mocks.getProviderConnections.mockResolvedValue([{provider:"requesty",isActive:true,providerSpecificData:{enabledModels:["req/chosen"]}}]);
+    mocks.getCustomModels.mockResolvedValue([{providerAlias:"req",id:"chosen"},{providerAlias:"req",id:"available",catalogOnly:true},{providerAlias:"req",id:"other"}]);
+    const response=await GET(new Request("http://localhost:20128/v1/models"));
+    const result=await response.json();expect(result.data.filter(m=>m.owned_by==='req').map(m=>m.id)).toEqual(['req/chosen']);
+    mocks.getProviderConnections.mockResolvedValue([{provider:"requesty",isActive:true,providerSpecificData:{enabledModels:[]}}]);
+    const empty=await (await GET(new Request("http://localhost:20128/v1/models"))).json();
+    expect(empty.data.filter(m=>m.owned_by==='req')).toEqual([]);
+  });
   it("applies capability overrides to context_length and capabilities in /v1/models", async () => {
     mocks.getCapsOverrides.mockResolvedValue({
       "openai|gpt-4o": { contextWindow: 500000, maxOutput: 32000, reasoning: true },

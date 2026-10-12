@@ -19,6 +19,8 @@ export async function POST(request) {
       connection,
       targets: Array.isArray(body?.targets) && body.targets.length ? body.targets : undefined,
       registerModels: body?.registerModels === true,
+      refreshOfficialSources: true,
+      catalogOnly: true,
     });
     return NextResponse.json({ success: true, ...result });
   } catch (error) {

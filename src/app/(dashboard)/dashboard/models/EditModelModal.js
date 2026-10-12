@@ -80,7 +80,7 @@ export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
       if (!res.ok) throw new Error(data.error || "Import failed");
       invalidateModelCapsCache();
       invalidatePricingCache();
-      setImportMsg(`Imported ${data.caps?.imported ?? 0} capability sets, ${data.pricing?.imported ?? 0} prices from ${data.source}`);
+      setImportMsg(`Imported ${data.caps?.imported ?? 0} capability sets, ${data.pricing?.imported ?? 0} prices from ${data.source}${data.warning ? "; " + data.warning : ""}`);
       setMetadataRevision(value => value + 1);
       onSaved?.();
     } catch (err) {

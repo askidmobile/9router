@@ -1,3 +1,5 @@
+import { getProviderAlias } from "@/shared/constants/providers";
+
 function modelType(model) {
   return model?.kind || model?.type || "llm";
 }
@@ -13,6 +15,7 @@ export function getProviderCustomModelRows({
   const builtInIds = new Set(builtInModels.map((model) => model.id));
   const seenFullModels = new Set();
   const rows = [];
+  const catalogIds = new Set(customModels.filter(model => model.catalogOnly === true && getProviderAlias(model.providerAlias) === getProviderAlias(providerAlias)).map(model => model.id));
 
   // A registered custom model can also carry an alias. The legacy-alias pass
   // below skips it as already seen, so look the alias up here or the provider
@@ -23,7 +26,7 @@ export function getProviderCustomModelRows({
   }
 
   for (const model of customModels) {
-    if (!model?.id || model.providerAlias !== providerAlias) continue;
+    if (!model?.id || model.catalogOnly === true || getProviderAlias(model.providerAlias) !== getProviderAlias(providerAlias)) continue;
     const rowType = modelType(model);
     if (type && rowType !== type) continue;
     if (builtInIds.has(model.id)) continue;
@@ -47,7 +50,7 @@ export function getProviderCustomModelRows({
   for (const [alias, fullModel] of Object.entries(modelAliases || {})) {
     if (typeof fullModel !== "string" || !fullModel.startsWith(prefix)) continue;
     const id = fullModel.slice(prefix.length);
-    if (!id || builtInIds.has(id) || seenFullModels.has(fullModel)) continue;
+    if (!id || catalogIds.has(id) || builtInIds.has(id) || seenFullModels.has(fullModel)) continue;
 
     seenFullModels.add(fullModel);
     rows.push({

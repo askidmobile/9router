@@ -28,7 +28,7 @@ export async function POST(request) {
     }
 
     const alias = getProviderAlias(provider) || provider;
-    const result = await getProviderModels([alias, provider]);
+    const result = await getProviderModels([alias, provider], { forceRefresh: true });
     if (!result.modelsDevId || !result.models) {
       return NextResponse.json(
         { error: `Provider ${provider} is not available on models.dev` },
@@ -59,7 +59,7 @@ export async function POST(request) {
 
     if (targets.includes("caps")) {
       const capsEntries = {}, sources = {};
-      const additional = await getSupplementaryMetadata(Object.keys(result.models));
+      const additional = await getSupplementaryMetadata(Object.keys(result.models), { refresh: true });
       if (additional.warning) response.warning = additional.warning;
       for (const [modelId, model] of Object.entries(result.models)) {
         const merged = mergeModelCapabilities(null, model, result, additional.models[modelId], alias);

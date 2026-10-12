@@ -1,18 +1,17 @@
 import { makeKv } from "../db/helpers/kvStore.js";
 import { catalogMetadata } from "../providerCatalog/metadata.js";
 import { createModelMatcher } from "./identity.js";
-import { MANUFACTURER_MODELS } from "./manufacturer.js";
+import { getManufacturerCatalog } from "./manufacturer.js";
 
 export const OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models";
-const TTL_MS = 12 * 60 * 60 * 1000;
 const kv = makeKv("modelSources");
 let pending;
 
-export async function getSupplementaryCatalog() {
+export async function getSupplementaryCatalog({ refresh = false } = {}) {
+  if (!refresh) return await kv.get("openrouter") || { models: [] };
   if (pending) return pending;
   pending = (async () => {
     const stored = await kv.get("openrouter");
-    if (stored?.models?.length && Date.now() - stored.fetchedAt < TTL_MS) return { ...stored, stale: false };
     try {
       const response = await fetch(OPENROUTER_MODELS_URL, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(15000) });
       if (!response.ok) throw new Error(`OpenRouter catalog responded ${response.status}`);
@@ -23,17 +22,21 @@ export async function getSupplementaryCatalog() {
       await kv.set("openrouter", result);
       return { ...result, stale: false };
     } catch (error) {
-      if (stored?.models?.length) return { ...stored, stale: true };
+      if (stored?.models?.length) {
+        const retained = { ...stored, stale: true };
+        await kv.set("openrouter", retained);
+        return retained;
+      }
       throw error;
     }
   })();
   try { return await pending; } finally { pending = undefined; }
 }
 
-export function supplementaryMetadata(ids, catalog) {
+export function supplementaryMetadata(ids, catalog, manufacturer = { models: [] }) {
   const result = {};
   const matchCatalog = createModelMatcher(catalog?.models || []);
-  const matchDocuments = createModelMatcher(MANUFACTURER_MODELS);
+  const matchDocuments = createModelMatcher(manufacturer.models);
   for (const id of ids) {
     const caps = {}, sources = {};
     const matched = matchCatalog(id);
@@ -46,23 +49,21 @@ export function supplementaryMetadata(ids, catalog) {
       };
     }
     const documented = matchDocuments(id);
-    if (documented) for (const document of documented.model.documents) {
-      Object.assign(caps, document.caps);
-      for (const field of Object.keys(document.caps)) sources[field] = {
-        source: "manufacturer-docs", url: document.url, modelId: documented.model.id, match: documented.match,
-        updatedAt: document.reviewedAt, snapshot: true, verified: false,
-      };
+    if (documented) {
+      Object.assign(caps, documented.model.caps);
+      for (const [field, info] of Object.entries(documented.model.sources)) sources[field] = { ...info, match: documented.match };
     }
     if (Object.keys(caps).length) result[id] = { caps, sources };
   }
   return result;
 }
 
-export async function getSupplementaryMetadata(ids) {
+export async function getSupplementaryMetadata(ids, { refresh = false } = {}) {
   let catalog, warning;
-  try { catalog = await getSupplementaryCatalog(); }
+  try { catalog = await getSupplementaryCatalog({ refresh }); }
   catch (error) { warning = error.message; }
-  return { models: supplementaryMetadata(ids, catalog), warning };
+  const manufacturer = await getManufacturerCatalog({ refresh });
+  return { models: supplementaryMetadata(ids, catalog, manufacturer), warning: [warning, manufacturer.warning].filter(Boolean).join("; ") || undefined };
 }
 
 export function mergeModelCapabilities(primary, supplemental, fallback, additional, alias, updatedAt) {

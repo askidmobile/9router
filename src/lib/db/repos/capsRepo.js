@@ -81,7 +81,7 @@ export async function setCapsOverridesBulk(provider, entries, options = {}) {
       const incoming = options.sources?.[model]?.[field]
         || { source: options.source || "models.dev", updatedAt, verified: false };
       // An incomplete refresh must not downgrade a previously declared provider value.
-      if ((SOURCE_RANK[sources[field]?.source] || 0) > (SOURCE_RANK[incoming.source] || 0)) continue;
+      if (!sources[field]?.snapshot && (SOURCE_RANK[sources[field]?.source] || 0) > (SOURCE_RANK[incoming.source] || 0)) continue;
       sources[field] = incoming;
       automatic[field] = caps[field];
     }

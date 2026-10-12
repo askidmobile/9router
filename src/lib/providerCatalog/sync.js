@@ -35,9 +35,10 @@ export async function getSyncProviders() {
  * Refresh every opted-in provider once.
  * @returns {Promise<{synced: number, failed: number, providers: object}>}
  */
-export async function syncProviderCatalogs() {
+export async function syncProviderCatalogs({ refreshOfficialSources = false } = {}) {
   if (state.running) return null;
   state.running = true;
+  const refreshCapabilities = refreshOfficialSources;
   const result = { synced: 0, failed: 0, providers: {} };
   try {
     const aliases = await getSyncProviders();
@@ -50,9 +51,9 @@ export async function syncProviderCatalogs() {
           result.providers[alias] = { status: "skipped", reason: "no active connection" };
           continue;
         }
-        // Models a provider added since the last run become selectable too —
-        // the whole point of the schedule is that nobody has to press import.
-        const imported = await importProviderCatalog({ connection, registerModels: true });
+        // Background jobs refresh prices/discovery only. Capability refresh requires a user action.
+        const imported = await importProviderCatalog({ connection, registerModels: true, catalogOnly: true, refreshOfficialSources, targets: refreshCapabilities ? ["pricing", "caps"] : ["pricing"] });
+        refreshOfficialSources = false;
         result.providers[alias] = {
           status: "ok",
           source: imported.source,

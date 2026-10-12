@@ -32,3 +32,30 @@ describe("real database capability writes",()=>{
     expect(await db.getCapsMetadata()).toEqual(sources);
   });
 });
+
+describe('catalog models are available without being selected',()=>{
+  it('clears provider selection atomically and explicit add selects only that model',async()=>{
+    const {setProviderModelSelection}=await import('@/lib/db/repos/modelSelectionRepo.js');
+    const connection=await db.createProviderConnection({provider:'requesty',authType:'apikey',apiKey:'fixture',isActive:true});
+    await db.addCustomModel({providerAlias:'req',id:'clear-me'});
+    await db.setModelAlias('legacy-choice','req/legacy-clear');
+    await setProviderModelSelection('req','clear');
+    expect((await db.getProviderConnectionById(connection.id)).providerSpecificData.enabledModels).toEqual([]);
+    expect((await db.getCustomModels()).find(m=>m.id==='clear-me').catalogOnly).toBe(true);
+    expect((await db.getDisabledModels()).req).toContain('legacy-clear');
+    await db.addCustomModel({providerAlias:'req',id:'reselected'});
+    const saved=await db.getProviderConnectionById(connection.id);
+    expect(saved.providerSpecificData.enabledModels).toEqual(['reselected']);
+    expect(saved.apiKey).toBe('fixture');
+  });
+  it('promotes a catalog entry on explicit add and does not demote manual models on sync',async()=>{
+    await db.addCustomModel({providerAlias:'req',id:'manual'});
+    await db.addCustomModelsBulk({providerAlias:'req',ids:['manual','catalog'],catalogOnly:true});
+    let list=await db.getCustomModels();
+    expect(list.find(m=>m.id==='manual').catalogOnly).not.toBe(true);
+    expect(list.find(m=>m.id==='catalog').catalogOnly).toBe(true);
+    await db.addCustomModel({providerAlias:'req',id:'catalog'});
+    await db.addCustomModelsBulk({providerAlias:'req',ids:['catalog'],catalogOnly:true});
+    list=await db.getCustomModels();expect(list.find(m=>m.id==='catalog').catalogOnly).toBe(false);
+  });
+});
