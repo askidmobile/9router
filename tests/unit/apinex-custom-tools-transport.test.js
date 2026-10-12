@@ -43,7 +43,9 @@ describe("APInex custom Responses tools", () => {
   it.each([
     { tools: [tool] },
     { tools: [namespace] },
+    { tools: [{ type: "namespace", name: "collaboration", tools: [{ type: "function", name: "list_agents", parameters: { type: "object", properties: {} } }] }] },
     { input: [{ type: "additional_tools", tools: [namespace] }] },
+    { input: [{ type: "additional_tools", tools: [{ type: "namespace", name: "functions", tools: [{ type: "function", name: "exec_command" }] }] }] },
     { input: [{ type: "custom_tool_call", name: "exec", call_id: "call_old", input: "text(1)" }] },
     { input: [{ type: "custom_tool_call_output", call_id: "call_old", output: "1" }] },
   ])("uses the Chat transport for custom declarations or continuation %j", body => {

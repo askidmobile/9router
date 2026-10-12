@@ -151,16 +151,16 @@ export function resolveTransport(provider, sourceFormat, body = null) {
   const config = PROVIDERS[provider];
   const transports = config?.transports;
   if (!Array.isArray(transports) || !transports.length) return null;
-  if (sourceFormat === FORMATS.OPENAI_RESPONSES && config.quirks?.responsesCustomToolsViaChat) {
-    const hasCustomTools = tools => Array.isArray(tools) && tools.some(tool =>
-      tool?.type === RESPONSES_ITEM.CUSTOM_TOOL || hasCustomTools(tool?.tools));
+  if (sourceFormat === FORMATS.OPENAI_RESPONSES && config.quirks?.responsesToolsViaChat) {
+    const needsToolTranslation = tools => Array.isArray(tools) && tools.some(tool =>
+      tool?.type === RESPONSES_ITEM.CUSTOM_TOOL || tool?.type === RESPONSES_ITEM.TOOL_NAMESPACE || needsToolTranslation(tool?.tools));
     const input = Array.isArray(body?.input) ? body.input : [];
     const hasStoredHistory = body?.previous_response_id || input.some(item => item?.type === RESPONSES_ITEM.ITEM_REFERENCE);
-    const needsCustomTools = hasCustomTools(body?.tools) || input.some(item =>
+    const needsTranslatedTools = needsToolTranslation(body?.tools) || input.some(item =>
       item?.type === RESPONSES_ITEM.CUSTOM_TOOL_CALL || item?.type === RESPONSES_ITEM.CUSTOM_TOOL_CALL_OUTPUT ||
-      item?.type === RESPONSES_ITEM.ADDITIONAL_TOOLS && hasCustomTools(item.tools));
-    // APInex Responses can render custom calls as prose; the Chat adapter restores their raw input and namespace.
-    if (needsCustomTools && !hasStoredHistory) return transports.find(t => t.format === FORMATS.OPENAI) || null;
+      item?.type === RESPONSES_ITEM.ADDITIONAL_TOOLS && needsToolTranslation(item.tools));
+    // Normalize Codex namespaces and custom input before APInex inference; native Responses can return only a preamble.
+    if (needsTranslatedTools && !hasStoredHistory) return transports.find(t => t.format === FORMATS.OPENAI) || null;
   }
   return transports.find(t => t.format === sourceFormat) || null;
 }
