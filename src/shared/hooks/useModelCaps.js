@@ -38,7 +38,7 @@ function loadModelCaps() {
       if (!res.ok) throw new Error(`models ${res.status}`);
       return res.json();
     }),
-    fetch("/api/models/caps").then(async (res) => {
+    fetch("/api/models/caps?summary=1").then(async (res) => {
       if (!res.ok) throw new Error(`caps ${res.status}`);
       return res.json();
     }),
@@ -83,13 +83,14 @@ function resolveCaps(byFull, byId, overrides, key) {
   return pickCaps(getCapabilitiesForModel(provider, bare));
 }
 
-export function useModelCaps() {
+export function useModelCaps({ enabled = true } = {}) {
   const [byFull, setByFull] = useState(() => cache?.byFull || {});
   const [byId, setById] = useState(() => cache?.byId || {});
   const [effective, setEffective] = useState(() => cache?.effective || {});
   const [overrides, setOverrides] = useState(() => cache?.overrides || {});
 
   useEffect(() => {
+    if (!enabled) return;
     let alive = true;
     const apply = (maps) => {
       if (alive) {
@@ -115,7 +116,7 @@ export function useModelCaps() {
       window.removeEventListener(CAPS_CHANGED_EVENT, onChanged);
       window.removeEventListener("customModelChanged", onChanged);
     };
-  }, []);
+  }, [enabled]);
 
   const getCaps = useCallback(
     (key) => resolveCaps(byFull, byId, effective, key),

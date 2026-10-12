@@ -95,7 +95,7 @@ export default function ModelSelectModal({
       return kinds.includes(kindFilter);
     });
   }, [activeProviders, kindFilter]);
-  const { getCaps } = useModelCaps();
+  const { getCaps } = useModelCaps({ enabled: isOpen });
   const { getName } = useModelNames();
   const [searchQuery, setSearchQuery] = useState("");
   const [combos, setCombos] = useState([]);
@@ -192,6 +192,7 @@ export default function ModelSelectModal({
 
   // Group models by provider with priority order
   const groupedModels = useMemo(() => {
+    if (!isOpen) return {};
     const groups = {};
 
     // Kinds where the provider IS the model (no per-model selection needed)
@@ -453,7 +454,7 @@ export default function ModelSelectModal({
     });
 
     return groups;
-  }, [filteredActiveProviders, modelAliases, allProviders, providerNodes, customModels, disabledModels, kindFilter, activeProviders, cursorModels, clineModels, clinepassModels, getName]);
+  }, [isOpen, filteredActiveProviders, modelAliases, allProviders, providerNodes, customModels, disabledModels, kindFilter, activeProviders, cursorModels, clineModels, clinepassModels, getName]);
 
   // Filter combos by search query (and hide combos when kindFilter is set — combos are LLM-only by design)
   const filteredCombos = useMemo(() => {

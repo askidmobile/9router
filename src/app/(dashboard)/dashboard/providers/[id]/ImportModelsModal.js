@@ -258,7 +258,7 @@ export default function ImportModelsModal({
                       onChange={handleToggleSchedule}
                       className="h-3.5 w-3.5 rounded border-gray-300 text-primary focus:ring-primary"
                     />
-                    {t("Auto sync prices and limits twice a day")}
+                    {t("Auto sync prices and available catalog twice a day")}
                   </label>
                 )}
                 <div className="flex gap-2">

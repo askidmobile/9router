@@ -50,6 +50,10 @@ export async function GET(request) {
     const params = request ? new URL(request.url).searchParams : null;
     const key = params?.get("provider") && params?.get("model")
       ? `${params.get("provider")}|${params.get("model")}` : undefined;
+    if (params?.get("summary") === "1") {
+      const [overrides, effective] = await Promise.all([getManualCapsOverrides(key), getCapsOverrides(key)]);
+      return NextResponse.json({ overrides, effective });
+    }
     const [overrides, effective, automatic, sources, automaticSources] = await Promise.all([
       getManualCapsOverrides(key), getCapsOverrides(key), getAutomaticCapsOverrides(key), getCapsMetadata(key), getAutomaticCapsMetadata(key),
     ]);

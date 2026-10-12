@@ -54,7 +54,8 @@ describe('catalog models are available without being selected',()=>{
     let list=await db.getCustomModels();
     expect(list.find(m=>m.id==='manual').catalogOnly).not.toBe(true);
     expect(list.find(m=>m.id==='catalog').catalogOnly).toBe(true);
-    await db.addCustomModel({providerAlias:'req',id:'catalog'});
+    const promoted=await db.addCustomModelsBulk({providerAlias:'req',ids:['catalog']});
+    expect(promoted.added).toBe(1);
     await db.addCustomModelsBulk({providerAlias:'req',ids:['catalog'],catalogOnly:true});
     list=await db.getCustomModels();expect(list.find(m=>m.id==='catalog').catalogOnly).toBe(false);
   });

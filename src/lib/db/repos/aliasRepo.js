@@ -58,6 +58,7 @@ export async function addCustomModel({ providerAlias, id, type = "llm", name, ca
     const row = db.get(`SELECT value FROM kv WHERE scope = 'customModels' AND key = ?`, [k]);
     if (row) {
       const prev = parseJson(row.value) || {};
+      if (prev.catalogOnly) added = true;
       const next = { ...prev, ...(prev.catalogOnly ? { catalogOnly: false } : {}), ...(name ? { name } : {}), ...(caps ? { caps } : {}), ...(transport ? { transport } : {}) };
       db.run(`UPDATE kv SET value = ? WHERE scope = 'customModels' AND key = ?`, [stringifyJson(next), k]);
       return;
@@ -85,8 +86,10 @@ export async function addCustomModelsBulk({ providerAlias, type = "llm", ids = [
       const row = db.get(`SELECT value FROM kv WHERE scope = 'customModels' AND key = ?`, [k]);
       if (row) {
         const previous = parseJson(row.value);
-        if (previous?.catalogOnly && !catalogOnly) db.run(`UPDATE kv SET value = ? WHERE scope = 'customModels' AND key = ?`, [stringifyJson({ ...previous, catalogOnly: false }), k]);
-        skipped += 1;
+        if (previous?.catalogOnly && !catalogOnly) {
+          db.run(`UPDATE kv SET value = ? WHERE scope = 'customModels' AND key = ?`, [stringifyJson({ ...previous, catalogOnly: false }), k]);
+          added += 1;
+        } else skipped += 1;
         continue;
       }
       const value = stringifyJson({ providerAlias, id, type, name: id, ...(catalogOnly ? { catalogOnly: true } : {}) });

@@ -1,6 +1,5 @@
 import { Inter } from "next/font/google";
 import { GoogleAnalytics } from "@next/third-parties/google";
-import "material-symbols/outlined.css";
 import "./globals.css";
 import { ThemeProvider } from "@/shared/components/ThemeProvider";
 import "@/lib/network/initOutboundProxy"; // Auto-initialize outbound proxy env
@@ -32,6 +31,7 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
+        <link rel="preload" href="/fonts/material-symbols-outlined-v377.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
         {/* Apply persisted theme before first paint so a reload does not flash the
             default (light) theme before the client store hydrates. Mirrors the
             zustand-persist "theme" key and the `dark` class applyTheme() sets. */}
@@ -42,7 +42,7 @@ export default function RootLayout({ children }) {
         />
         <script
           dangerouslySetInnerHTML={{
-            __html: `var d=document,r=d.documentElement,f=function(){r.classList.add('fonts-loaded')};if(d.fonts&&d.fonts.load){d.fonts.load('24px "Material Symbols Outlined"').then(f).catch(f);setTimeout(f,3000)}else{f()}`,
+            __html: `var d=document,f=function(){if(d.fonts&&d.fonts.load)d.fonts.load('24px "Material Symbols Outlined"').then(function(faces){if(faces.length)d.documentElement.classList.add('fonts-loaded')}).catch(function(){})};if(d.readyState==='loading')d.addEventListener('DOMContentLoaded',f,{once:true});else f()`,
           }}
         />
       </head>

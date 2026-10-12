@@ -18,6 +18,7 @@ import EditModelModal from "@/app/(dashboard)/dashboard/models/EditModelModal";
 import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
 import { translate } from "@/i18n/runtime";
 import { fetchSuggestedModels } from "@/shared/utils/providerModelsFetcher";
+import { existingProviderModelIds } from "@/shared/utils/modelSelection";
 import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
 import ModelRow from "./ModelRow";
 import PassthroughModelsSection from "./PassthroughModelsSection";
@@ -245,20 +246,7 @@ export default function ProviderDetailPage() {
 
   // Ids already present for this provider (built-in, custom, alias targets) —
   // shown as disabled rows in the import modal.
-  const importExistingIds = (() => {
-    const set = new Set();
-    for (const m of models) set.add(m.id);
-    for (const m of kiloFreeModels) set.add(m.id);
-    for (const m of customModels) {
-      if (m.providerAlias === providerStorageAlias && (m.kind || m.type || "llm") === "llm") set.add(m.id);
-    }
-    for (const target of Object.values(modelAliases)) {
-      if (typeof target === "string" && target.startsWith(`${providerStorageAlias}/`)) {
-        set.add(target.slice(providerStorageAlias.length + 1));
-      }
-    }
-    return set;
-  })();
+  const importExistingIds = existingProviderModelIds({ models: [...models, ...kiloFreeModels], customModels, modelAliases, providerAlias: providerStorageAlias, disabledIds: disabledModelIds, connections });
 
   const fetchDisabledModels = useCallback(async () => {
     try {
@@ -285,11 +273,10 @@ export default function ProviderDetailPage() {
 
   const handleEnableModel = async (modelId) => {
     try {
-      const res = await fetch(`/api/models/disabled?providerAlias=${encodeURIComponent(providerStorageAlias)}&id=${encodeURIComponent(modelId)}`, { method: "DELETE" });
-      if (res.ok) await fetchDisabledModels();
-    } catch (error) {
-      console.log("Error enabling model:", error);
-    }
+      const response = await fetch("/api/models/custom", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ providerAlias: providerStorageAlias, id: modelId, type: "llm" }) });
+      if (!response.ok) throw new Error("Не удалось добавить модель");
+      await Promise.all([fetchCustomModels(), fetchDisabledModels(), fetchConnections()]);
+    } catch (error) { setModelsTestError(error.message); }
   };
 
   const handleDisableAll = async (ids) => {
@@ -1970,7 +1957,7 @@ export default function ProviderDetailPage() {
         providerStorageAlias={providerStorageAlias}
         existingIds={importExistingIds}
         transformId={providerId === "qoder" ? stripQoderPrefix : undefined}
-        onImported={fetchCustomModels}
+        onImported={() => { fetchCustomModels(); fetchAliases(); fetchConnections(); fetchDisabledModels(); }}
       />
 
       {providerId === "codex" && (
