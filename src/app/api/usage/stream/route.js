@@ -2,7 +2,11 @@ import { getUsageStats, statsEmitter, getActiveRequests } from "@/lib/usageDb";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+const VALID_PERIODS = new Set(["today", "24h", "7d", "30d", "60d", "all"]);
+
+export async function GET(request) {
+  const period = request ? new URL(request.url).searchParams.get("period") || "7d" : "7d";
+  if (!VALID_PERIODS.has(period)) return Response.json({ error: "Invalid period" }, { status: 400 });
   const encoder = new TextEncoder();
   const state = { closed: false, keepalive: null, send: null, sendPending: null, cachedStats: null };
 
@@ -19,7 +23,7 @@ export async function GET() {
             controller.enqueue(encoder.encode(`data: ${JSON.stringify(quickStats)}\n\n`));
           }
           // Then do full recalc and update cache
-          const stats = await getUsageStats();
+          const stats = await getUsageStats(period);
           state.cachedStats = stats;
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(stats)}\n\n`));
         } catch {

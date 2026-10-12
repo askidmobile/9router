@@ -30,7 +30,9 @@ export function extractUsageFromResponse(responseBody) {
   // input_tokens_details, so emit it as cached_tokens — the convention
   // canonicalizeUsage() passes through without folding. Reading it here keeps
   // cache accounting correct for /v1/responses and codex traffic.
-  if (responseBody.usage?.input_tokens !== undefined) {
+  // Gateways may include input_tokens alongside OpenAI counters; prefer the
+  // complete OpenAI shape so completion_tokens is not replaced with zero.
+  if (responseBody.usage?.input_tokens !== undefined && responseBody.usage?.prompt_tokens === undefined) {
     return {
       prompt_tokens: responseBody.usage.input_tokens || 0,
       completion_tokens: responseBody.usage.output_tokens || 0,

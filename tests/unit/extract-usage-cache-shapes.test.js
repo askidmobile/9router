@@ -20,6 +20,16 @@ import { canonicalizeUsage } from "../../open-sse/utils/usageTracking.js";
 // cached_tokens. Regression for non-streaming codex/Responses traffic, where
 // cache reads were silently dropped and usage recorded cached_tokens: 0.
 describe("extractUsageFromResponse cache surfaces", () => {
+  it("prefers OpenAI counters when a gateway also includes input_tokens", () => {
+    const extracted = extractUsageFromResponse({
+      usage: { input_tokens: 14739, prompt_tokens: 14739, completion_tokens: 1154,
+        prompt_tokens_details: { cached_tokens: 12000 } },
+    });
+    expect(canonicalizeUsage(extracted)).toMatchObject({
+      prompt_tokens: 14739, completion_tokens: 1154, total_tokens: 15893, cached_tokens: 12000,
+    });
+  });
+
   it("surfaces OpenAI Responses input_tokens_details.cached_tokens", () => {
     // codex / /v1/responses shape: prompt is cache-INCLUSIVE
     const out = extractUsageFromResponse({
