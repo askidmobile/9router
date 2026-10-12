@@ -13,6 +13,13 @@ const { setCapsOverridesBulk, setCapsOverride, getCapsOverrides, getCapsMetadata
 beforeEach(() => { for(const k of Object.keys(storage)) delete storage[k]; });
 
 describe("catalog and manual capability layers", () => {
+  it("reads only the requested model while preserving the full-list contract", async () => {
+    storage["p|m"] = { contextWindow: 123 };
+    storage["p|other"] = { maxOutput: 456 };
+    expect(await getCapsOverrides("p|m")).toEqual({ "p|m": { contextWindow: 123 } });
+    expect(await getCapsOverrides("p|missing")).toEqual({});
+    expect(Object.keys(await getCapsOverrides())).toHaveLength(2);
+  });
   it.each([["xhigh","max"],[],null].map(reasoningLevels=>({reasoningLevels})))("preserves legacy edits and labels uncertain provenance: %j", async ({reasoningLevels}) => {
     storage["ocg|space-bunny"]={reasoning:true,reasoningLevels,contextWindow:999};
     await setCapsOverridesBulk("ocg",{"space-bunny":{contextWindow:1000000,reasoning:false,tools:true}});

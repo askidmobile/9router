@@ -99,7 +99,7 @@ export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
     setManualCaps(model.override || {});
     setSources({});
     setCatalogSources({});
-    fetch("/api/models/caps").then(res => {
+    fetch(`/api/models/caps?${new URLSearchParams({ provider: model.providerAlias, model: model.id })}`, { signal: AbortSignal.timeout(15000) }).then(res => {
       if (!res.ok) throw new Error("Model metadata unavailable");
       return res.json();
     }).then(data => {
@@ -369,6 +369,8 @@ export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
         <div>
           <div className="flex items-center justify-between mb-2">
             <p className="text-sm font-medium text-text-main">Capabilities</p>
+            {metadataLoading && <span role="status" className="text-xs text-text-muted">Загрузка настроек модели…</span>}
+            {!metadataLoading && !metadataReady && <button className="text-xs text-primary hover:underline" onClick={() => setMetadataRevision(value => value + 1)}>Повторить загрузку</button>}
             <div className="flex items-center gap-3">
               <button
                 onClick={handleImportFromCatalog}

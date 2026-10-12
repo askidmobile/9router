@@ -45,10 +45,13 @@ function validateCaps(caps) {
 }
 
 // GET /api/models/caps - all capability overrides ({ "provider|model": caps })
-export async function GET() {
+export async function GET(request) {
   try {
+    const params = request ? new URL(request.url).searchParams : null;
+    const key = params?.get("provider") && params?.get("model")
+      ? `${params.get("provider")}|${params.get("model")}` : undefined;
     const [overrides, effective, automatic, sources, automaticSources] = await Promise.all([
-      getManualCapsOverrides(), getCapsOverrides(), getAutomaticCapsOverrides(), getCapsMetadata(), getAutomaticCapsMetadata(),
+      getManualCapsOverrides(key), getCapsOverrides(key), getAutomaticCapsOverrides(key), getCapsMetadata(key), getAutomaticCapsMetadata(key),
     ]);
     return NextResponse.json({ overrides, effective, automatic, sources, automaticSources });
   } catch (error) {

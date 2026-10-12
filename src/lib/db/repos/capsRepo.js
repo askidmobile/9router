@@ -3,6 +3,12 @@ import { makeKv } from "../helpers/kvStore.js";
 const capsKv = makeKv("modelCaps");
 export const capsKey = (provider, model) => `${provider}|${model}`;
 
+async function records(key) {
+  if (!key) return capsKv.getAll();
+  const record = await capsKv.get(key);
+  return record ? { [key]: record } : {};
+}
+
 function layers(record) {
   if (record?.version === 1 && record.manual && record.automatic) return record;
   // Old imports and hand edits shared one bucket; preserve them without inventing provenance.
@@ -14,20 +20,20 @@ function effective(record) {
   if (selected.reasoningLevels === null && Object.hasOwn(automatic, "reasoningLevels")) delete selected.reasoningLevels;
   return { ...automatic, ...selected };
 }
-export async function getCapsOverrides() {
-  return Object.fromEntries(Object.entries(await capsKv.getAll()).map(([key, record]) => [key, effective(record)]));
+export async function getCapsOverrides(key) {
+  return Object.fromEntries(Object.entries(await records(key)).map(([key, record]) => [key, effective(record)]));
 }
-export async function getManualCapsOverrides() {
-  return Object.fromEntries(Object.entries(await capsKv.getAll()).filter(([, record]) => Object.keys(layers(record).manual).length).map(([key, record]) => [key, layers(record).manual]));
+export async function getManualCapsOverrides(key) {
+  return Object.fromEntries(Object.entries(await records(key)).filter(([, record]) => Object.keys(layers(record).manual).length).map(([key, record]) => [key, layers(record).manual]));
 }
-export async function getAutomaticCapsOverrides() {
-  return Object.fromEntries(Object.entries(await capsKv.getAll()).map(([key, record]) => [key, layers(record).automatic]));
+export async function getAutomaticCapsOverrides(key) {
+  return Object.fromEntries(Object.entries(await records(key)).map(([key, record]) => [key, layers(record).automatic]));
 }
-export async function getAutomaticCapsMetadata() {
-  return Object.fromEntries(Object.entries(await capsKv.getAll()).map(([key, record]) => [key, layers(record).sources]));
+export async function getAutomaticCapsMetadata(key) {
+  return Object.fromEntries(Object.entries(await records(key)).map(([key, record]) => [key, layers(record).sources]));
 }
-export async function getCapsMetadata() {
-  return Object.fromEntries(Object.entries(await capsKv.getAll()).map(([key, record]) => {
+export async function getCapsMetadata(key) {
+  return Object.fromEntries(Object.entries(await records(key)).map(([key, record]) => {
     const { manual, automatic, sources, manualSources } = layers(record);
     const metadata = { ...sources };
     for (const field of Object.keys(manual)) {

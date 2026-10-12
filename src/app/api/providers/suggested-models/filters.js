@@ -1,3 +1,5 @@
+import { parseTokenCount } from "../../../../lib/providerCatalog/metadata.js";
+
 // Free OpenCode models that don't use the "-free" id suffix
 const KNOWN_FREE_OPENCODE_MODELS = ["big-pickle"];
 
@@ -5,6 +7,10 @@ const KNOWN_FREE_OPENCODE_MODELS = ["big-pickle"];
 const DEAD_FREE_OPENCODE_MODELS = new Set(["deepseek-v4-flash-free"]);
 
 export const FILTERS = {
+  apinex: (models) => models
+    .filter((model) => typeof model?.id === "string" && model.id.trim())
+    .map((model) => ({ id: model.id, name: model.name || model.id, contextLength: parseTokenCount(model.contextWindow) })),
+
   "openrouter-free": (models) =>
     models
       .filter(
