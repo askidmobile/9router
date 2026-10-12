@@ -5,7 +5,7 @@ import path from "node:path";
 import os from "node:os";
 import { pathToFileURL } from "node:url";
 
-const OBSERVED = new Set(["provider", "models.dev", "manual", "legacy", "combo"]);
+const OBSERVED = new Set(["provider", "models.dev", "openrouter", "manufacturer-docs", "manual", "legacy", "combo"]);
 const LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
 const scalar = value => {
   const s = value.trim();

@@ -96,9 +96,23 @@ export function catalogMetadata(entry) {
     else if (typeof flat === "boolean") caps[to] = flat;
   }
 
+  const input = entry.architecture?.input_modalities;
+  const outputModalities = entry.architecture?.output_modalities;
+  if (Array.isArray(input)) for (const [modality, field] of [["image", "vision"], ["audio", "audioInput"], ["video", "videoInput"]]) {
+    if (caps[field] === undefined) caps[field] = input.includes(modality);
+  }
+  if (Array.isArray(outputModalities)) for (const [modality, field] of [["image", "imageOutput"], ["audio", "audioOutput"]]) {
+    if (caps[field] === undefined) caps[field] = outputModalities.includes(modality);
+  }
+  if (Array.isArray(entry.supported_parameters)) {
+    if (caps.tools === undefined) caps.tools = entry.supported_parameters.includes("tools");
+    if (caps.reasoning === undefined) caps.reasoning = entry.supported_parameters.some(key => ["reasoning", "reasoning_effort", "include_reasoning"].includes(key));
+  }
+  if (typeof entry.reasoning?.mandatory === "boolean") caps.thinkingCanDisable = !entry.reasoning.mandatory;
+
   const rawLevels = entry.reasoning_levels ?? entry.reasoningLevels ?? entry.supported_reasoning_levels
     ?? entry.reasoning_effort_options ?? entry.supported_reasoning_efforts ?? entry.reasoning_efforts
-    ?? entry.parameters?.reasoning_effort?.enum ?? declared?.reasoning_levels ?? declared?.reasoning?.efforts
+    ?? entry.reasoning?.supported_efforts ?? entry.parameters?.reasoning_effort?.enum ?? declared?.reasoning_levels ?? declared?.reasoning?.efforts
     ?? (entry.reasoningEfforts && typeof entry.reasoningEfforts === "object" ? Object.keys(entry.reasoningEfforts) : undefined);
   const levels = normalizeReasoningLevels(rawLevels);
   if (levels !== undefined) {

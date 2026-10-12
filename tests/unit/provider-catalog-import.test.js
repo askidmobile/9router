@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
   updatePricing: vi.fn(async () => ({})),
   setCapsOverridesBulk: vi.fn(async () => {}),
   connections: [],
-  modelsDev: vi.fn(), exact: vi.fn(async () => ({})),
+  additional: vi.fn(async () => ({ models: {} })), modelsDev: vi.fn(), exact: vi.fn(async () => ({})),
 }));
 
 vi.mock("next/server", () => ({
@@ -30,6 +30,8 @@ vi.mock("@/lib/db/index.js", () => ({
   addCustomModelsBulk: async ({ ids }) => ({ added: ids.length, skipped: 0 }),
 }));
 vi.mock("@/lib/modelsDev/index.js", () => ({ getProviderModels: mocks.modelsDev, getExactModelFallbacks: mocks.exact }));
+
+vi.mock("@/lib/modelSources/index.js", async (importOriginal) => ({ ...(await importOriginal()), getSupplementaryMetadata: mocks.additional }));
 
 import { catalogMetadata } from "@/lib/providerCatalog/metadata.js";
 import { POST } from "@/app/api/providers/import-models/route.js";
@@ -55,6 +57,7 @@ beforeEach(() => {
   mocks.setCapsOverridesBulk.mockClear();
   mocks.modelsDev.mockReset();
   mocks.exact.mockResolvedValue({});
+  mocks.additional.mockResolvedValue({ models: {} });
   mocks.connections = [{
     id: "conn-cheaper", provider: "cheaper", isActive: true, apiKey: "ci_live_x",
     providerSpecificData: {},
@@ -146,6 +149,15 @@ describe("POST /api/providers/import-models", () => {
     expect(mocks.updatePricing).toHaveBeenCalledWith({ cheaper: { "m-1": { input: 1, output: 2 } } });
   });
 
+  it("supplements registry model IDs even when both primary catalog lists are missing", async () => {
+    mocks.fetch.mockResolvedValue({ok:false,status:404});
+    mocks.modelsDev.mockResolvedValue({modelsDevId:null,models:null});
+    mocks.additional.mockResolvedValue({models:{"claude-opus-5.5":{caps:{maxOutput:128000},sources:{maxOutput:{source:"openrouter",verified:false}}}}});
+    const result=await POST({json:async()=>({provider:"cheaper"})});
+    expect(result.status).toBe(200);expect(result.body.source).toBe("official-supplement");
+    expect(result.body.pricing.imported).toBe(0);expect(mocks.updatePricing).not.toHaveBeenCalled();
+    expect(mocks.setCapsOverridesBulk.mock.calls[0][1]["claude-opus-5.5"].maxOutput).toBe(128000);
+  });
   it("reports a clear error when neither source has a catalog", async () => {
     mocks.fetch.mockResolvedValue({ ok: false, status: 503, json: async () => ({}) });
     mocks.modelsDev.mockResolvedValue({ modelsDevId: null, models: null, stale: false });
@@ -161,6 +173,17 @@ describe("POST /api/providers/import-models", () => {
 });
 
 describe("field-wise catalog completion", () => {
+  it("fills hy4 from documented aliases without replacing provider CTX or price", async () => {
+    mocks.connections=[{id:"apinex",provider:"apinex",isActive:true,apiKey:"fixture"}];
+    mocks.fetch.mockResolvedValue({ok:true,json:async()=>({models:[{id:"free/hy4",contextWindow:"900K",dollarsPer1M:0}]})});
+    mocks.additional.mockResolvedValue({models:{"free/hy4":{caps:{contextWindow:1000000,maxOutput:64000,vision:false,reasoning:true,tools:true,reasoningLevels:["none","low","high"]},sources:Object.fromEntries(["contextWindow","maxOutput","vision","reasoning","tools","reasoningLevels"].map(field=>[field,{source:"manufacturer-docs",modelId:"tencent/hy4-preview",verified:false}]))}}});
+    const result=await POST({json:async()=>({provider:"apinex"})});expect(result.status).toBe(200);
+    const [,caps,options]=mocks.setCapsOverridesBulk.mock.calls[0];
+    expect(caps["free/hy4"]).toMatchObject({contextWindow:900000,maxOutput:64000,vision:false,reasoningLevels:["none","low","high"]});
+    expect(options.sources["free/hy4"].contextWindow.source).toBe("provider");
+    expect(options.sources["free/hy4"].maxOutput.source).toBe("manufacturer-docs");
+    expect(mocks.updatePricing).toHaveBeenCalledWith({apinex:{"free/hy4":{input:0,output:0}}});
+  });
   it("uses exact supplementary OUT/efforts while preserving provider CTX and explicit false", async () => {
     mocks.fetch.mockResolvedValue({ok:true,json:async()=>({data:[{id:"m",context_length:1000000,capabilities:{vision:false}}]})});
     mocks.modelsDev.mockResolvedValue({modelsDevId:"vendor",fetchedAt:1700000000000,models:{m:{caps:{contextWindow:1048576,maxOutput:32000,vision:true,reasoningLevels:["low","high"]}}}});

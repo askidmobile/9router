@@ -38,7 +38,7 @@ export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
   const baseline = { ...model?.staticCaps, ...catalogCaps };
   const sourceText = (field) => {
     const info = sources[field];
-    const origin = info ? `${info.source}${info.updatedAt ? " · " + new Date(info.updatedAt).toLocaleString() : " · date unknown"}${info.verified ? "" : " · unconfirmed"}` : "registry · unconfirmed";
+    const origin = info ? `${info.source}${info.modelId ? " · " + info.modelId : ""}${info.snapshot ? " · reviewed snapshot" : ""}${info.updatedAt ? " · " + new Date(info.updatedAt).toLocaleString() : " · date unknown"}${info.verified ? "" : " · unconfirmed"}` : "registry · unconfirmed";
     const observed = catalogSources[field];
     return observed && ["manual", "legacy"].includes(info?.source)
       ? `${origin} · catalog: ${JSON.stringify(catalogCaps[field])} (${observed.source}${observed.updatedAt ? ", " + new Date(observed.updatedAt).toLocaleString() : ""})` : origin;
@@ -405,7 +405,7 @@ export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
                 placeholder="e.g. 200000"
                 className={inputClass}
               />
-              <p className="text-xs text-text-muted mt-1">{sourceText("contextWindow")}</p>
+              <p className="text-xs text-text-muted mt-1">{sourceText("contextWindow")}{sources.contextWindow?.url && <> · <a className="text-primary hover:underline" href={sources.contextWindow.url} target="_blank" rel="noopener noreferrer">Источник</a></>}</p>
             </div>
             <div>
               <label htmlFor="edit-model-out" className="text-xs text-text-muted mb-1 block">Max output (tokens)</label>
@@ -419,7 +419,7 @@ export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
                 placeholder="e.g. 64000"
                 className={inputClass}
               />
-              <p className="text-xs text-text-muted mt-1">{sourceText("maxOutput")}</p>
+              <p className="text-xs text-text-muted mt-1">{sourceText("maxOutput")}{sources.maxOutput?.url && <> · <a className="text-primary hover:underline" href={sources.maxOutput.url} target="_blank" rel="noopener noreferrer">Источник</a></>}</p>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-2 mt-3">
@@ -439,7 +439,7 @@ export default function EditModelModal({ isOpen, onClose, model, onSaved }) {
           <fieldset className="mt-4 border-t border-border pt-3" disabled={!flags.reasoning || metadataLoading}>
             <legend className="sr-only">Reasoning effort levels</legend>
             <p className="text-sm font-medium text-text-main mb-2">Reasoning effort levels</p>
-            <p className="text-xs text-text-muted mb-2">{sourceText("reasoningLevels")}</p>
+            <p className="text-xs text-text-muted mb-2">{sourceText("reasoningLevels")}{sources.reasoningLevels?.url && <> · <a className="text-primary hover:underline" href={sources.reasoningLevels.url} target="_blank" rel="noopener noreferrer">Источник</a></>}</p>
             <label className="flex items-center gap-2 text-sm text-text-main cursor-pointer">
               <input
                 type="checkbox"

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getSupplementaryMetadata, mergeModelCapabilities } from "@/lib/modelSources/index.js";
 import { getProviderModels } from "@/lib/modelsDev/index.js";
 import { updatePricing, setCapsOverridesBulk } from "@/lib/db/index.js";
 import { getProviderAlias } from "@/shared/constants/providers";
@@ -57,12 +58,16 @@ export async function POST(request) {
     }
 
     if (targets.includes("caps")) {
-      const capsEntries = {};
+      const capsEntries = {}, sources = {};
+      const additional = await getSupplementaryMetadata(Object.keys(result.models));
+      if (additional.warning) response.warning = additional.warning;
       for (const [modelId, model] of Object.entries(result.models)) {
-        capsEntries[modelId] = model.caps;
+        const merged = mergeModelCapabilities(null, model, result, additional.models[modelId], alias);
+        capsEntries[modelId] = merged.caps;
+        sources[modelId] = merged.sources;
       }
       if (Object.keys(capsEntries).length > 0) {
-        await setCapsOverridesBulk(alias, capsEntries, { source: "models.dev", updatedAt: new Date(result.fetchedAt || Date.now()).toISOString() });
+        await setCapsOverridesBulk(alias, capsEntries, { sources });
       }
       response.caps = { imported: Object.keys(capsEntries).length };
     }

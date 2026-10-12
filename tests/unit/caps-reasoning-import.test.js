@@ -39,6 +39,13 @@ describe("catalog and manual capability layers", () => {
     expect((await getCapsOverrides())["p|m"].maxOutput).toBe(256000);
     expect((await getManualCapsOverrides())["p|m"]).toBeUndefined();
   });
+  it("does not downgrade previously published provider metadata on partial refresh", async () => {
+    await setCapsOverridesBulk("p", { m: { maxOutput: 32000, vision: false } }, { source: "provider" });
+    await setCapsOverridesBulk("p", { m: { maxOutput: 64000, vision: true, tools: true } }, { source: "openrouter" });
+    expect((await getCapsOverrides())["p|m"]).toEqual({ maxOutput: 32000, vision: false, tools: true });
+    await setCapsOverridesBulk("p", { m: { maxOutput: 128000 } }, { source: "provider" });
+    expect((await getCapsOverrides())["p|m"].maxOutput).toBe(128000);
+  });
   it("retains previously observed output when a subsequent catalog only publishes context",async()=>{
     await setCapsOverridesBulk("p",{m:{contextWindow:1000000,maxOutput:64000}});
     await setCapsOverridesBulk("p",{m:{contextWindow:500000}});

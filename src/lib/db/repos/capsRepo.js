@@ -1,6 +1,7 @@
 import { makeKv } from "../helpers/kvStore.js";
 
 const capsKv = makeKv("modelCaps");
+const SOURCE_RANK = { provider: 4, "manufacturer-docs": 3, "models.dev": 2, openrouter: 1 };
 export const capsKey = (provider, model) => `${provider}|${model}`;
 
 async function records(key) {
@@ -75,11 +76,15 @@ export async function setCapsOverridesBulk(provider, entries, options = {}) {
   await capsKv.updateMany(Object.keys(keyed), (previous, key) => {
     const { model, caps } = keyed[key];
     const record = layers(previous);
-    const sources = { ...record.sources };
+    const sources = { ...record.sources }, automatic = { ...record.automatic };
     for (const field of Object.keys(caps)) {
-      sources[field] = options.sources?.[model]?.[field]
+      const incoming = options.sources?.[model]?.[field]
         || { source: options.source || "models.dev", updatedAt, verified: false };
+      // An incomplete refresh must not downgrade a previously declared provider value.
+      if ((SOURCE_RANK[sources[field]?.source] || 0) > (SOURCE_RANK[incoming.source] || 0)) continue;
+      sources[field] = incoming;
+      automatic[field] = caps[field];
     }
-    return { ...record, automatic: { ...record.automatic, ...caps }, sources };
+    return { ...record, automatic, sources };
   });
 }

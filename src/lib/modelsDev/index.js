@@ -4,6 +4,7 @@
 // caps/pricing shapes. Falls back to a stale cached catalog when the network
 // fetch fails.
 
+import { createModelMatcher } from "../modelSources/identity.js";
 import { normalizeReasoningLevels } from "../providerCatalog/metadata.js";
 import { makeKv } from "../db/helpers/kvStore.js";
 import { resolveModelsDevProviderId } from "./providerMap.js";
@@ -154,20 +155,24 @@ export function __resetCacheForTests() {
   memCache = { catalog: null, fetchedAt: 0 };
 }
 
-// Exact upstream ids only; ambiguous cross-provider matches are not guessed.
+// Exact identities and reviewed aliases; ambiguous cross-provider matches are not guessed.
 export async function getExactModelFallbacks(ids) {
   const { catalog, fetchedAt, stale } = await getCatalog();
   const result = {};
+  const matchers = Object.entries(catalog).map(([provider, entry]) => ({ provider,
+    match: createModelMatcher(Object.entries(entry.models || {}).map(([key, raw]) => ({ ...raw, id: raw.id || key,
+      canonical_slug: (raw.id || key).includes("/") ? raw.id || key : `${provider}/${raw.id || key}` }))),
+  }));
   for (const id of ids) {
-    const upstream = id.startsWith("free/") ? id.slice(5) : id;
     const candidates = [];
-    for (const [provider, entry] of Object.entries(catalog)) {
-      const raw = entry.models?.[id] || entry.models?.[upstream];
-      if (raw) candidates.push({ provider, model: normalizeModel({ id: upstream, ...raw }) });
+    for (const { provider, match: find } of matchers) {
+      const match = find(id);
+      if (match) candidates.push({ provider, ...match });
     }
-    const canonical = upstream.includes("/") ? candidates.filter(c => c.provider === upstream.split("/")[0]) : [];
+    const identity = id.replace(/^free\//, "").toLowerCase();
+    const canonical = candidates.filter(c => c.provider.toLowerCase() === identity.split("/")[0]);
     const selected = canonical.length === 1 ? canonical[0] : candidates.length === 1 ? candidates[0] : null;
-    if (selected?.model) result[id] = { ...selected.model, modelsDevId: selected.provider, fetchedAt, stale };
+    if (selected) result[id] = { ...normalizeModel(selected.model), modelsDevId: selected.provider, fetchedAt, stale, match: selected.match };
   }
   return result;
 }

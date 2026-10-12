@@ -57,6 +57,11 @@ describe("DSH model catalog synchronization", () => {
     expect(next.text).toContain("contextWindow: 900000");
     expect(next.text).toContain("maxTokens: 64000");
   });
+  it.each(["openrouter", "manufacturer-docs"])("consumes observed %s metadata", source => {
+    const out = syncDshProfile(profile,[{...model,capability_sources:Object.fromEntries(Object.entries(sources).map(([field, info])=>[field,{...info,source,verified:false}]))}]);
+    expect(out.text).toContain("maxTokens: 131072");
+    expect(out.text).toContain('low: "low"');
+  });
   it("refreshes a Combo using the router's derived limit", () => {
     const out = syncDshProfile(profile,[{...model,capability_sources:{...sources,contextWindow:{source:"combo",verified:false}}}]);
     expect(out.text).toContain("contextWindow: 1000000");

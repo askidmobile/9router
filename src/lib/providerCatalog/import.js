@@ -15,6 +15,7 @@ import {
   getProviderAlias, isOpenAICompatibleProvider, isAnthropicCompatibleProvider,
 } from "@/shared/constants/providers";
 import { getRegistryEntry, deriveModelsEndpoint, parseOpenAIStyleModels } from "@/lib/providerModels/deriveModelsEndpoint.js";
+import { getSupplementaryMetadata, mergeModelCapabilities } from "../modelSources/index.js";
 import { catalogMetadata } from "./metadata.js";
 
 export const VALID_TARGETS = ["pricing", "caps"];
@@ -89,6 +90,23 @@ export async function importProviderCatalog({ connection, targets = VALID_TARGET
   if (!entries) {
     const fallback = await getModelsDevProviderModels([alias, connection.provider]) || { models: null };
     if (!fallback.modelsDevId || !fallback.models) {
+      // Providers without a listing can still supplement their configured registry IDs.
+      const configured = getRegistryEntry(alias)?.models || [];
+      if (wanted.includes("caps") && configured.length) {
+        const additional = await getSupplementaryMetadata(configured.map(model => model.id));
+        const caps = {}, sources = {};
+        for (const [id, model] of Object.entries(additional.models)) {
+          caps[id] = model.caps;
+          sources[id] = model.sources;
+        }
+        if (Object.keys(caps).length) {
+          await setCapsOverridesBulk(alias, caps, { sources });
+          return { provider: alias, source: "official-supplement", caps: { imported: Object.keys(caps).length },
+            ...(wanted.includes("pricing") ? { pricing: { imported: 0 } } : {}),
+            warning: [warning, "No provider catalog or models.dev listing; supplemented known IDs only", additional.warning].filter(Boolean).join("; "),
+          };
+        }
+      }
       // Name the provider's own failure too: "not on models.dev" alone hides a
       // 401 from an expired key behind a catalog that was never the problem.
       const why = warning ? `the provider catalog failed (${warning})` : "the provider publishes none";
@@ -106,9 +124,15 @@ export async function importProviderCatalog({ connection, targets = VALID_TARGET
       response.pricing = { imported: Object.keys(pricing).length };
     }
     if (wanted.includes("caps")) {
-      const caps = {};
-      for (const [id, model] of Object.entries(fallback.models)) caps[id] = model.caps;
-      if (Object.keys(caps).length) await setCapsOverridesBulk(alias, caps, { source: "models.dev", updatedAt: new Date(fallback.fetchedAt || Date.now()).toISOString() });
+      const caps = {}, sources = {};
+      const additional = await getSupplementaryMetadata(Object.keys(fallback.models));
+      if (additional.warning) response.warning = [response.warning, additional.warning].filter(Boolean).join("; ");
+      for (const [id, model] of Object.entries(fallback.models)) {
+        const merged = mergeModelCapabilities(null, model, fallback, additional.models[id], alias);
+        caps[id] = merged.caps;
+        sources[id] = merged.sources;
+      }
+      if (Object.keys(caps).length) await setCapsOverridesBulk(alias, caps, { sources });
       response.caps = { imported: Object.keys(caps).length };
     }
     if (registerModels) {
@@ -133,6 +157,8 @@ export async function importProviderCatalog({ connection, targets = VALID_TARGET
       warning = [warning, `Supplementary catalog unavailable: ${error.message}`].filter(Boolean).join("; ");
     }
   }
+  const additional = wanted.includes("caps") ? await getSupplementaryMetadata(entries.map(entry => entry.id)) : { models: {} };
+  if (additional.warning) warning = [warning, additional.warning].filter(Boolean).join("; ");
   const updatedAt = new Date().toISOString();
   for (const entry of entries) {
     const meta = catalogMetadata(entry);
@@ -140,16 +166,10 @@ export async function importProviderCatalog({ connection, targets = VALID_TARGET
     ids.push(meta.id);
     if (meta.pricing) pricing[meta.id] = meta.pricing;
     const supplemental = fallback.models?.[meta.id] || exact[meta.id];
-    const merged = { ...(supplemental?.caps || {}), ...(meta.caps || {}) };
-    if (Object.keys(merged).length) {
-      caps[meta.id] = merged;
-      sources[meta.id] = Object.fromEntries(Object.keys(merged).map(field => [field,
-        Object.hasOwn(meta.caps || {}, field)
-          ? { source: "provider", provider: alias, updatedAt, verified: true }
-          : { source: "models.dev", provider: supplemental.modelsDevId || fallback.modelsDevId,
-              updatedAt: new Date(supplemental.fetchedAt || fallback.fetchedAt || Date.now()).toISOString(),
-              stale: supplemental.stale ?? fallback.stale ?? false, verified: false },
-      ]));
+    const merged = mergeModelCapabilities(meta.caps, supplemental, fallback, additional.models[meta.id], alias, updatedAt);
+    if (Object.keys(merged.caps).length) {
+      caps[meta.id] = merged.caps;
+      sources[meta.id] = merged.sources;
     }
   }
   if (wanted.includes("pricing") && Object.keys(pricing).length) {
