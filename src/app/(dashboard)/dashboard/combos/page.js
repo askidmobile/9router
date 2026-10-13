@@ -756,8 +756,7 @@ function ComboCard({ combo, getCaps, capsOverrides = {}, allCombos = [], aliasCa
   const frozenMembers = (combo.models || [])
     .map((model) => ({ model, circuit: circuitFor(model) }))
     .filter(({ circuit }) => circuit);
-  const circuitLabel = (circuit) => circuit.phase === "waiting"
-    ? `Next attempt in ${fmtRemaining(circuit.remainingMs)}` : "Ready to retry";
+  const circuitLabel = (circuit) => `Next attempt in ${fmtRemaining(circuit.remainingMs)}`;
   const allBlocked = combo.models?.length > 0 && combo.models.every((model, index) =>
     isMemberOff?.(model) || memberLocks[index] > 0 || circuitFor(model));
 
@@ -800,10 +799,10 @@ function ComboCard({ combo, getCaps, capsOverrides = {}, allCombos = [], aliasCa
                       </Tooltip>
                     )}
                     {!off && circuit && (
-                      <Tooltip text={`Frozen for all combos. ${circuitLabel(circuit)}. Returns only after a successful check.`}>
+                      <Tooltip text={`Frozen for all combos. ${circuitLabel(circuit)}. The next real request retries the model after cooldown.`}>
                         <span className="inline-flex items-center gap-0.5 font-normal">
-                          <span className="material-symbols-outlined text-[12px] align-middle">{circuit.phase === "probing" ? "sync" : "ac_unit"}</span>
-                          {circuit.phase === "probing" ? "checking" : "frozen"}
+                          <span className="material-symbols-outlined text-[12px] align-middle">ac_unit</span>
+                          frozen
                         </span>
                       </Tooltip>
                     )}
@@ -836,7 +835,7 @@ function ComboCard({ combo, getCaps, capsOverrides = {}, allCombos = [], aliasCa
             )}
             {frozenMembers.length > 0 && (
               <div className="mt-1.5 space-y-1 rounded bg-orange-500/10 px-2 py-1.5 text-xs text-orange-700 dark:text-orange-400">
-                <p>{allBlocked ? "Combo unavailable. " : ""}{frozenMembers.length} {frozenMembers.length === 1 ? "model frozen" : "models frozen"} across combos; retried automatically when the cooldown ends.</p>
+                <p>{allBlocked ? "Combo unavailable. " : ""}{frozenMembers.length} {frozenMembers.length === 1 ? "model frozen" : "models frozen"} across combos; retried on the next request after cooldown.</p>
                 {frozenMembers.map(({ model, circuit }) => (
                   <div key={model} className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
                     <code className="break-all font-mono">{model}</code>

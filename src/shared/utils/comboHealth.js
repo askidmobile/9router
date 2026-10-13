@@ -63,11 +63,11 @@ export function getComboMemberCircuit(member, circuits, providers, now) {
     && ["open", "probing"].includes(entry.state));
   if (!circuit) return null;
   const remainingMs = Math.max(0, (timestamp(circuit.nextProbeAt) || 0) - now);
+  // Retryable pairs remain server-side until a real request, but no longer block the dashboard.
+  if (remainingMs === 0) return null;
   return {
     ...circuit,
     remainingMs,
-    // A timer expiring only makes the pair retryable; the next real request
-    // decides whether it recovers or the cooldown grows.
-    phase: remainingMs > 0 ? "waiting" : "due",
+    phase: "waiting",
   };
 }

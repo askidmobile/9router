@@ -36,14 +36,16 @@ describe("combo frozen-state display", () => {
     expect(providers.get("cmc")).toBe("commandcode");
   });
 
-  it.each([NOW - 60_000, NOW, null])("reports an expired or missing next-attempt time %s as due", (nextProbeAt) => {
+  it.each([NOW - 60_000, NOW, null])("hides an expired or missing next-attempt time %s", (nextProbeAt) => {
     const status = getComboMemberCircuit("cmc/z-ai/glm-5.3-flash", [open("commandcode", undefined, { nextProbeAt })], providers, NOW);
-    expect(status).toMatchObject({ state: "open", phase: "due", remainingMs: 0 });
+    expect(status).toBeNull();
   });
 
-  it("keeps showing the pair until the server removes the circuit", () => {
-    const circuit = open("commandcode", undefined, { nextProbeAt: NOW - 1000 });
-    expect(getComboMemberCircuit("cmc/z-ai/glm-5.3-flash", [circuit], providers, NOW)).not.toBeNull();
+  it("hides the pair when its cooldown expires without mutating server metadata", () => {
+    const circuit = open("commandcode");
+    expect(getComboMemberCircuit("cmc/z-ai/glm-5.3-flash", [circuit], providers, NOW + 59_999)).not.toBeNull();
+    expect(getComboMemberCircuit("cmc/z-ai/glm-5.3-flash", [circuit], providers, NOW + 60_000)).toBeNull();
+    expect(circuit).toEqual(open("commandcode"));
     expect(getComboMemberCircuit("cmc/z-ai/glm-5.3-flash", [], providers, NOW)).toBeNull();
   });
 
