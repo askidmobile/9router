@@ -85,6 +85,7 @@ export function createSSEStream(options = {}) {
   let openAIResponsesTerminalSeen = false;
   let openAIResponsesDoneSent = false;
   let streamDoneSent = false;  // track duplicate [DONE] across transform + flush
+  let openAIChatFinishSeen = false;
   let passthroughFinishSeen = false;  // passthrough: duplicate finish chunks from upstream
   let passthroughDoneSent = false;    // passthrough: upstream already sent [DONE]
 
@@ -468,6 +469,7 @@ export function createSSEStream(options = {}) {
             }
 
             const output = formatSSE(responseMetadata.apply(item), sourceFormat);
+            if (item.choices?.some(choice => choice.finish_reason != null)) openAIChatFinishSeen = true;
             reqLogger?.appendConvertedChunk?.(output);
             controller.enqueue(sharedEncoder.encode(output));
             sseEmittedCount++;
@@ -559,6 +561,7 @@ export function createSSEStream(options = {}) {
               for (const item of translated) {
                 if (item === null || item === undefined) continue;
                 const output = formatSSE(responseMetadata.apply(item), sourceFormat);
+                if (item.choices?.some(choice => choice.finish_reason != null)) openAIChatFinishSeen = true;
                 reqLogger?.appendConvertedChunk?.(output);
                 controller.enqueue(sharedEncoder.encode(output));
               }
@@ -579,6 +582,7 @@ export function createSSEStream(options = {}) {
           for (const item of flushed) {
             if (item === null || item === undefined) continue;
             const output = formatSSE(responseMetadata.apply(item), sourceFormat);
+            if (item.choices?.some(choice => choice.finish_reason != null)) openAIChatFinishSeen = true;
             reqLogger?.appendConvertedChunk?.(output);
             controller.enqueue(sharedEncoder.encode(output));
           }
@@ -599,6 +603,13 @@ export function createSSEStream(options = {}) {
           controller.enqueue(sharedEncoder.encode(doneOutput));
           openAIResponsesDoneSent = true;
           streamDoneSent = true;
+        }
+
+        // A Chat finish chunk needs its own sentinel; upstream [DONE] is consumed above.
+        if (sourceFormat === FORMATS.OPENAI && openAIChatFinishSeen &&
+            (targetFormat !== FORMATS.OPENAI_RESPONSES || openAIResponsesTerminalSeen)) {
+          reqLogger?.appendConvertedChunk?.(SSE_DONE);
+          controller.enqueue(sharedEncoder.encode(SSE_DONE));
         }
 
         finalizeStream();
