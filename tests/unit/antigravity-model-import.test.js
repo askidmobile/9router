@@ -29,6 +29,22 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe("Antigravity model import", () => {
+  it("imports Argon variants with the provider's limits and exact effort routing", async () => {
+    const models = Object.fromEntries(["high", "medium", "low"].map(tier => [
+      `gemini-4-argon-${tier}`, { displayName: `Gemini 4 Argon (${tier})`, maxTokens: 1048576, maxOutputTokens: 65536 },
+    ]));
+    mocks.fetch.mockImplementation(async url => url === modelsUrl ? page({ models }) : page({}));
+    const result = await request();
+    expect(result.status).toBe(200);
+    expect(result.body.models).toHaveLength(3);
+    for (const tier of ["high", "medium", "low"]) {
+      expect(result.body.models.find(model => model.id === `gemini-4-argon-${tier}`)).toEqual({
+        id: `gemini-4-argon-${tier}`, name: `Gemini 4 Argon (${tier})`,
+        upstreamModelId: `gemini-4-argon-${tier}(${tier})`, contextWindow: 1048576, maxOutput: 65536,
+      });
+    }
+  });
+
   it("imports all six live Claude variants through the API and keeps effort routing", async () => {
     const models = {};
     for (const family of ["sonnet", "opus"]) for (const effort of ["low", "medium", "high"]) {

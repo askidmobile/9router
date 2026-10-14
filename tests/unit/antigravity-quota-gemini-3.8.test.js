@@ -7,6 +7,9 @@ const proxyAwareFetch = vi.fn(async (url) => ({
     ? { cloudaicompanionProject: "project-1", currentTier: { name: "Pro" }, paidTier: { id: "g1-pro-tier", name: "Google AI Pro" } }
     : {
         models: {
+          ...Object.fromEntries(["gemini-4-argon", "gemini-4-argon-high", "gemini-4-argon-medium", "gemini-4-argon-low"].map(id => [id, {
+            displayName: id, quotaInfo: { remainingFraction: 0.5, resetTime: "2026-10-15T12:00:00Z" },
+          }])),
           "gemini-3.8-flash-high": {
             displayName: "Gemini 3.8 Flash (High)",
             quotaInfo: { remainingFraction: 0.85, resetTime: "2026-08-25T12:00:00Z" },
@@ -35,6 +38,15 @@ vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
 
 describe("Antigravity quota tracker: Gemini 3.8 Flash usage bars", () => {
   beforeEach(() => proxyAwareFetch.mockClear());
+
+  it("returns Argon quotas when the upstream catalog exposes them", async () => {
+    const { getAntigravityUsage } = await import("../../open-sse/services/usage/google.js");
+    const usage = await getAntigravityUsage("access-token", {});
+    for (const id of ["gemini-4-argon", "gemini-4-argon-high", "gemini-4-argon-medium", "gemini-4-argon-low"]) {
+      expect(usage.quotas[id]).toMatchObject({ used: 500, total: 1000, remainingPercentage: 50 });
+    }
+    expect(usage.quotas["internal-model"]).toBeUndefined();
+  });
 
   it("returns Gemini 3.8 Flash tier quotas so the dashboard can render usage bars", async () => {
     const { getAntigravityUsage } = await import("../../open-sse/services/usage/google.js");
