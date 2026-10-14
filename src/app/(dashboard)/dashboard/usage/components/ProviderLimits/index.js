@@ -41,7 +41,8 @@ import {
 } from "./utils";
 import Card from "@/shared/components/Card";
 import { ConfirmModal, EditConnectionModal } from "@/shared/components";
-import { USAGE_SUPPORTED_PROVIDERS, AI_PROVIDERS } from "@/shared/constants/providers";
+import { AI_PROVIDERS } from "@/shared/constants/providers";
+import { isUsageEligible } from "@/shared/utils/providerQuota";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 
 // Maps the stored providerSpecificData.authMethod to a human label for Kiro.
@@ -123,8 +124,8 @@ function claudeGrantStatus(grant) {
   return grant.useRequiresLimit ? "at limit only" : "unavailable";
 }
 
-function providerLabel(providerId) {
-  return AI_PROVIDERS[providerId]?.name || providerId;
+function providerLabel(providerId, providerNames = {}) {
+  return AI_PROVIDERS[providerId]?.name || providerNames[providerId] || providerId;
 }
 
 function formatCreditDate(value) {
@@ -196,6 +197,7 @@ export default function ProviderLimits() {
     } catch { /* non-fatal: URL sync is best-effort */ }
   }, [pathname, router, searchParams]);
   const [providerOptions, setProviderOptions] = useState([]);
+  const [providerNames, setProviderNames] = useState({});
   const [accountFilter, setAccountFilter] = useState("all");
   const [quotaSortMode, setQuotaSortMode] = useState("default");
   const [quotaVisibility, setQuotaVisibility] = useState({});
@@ -248,6 +250,7 @@ export default function ProviderLimits() {
 
         setConnections(connectionList);
         setProviderOptions(getProviderOptions(data.providerOptions));
+        setProviderNames(data.providerNames || {});
         setPagination(nextPagination);
         setTotals(nextTotals);
         setPage(getPaginationPageValue(data.pagination, targetPage));
@@ -320,6 +323,7 @@ export default function ProviderLimits() {
         quotas: parsedQuotas,
         plan: data.plan || null,
         message: data.message || null,
+        notice: data.notice || null,
         raw: data,
       };
 
@@ -497,7 +501,7 @@ export default function ProviderLimits() {
           await fetchConnections();
           setShowEditModal(false);
           setSelectedConnection(null);
-          if (USAGE_SUPPORTED_PROVIDERS.includes(provider)) {
+          if (isUsageEligible(selectedConnection)) {
             await fetchQuota(connectionId, provider);
           }
         }
@@ -827,7 +831,7 @@ export default function ProviderLimits() {
   };
 
   const selectedProviderLabel =
-    providerFilter === "all" ? "All providers" : providerLabel(providerFilter);
+    providerFilter === "all" ? "All providers" : providerLabel(providerFilter, providerNames);
   const hasEligibleConnections = totals.eligibleConnections > 0;
   const hasVisibleConnections = sortedConnections.length > 0;
   const emptyState = getConnectionsEmptyMessage(
@@ -966,7 +970,7 @@ export default function ProviderLimits() {
                           fallbackText={provider.slice(0, 2).toUpperCase()}
                         />
                         <span className="font-medium">
-                          {providerLabel(provider)}
+                          {providerLabel(provider, providerNames)}
                         </span>
                         {providerFilter === provider && (
                           <span className="material-symbols-outlined ml-auto text-[20px]">
@@ -1142,7 +1146,7 @@ export default function ProviderLimits() {
                     </div>
                     <div className="min-w-0">
                       <h3 className="text-sm font-semibold text-text-primary truncate">
-                        {providerLabel(conn.provider)}
+                        {providerLabel(conn.provider, providerNames)}
                       </h3>
                       {getConnectionLabel(conn) ? (
                         <p className="text-xs text-text-muted truncate">
@@ -1323,6 +1327,7 @@ export default function ProviderLimits() {
               </div>
 
               <div className="px-2 py-1.5">
+                {quota?.notice && <p className="mb-1 text-[10px] text-text-muted">{quota.notice}</p>}
                 {isLoading ? (
                   <div className="text-center py-5 text-text-muted">
                     <span className="material-symbols-outlined text-[28px] animate-spin">

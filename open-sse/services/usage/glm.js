@@ -3,7 +3,7 @@
  */
 
 import { proxyAwareFetch } from "../../utils/proxyFetch.js";
-import { U } from "./shared.js";
+import { U, toFiniteNumber } from "./shared.js";
 
 // GLM quota endpoints (region-aware) — url from registry transport.usage
 const GLM_QUOTA_URLS = {
@@ -48,6 +48,13 @@ export function parseGlmQuotaResponse(json) {
       resetAt: resetMs > 0 ? new Date(resetMs).toISOString() : null,
       unlimited: false,
     };
+    const cap = toFiniteNumber(limit.usage, null);
+    const current = toFiniteNumber(limit.currentValue, null);
+    const left = toFiniteNumber(limit.remaining, null);
+    if (cap !== null && current !== null && left !== null) {
+      const unit = limit.type === "CREDIT_LIMIT" ? "Credits" : "Tokens";
+      quotas[key].detail = `${unit}: ${current.toLocaleString("en-US")} / ${cap.toLocaleString("en-US")} · Remaining: ${left.toLocaleString("en-US")}`;
+    }
   }
 
   const levelRaw = typeof data.level === "string" ? data.level : "";

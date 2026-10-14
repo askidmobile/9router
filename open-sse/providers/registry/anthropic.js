@@ -1,5 +1,6 @@
 export default {
   id: "anthropic",
+  features: { usage: true, usageApikey: true },
   priority: 30,
   alias: "anthropic",
   display: {

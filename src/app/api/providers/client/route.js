@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { getProviderConnections } from "@/lib/localDb";
 import { backfillCodexEmails } from "@/lib/oauth/providers";
-import { USAGE_APIKEY_PROVIDERS, USAGE_SUPPORTED_PROVIDERS } from "@/shared/constants/providers";
+import { USAGE_SUPPORTED_PROVIDERS } from "@/shared/constants/providers";
+import { isUsageEligible } from "@/shared/utils/providerQuota";
 
 const SAFE_FIELDS = [
   "id", "provider", "authType", "name", "email", "displayName",
@@ -43,12 +44,6 @@ function sanitize(c) {
   return safe;
 }
 
-function isUsageEligible(connection) {
-  return USAGE_SUPPORTED_PROVIDERS.includes(connection.provider) && (
-    connection.authType === "oauth" || USAGE_APIKEY_PROVIDERS.includes(connection.provider)
-  );
-}
-
 function parsePositiveInt(value, fallback) {
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
@@ -88,6 +83,9 @@ export async function GET(request) {
     const allConnections = await getProviderConnections();
     const eligibleConnections = allConnections.filter(isUsageEligible);
     const providerOptions = Array.from(new Set(eligibleConnections.map((conn) => conn.provider))).sort();
+    const providerNames = Object.fromEntries(eligibleConnections
+      .filter(conn => conn.provider.startsWith("openai-compatible-"))
+      .map(conn => [conn.provider, maskName(conn.providerSpecificData?.nodeName || "Kenari")]));
 
     const providerFilteredConnections = eligibleConnections.filter((conn) => (
       provider === "all" || conn.provider === provider
@@ -109,6 +107,7 @@ export async function GET(request) {
     return NextResponse.json({
       connections: pageConnections,
       providerOptions,
+      providerNames,
       pagination: {
         page: currentPage,
         pageSize,

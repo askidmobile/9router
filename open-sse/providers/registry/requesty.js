@@ -9,6 +9,7 @@
 // which data residency the key belongs to, so the default stays the global host.
 export default {
   id: "requesty",
+  features: { usage: true, usageApikey: true },
   priority: 120,
   alias: "req",
   aliases: [

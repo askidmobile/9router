@@ -1,5 +1,6 @@
 export default {
   id: "kilocode",
+  features: { usage: true, usageApikey: true },
   priority: 70,
   alias: "kc",
   uiAlias: "kc",

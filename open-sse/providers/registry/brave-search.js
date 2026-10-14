@@ -1,5 +1,6 @@
 export default {
   id: "brave-search",
+  features: { usage: true, usageApikey: true },
   alias: "brave",
   display: {
     name: "Brave Search",

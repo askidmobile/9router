@@ -51,6 +51,12 @@ export function toFiniteNumber(value, fallback = 0) {
   return fallback;
 }
 
+export function creditBalance(value, currency) {
+  const amount = toFiniteNumber(value, null);
+  if (amount === null) throw new Error("Balance data unavailable");
+  return { used: 0, total: amount, isCreditBalance: true, currency, resetAt: null };
+}
+
 export function normalizeCloudCodeProjectId(project) {
   if (typeof project === "string") return project.trim() || null;
   if (project && typeof project === "object" && typeof project.id === "string") {

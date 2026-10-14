@@ -12,6 +12,7 @@ import { normalizeSearchResponse } from "./normalizers.js";
 import { handleChatSearch } from "./chatSearch.js";
 import { fetchPublic } from "../../../src/shared/utils/ssrfGuard.js";
 import { createResponseMetadata } from "../../utils/responseMetadata.js";
+import { captureProviderQuota } from "../../services/usage/rateLimits.js";
 
 const GLOBAL_TIMEOUT_MS = 15000;
 const NON_RETRIABLE = new Set([400, 401, 403, 404]);
@@ -108,6 +109,7 @@ async function tryDedicatedProvider({ provider, providerConfig, body, credential
   try {
     const resp = await fetchPublic(url, { ...init, headers: sanitizeHeaders(init.headers), signal: controller.signal });
     clearTimeout(timer);
+    await captureProviderQuota(provider.id, credentials?.connectionId, "default", resp.headers).catch(() => {});
     if (!resp.ok) {
       const errText = await resp.text().catch(() => "");
       log?.error?.("SEARCH", `${provider.id} ${resp.status}: ${errText.slice(0, 200)}`);

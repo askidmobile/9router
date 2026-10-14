@@ -1,5 +1,6 @@
 export default {
   id: "cerebras",
+  features: { usage: true, usageApikey: true },
   priority: 60,
   alias: "cerebras",
   display: {

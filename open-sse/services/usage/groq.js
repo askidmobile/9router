@@ -14,6 +14,7 @@
 
 import { proxyAwareFetch } from "../../utils/proxyFetch.js";
 import { U } from "./shared.js";
+import { getObservedUsage } from "./rateLimits.js";
 
 const MODELS_URL = U("groq").url;
 
@@ -65,7 +66,8 @@ function buildRateLimitQuota(headers, limitKey, remainingKey, resetKey) {
  * @param {string|null|undefined} apiKey
  * @param {object|null} proxyOptions
  */
-export async function getGroqUsage(apiKey, proxyOptions = null) {
+export async function getGroqUsage(apiKey, proxyOptions = null, connectionId = null) {
+  if (connectionId) return getObservedUsage("groq", connectionId);
   if (!apiKey || typeof apiKey !== "string" || !apiKey.trim()) {
     return { message: "Groq API key not available. Add a key to view usage." };
   }

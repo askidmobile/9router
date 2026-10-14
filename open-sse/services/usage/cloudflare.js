@@ -70,7 +70,9 @@ export async function getCloudflareUsage(apiKey, providerSpecificData, proxyOpti
     }
 
     const data = await response.json();
-    const groups = data?.data?.viewer?.accounts?.[0]?.aiWorkersAiInvocationsAdaptiveGroups || [];
+    if (data.errors?.length) return { message: "Cloudflare analytics unavailable. The API rejected the usage query; remaining quota is unknown." };
+    const groups = data?.data?.viewer?.accounts?.[0]?.aiWorkersAiInvocationsAdaptiveGroups;
+    if (!Array.isArray(groups)) return { message: "Cloudflare analytics unavailable. No usage data returned." };
     const sum = groups.reduce(
       (acc, g) => ({
         neurons: acc.neurons + toFiniteNumber(g?.sum?.neurons),
@@ -84,7 +86,7 @@ export async function getCloudflareUsage(apiKey, providerSpecificData, proxyOpti
     const resetAt = nextUtcMidnight();
 
     return {
-      plan: "Workers AI Free (10k neurons/day)",
+      plan: "Workers AI daily free allocation",
       resetDate: resetAt,
       quotas: {
         neurons: {

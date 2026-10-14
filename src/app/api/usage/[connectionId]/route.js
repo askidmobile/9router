@@ -7,7 +7,7 @@ import { getUsageForProvider } from "open-sse/services/usage.js";
 import { isUnrecoverableRefreshError } from "open-sse/services/tokenRefresh.js";
 import { getExecutor } from "open-sse/executors/index.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
-import { USAGE_APIKEY_PROVIDERS } from "@/shared/constants/providers";
+import { isUsageEligible } from "@/shared/utils/providerQuota";
 
 // Detect auth-expired messages returned by usage providers instead of throwing
 const AUTH_EXPIRED_PATTERNS = ["expired", "authentication", "unauthorized", "401", "re-authorize"];
@@ -194,12 +194,7 @@ export async function GET(request, { params }) {
     // Kiro's headless api-key flow persists authType "api_key" (underscore) while
     // generic apikey providers persist "apikey" — accept both spellings here.
     const isOAuth = connection.authType === "oauth";
-    const isApikeyAuth =
-      connection.authType === "apikey" || connection.authType === "api_key";
-    const isApikeyEligible =
-      isApikeyAuth && USAGE_APIKEY_PROVIDERS.includes(connection.provider);
-
-    if (!isOAuth && !isApikeyEligible) {
+    if (!isUsageEligible(connection)) {
       return Response.json({ message: "Usage not available for this connection" });
     }
 
@@ -232,23 +227,6 @@ export async function GET(request, { params }) {
 
     // Fetch usage from provider API
     let usage = await getUsageForProvider(connection, proxyOptions, { force });
-
-    // OpenRouter free-tier: replace the static daily-request row with the
-    // actual local counter (usageHistory is better than OmniRoute's in-memory
-    // tracker — survives restarts and counts exactly what we routed).
-    if (connection.provider === "openrouter" && usage?.quotas?.["Free requests/day"]) {
-      const todayStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate()));
-      const rows = await getUsageHistory({ provider: "openrouter", startDate: todayStart.toISOString() }).catch(() => []);
-      const used = rows.filter((r) => r.connectionId === connection.id).length;
-      const limit = usage.quotas["Free requests/day"].total || 50;
-      usage.quotas["Free requests/day"] = {
-        used,
-        total: limit,
-        unlimited: false,
-        remainingPercentage: limit > 0 ? Math.max(0, Math.round(((limit - used) / limit) * 100)) : 0,
-        resetAt: new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate() + 1)).toISOString(),
-      };
-    }
 
     // If provider returned an auth-expired message instead of throwing,
     // force-refresh token and retry once (OAuth only)

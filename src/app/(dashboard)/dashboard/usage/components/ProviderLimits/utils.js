@@ -1,7 +1,7 @@
 import { getModelsByProviderId } from "open-sse/config/providerModels.js";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
-export const QUOTA_CACHE_KEY = "quotaCacheData";
+export const QUOTA_CACHE_KEY = "quotaCacheDataV2";
 export const REFRESH_INTERVAL_MS = 60000;
 // Claude usage/quota endpoint rate-limits; poll it less often than other providers
 export const CLAUDE_REFRESH_INTERVAL_MS = 600000;
@@ -697,7 +697,7 @@ export function parseQuotaData(provider, data) {
             normalizedQuotas.push({
               name,
               used: quota.used || 0,
-              total: quota.total || 100,
+              total: quota.total ?? 100,
               resetAt: quota.resetAt || null,
               remainingPercentage: quota.remainingPercentage,
             });
@@ -790,6 +790,14 @@ export function parseQuotaData(provider, data) {
   } catch (error) {
     console.error(`Error parsing quota data for ${provider}:`, error);
     return [];
+  }
+
+  for (const row of normalizedQuotas) {
+    const quota = data?.quotas?.[row.name];
+    if (!quota) continue;
+    for (const key of ["isCreditBalance", "currency", "unlimited", "remainingPercentage", "recurring", "unit", "detail", "isAmount", "amountLabel", "observedAt"]) {
+      if (quota[key] !== undefined) row[key] = quota[key];
+    }
   }
 
   if (provider?.toLowerCase() === "claude") {

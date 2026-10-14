@@ -1,5 +1,6 @@
 export default {
   id: "jina-ai",
+  features: { usage: true, usageApikey: true },
   alias: "jina",
   display: {
     name: "Jina AI",

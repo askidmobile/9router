@@ -1,5 +1,6 @@
 export default {
   id: "jina-reader",
+  features: { usage: true, usageApikey: true },
   alias: "jina-reader",
   display: {
     name: "Jina Reader",

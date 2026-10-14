@@ -1,5 +1,6 @@
 export default {
   id: "nebius",
+  features: { usage: true, usageApikey: true },
   priority: 70,
   alias: "nebius",
   display: {

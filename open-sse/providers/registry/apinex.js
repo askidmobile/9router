@@ -5,6 +5,7 @@
 // /v1/models returns the same ids without any metadata.
 export default {
   id: "apinex",
+  features: { usage: true, usageApikey: true },
   priority: 120,
   alias: "apinex",
   aliases: [

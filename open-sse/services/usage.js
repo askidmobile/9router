@@ -23,6 +23,9 @@ import { getZedUsage } from "./usage/zed.js";
 import { getXiaomiMimoUsage } from "./usage/xiaomi-mimo.js";
 import { resolveQoderCredentials } from "./qoderModels.js";
 import { getGlmUsage } from "./usage/glm.js";
+import { getAccountUsage } from "./usage/accounts.js";
+import { getQuotaProvider } from "@/shared/utils/providerQuota.js";
+import { getObservedUsage } from "./usage/rateLimits.js";
 import {
   getIflowUsage,
   getOllamaUsage,
@@ -39,6 +42,17 @@ import {
  */
 // provider → usage handler (ctx carries every arg each handler needs)
 const USAGE_HANDLERS = {
+  "brave-search": (c) => getObservedUsage(c.provider, c.connectionId),
+  nebius: (c) => getObservedUsage(c.provider, c.connectionId),
+  anthropic: (c) => getObservedUsage(c.provider, c.connectionId),
+  cerebras: (c) => getObservedUsage(c.provider, c.connectionId),
+  apinex: (c) => getAccountUsage(c, c.proxyOptions),
+  requesty: (c) => getAccountUsage(c, c.proxyOptions),
+  cheaper: (c) => getAccountUsage(c, c.proxyOptions),
+  kilocode: (c) => getAccountUsage(c, c.proxyOptions),
+  "jina-ai": (c) => getAccountUsage(c, c.proxyOptions),
+  "jina-reader": (c) => getAccountUsage(c, c.proxyOptions),
+  kenari: (c) => getAccountUsage(c, c.proxyOptions),
   github: (c) => getGitHubUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),
   "gemini-cli": (c) => getGeminiUsage(c.accessToken, c.providerDataWithProjectId, c.proxyOptions),
   antigravity: (c) => getAntigravityUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),
@@ -70,7 +84,7 @@ const USAGE_HANDLERS = {
   commandcode: (c) => getCommandCodeUsage(c.apiKey, c.proxyOptions),
   cmc: (c) => getCommandCodeUsage(c.apiKey, c.proxyOptions),
   "cloudflare-ai": (c) => getCloudflareUsage(c.apiKey, c.providerSpecificData, c.proxyOptions),
-  groq: (c) => getGroqUsage(c.apiKey, c.proxyOptions),
+  groq: (c) => getGroqUsage(c.apiKey, c.proxyOptions, c.connectionId),
   zed: (c) => getZedUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),
   "xiaomi-mimo": (c) => getXiaomiMimoUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),
 };
@@ -84,7 +98,8 @@ async function getQoderUsageFor(c) {
 }
 
 export async function getUsageForProvider(connection, proxyOptions = null, options = {}) {
-  const { provider, accessToken, apiKey, providerSpecificData, projectId } = connection;
+  const { accessToken, apiKey, providerSpecificData, projectId } = connection;
+  const provider = getQuotaProvider(connection);
   const providerDataWithProjectId = {
     ...(providerSpecificData || {}),
     ...(projectId ? { projectId } : {}),
@@ -93,6 +108,7 @@ export async function getUsageForProvider(connection, proxyOptions = null, optio
   const handler = USAGE_HANDLERS[provider];
   if (!handler) return { message: `Usage API not implemented for ${provider}` };
   return await handler({
+    connectionId: connection.id,
     provider,
     accessToken,
     apiKey,

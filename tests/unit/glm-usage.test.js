@@ -90,7 +90,8 @@ describe("getGlmUsage and getUsageForProvider(glm)", () => {
 
     expect(usage.message).toBeUndefined();
     expect(usage.plan).toBe("Lite");
-    expect(usage.quotas["Session (5h)"]).toEqual({
+    expect(usage.quotas["Session (5h)"].detail).toBe("Credits: 0 / 2,000 · Remaining: 1,999");
+    expect(usage.quotas["Session (5h)"]).toMatchObject({
       used: 25,
       total: 100,
       remaining: 75,
@@ -98,7 +99,7 @@ describe("getGlmUsage and getUsageForProvider(glm)", () => {
       resetAt: new Date(1787905548392).toISOString(),
       unlimited: false,
     });
-    expect(usage.quotas["Weekly (7d)"]).toEqual({
+    expect(usage.quotas["Weekly (7d)"]).toMatchObject({
       used: 100 ? 10 : 10,
       total: 100,
       remaining: 90,

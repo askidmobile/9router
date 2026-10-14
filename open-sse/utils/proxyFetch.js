@@ -328,7 +328,7 @@ async function fetchWithTlsFallback(url, options, proxyUrl) {
         throw err;
       }
       // ponytail: in-memory insecure agent fallback for self-signed MITM corporate/antivirus certs
-      console.warn(`[ProxyFetch] TLS cert verification failed (${err.cause?.code || err.code}), retrying with insecure TLS: ${url}`);
+      console.warn(`[ProxyFetch] TLS cert verification failed (${err.cause?.code || err.code}), retrying with insecure TLS: ${new URL(url).origin}`);
       const insecureDispatcher = await getDispatcher(proxyUrl, true);
       return await fetchWithDispatcher(url, options, insecureDispatcher);
     }

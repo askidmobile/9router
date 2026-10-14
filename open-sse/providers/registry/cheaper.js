@@ -12,6 +12,7 @@ const MAX_REQUEST_BODY_BYTES = 4_500_000;
 
 export default {
   id: "cheaper",
+  features: { usage: true, usageApikey: true },
   priority: 120,
   alias: "cheaper",
   aliases: [

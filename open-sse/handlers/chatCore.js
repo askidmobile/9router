@@ -35,6 +35,7 @@ import { resolveSessionId } from "../utils/sessionManager.js";
 import { resolveGeminiServiceTier } from "../utils/geminiModels.js";
 import { throwIfAborted } from "../utils/abort.js";
 import { validateComboUpstreamResponse } from "../utils/comboUpstream.js";
+import { captureProviderQuota } from "../services/usage/rateLimits.js";
 
 /**
  * Core chat handler - shared between SSE and Worker
@@ -508,6 +509,8 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
       }
     }
     throwIfAborted(signal);
+
+    await captureProviderQuota(provider, connectionId, model, providerResponse.headers).catch(() => {});
 
     // Provider returned error
     if (!providerResponse.ok) {
