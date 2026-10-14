@@ -41,7 +41,14 @@ export async function getCatalog({ forceRefresh = false } = {}) {
   }
 
   try {
-    const res = await fetch(MODELS_DEV_URL, { headers: { Accept: "application/json" } });
+    // 15 s timeout: models.dev sits on a slow third-party host and api.json is
+    // ~5 MB. An unbounded fetch made /api/models-dev callers wait on network
+    // hiccups; with a timeout the endpoint degrades to the stale cache (or a
+    // 502 when nothing is cached) and the dashboard renders its own data.
+    const res = await fetch(MODELS_DEV_URL, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(15000),
+    });
     if (!res.ok) throw new Error(`models.dev responded ${res.status}`);
     const catalog = await res.json();
     const fetchedAt = Date.now();
@@ -49,7 +56,7 @@ export async function getCatalog({ forceRefresh = false } = {}) {
     memCache = { catalog, fetchedAt };
     return { catalog, fetchedAt, stale: false };
   } catch (error) {
-    // Network failure — serve the stale cached catalog when available.
+    // Network failure / timeout — serve the stale cached catalog when available.
     const stored = await readStoredCatalog();
     if (stored.catalog) {
       return { catalog: stored.catalog, fetchedAt: stored.fetchedAt, stale: true };

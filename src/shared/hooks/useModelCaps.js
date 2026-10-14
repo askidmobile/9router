@@ -88,6 +88,7 @@ export function useModelCaps({ enabled = true } = {}) {
   const [byId, setById] = useState(() => cache?.byId || {});
   const [effective, setEffective] = useState(() => cache?.effective || {});
   const [overrides, setOverrides] = useState(() => cache?.overrides || {});
+  const [ready, setReady] = useState(() => Boolean(cache));
 
   useEffect(() => {
     if (!enabled) return;
@@ -98,6 +99,7 @@ export function useModelCaps({ enabled = true } = {}) {
         setById(maps.byId);
         setOverrides(maps.overrides);
         setEffective(maps.effective || maps.overrides);
+        setReady(true);
       }
     };
     if (cache) {
@@ -124,5 +126,5 @@ export function useModelCaps({ enabled = true } = {}) {
   );
 
   // overrides exposed for combined-caps computation (combo card mirrors /v1/models)
-  return { getCaps, overrides };
+  return { getCaps, overrides, ready };
 }

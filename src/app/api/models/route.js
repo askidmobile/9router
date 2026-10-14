@@ -5,7 +5,20 @@ import { getCapsOverrides, getModelNameOverrides } from "@/lib/db/index.js";
 import { resolveModelName } from "@/shared/utils/modelNames";
 import { AI_MODELS } from "@/shared/constants/config";
 import { getProviderAlias, getProviderByAlias } from "@/shared/constants/providers";
-import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
+
+import { getCapabilitiesForModel as resolveCapsForModel } from "open-sse/providers/capabilities.js";
+
+// Capabilities resolve through pattern tables, so an uncached merge of 800+ rows
+// on every /api/models request costs real time. Cache resolved rows in process
+// memory; a server restart invalidates but dashboard pages refetch anyway.
+const resolvedCapsCache = new Map();
+function capsFor(provider, model) {
+  const key = `${provider}|${model}`;
+  if (resolvedCapsCache.has(key)) return resolvedCapsCache.get(key);
+  const caps = resolveCapsForModel(provider, model);
+  resolvedCapsCache.set(key, caps);
+  return caps;
+}
 
 // GET /api/models - Get models with aliases
 export async function GET() {
@@ -14,8 +27,12 @@ export async function GET() {
     const disabled = await getDisabledModels();
     const capsOverrides = await getCapsOverrides();
     const modelNames = await getModelNameOverrides();
+    // Catalog-only rows are sync discoveries, not selectable models; they are
+    // promoted explicitly (POST /api/models/custom or bulk import), which clears
+    // the flag. Serving them here would publish unseen catalogs and slow this
+    // merge down.
     const savedModels = (await getCustomModels()).filter((m) =>
-      m?.id && (m.kind || m.type || "llm") === "llm"
+      m?.id && m.catalogOnly !== true && (m.kind || m.type || "llm") === "llm"
     );
     const savedByModel = new Map(savedModels.map((m) => [
       `${getProviderAlias(m.providerAlias) || m.providerAlias}/${m.id}`, m,
@@ -36,7 +53,7 @@ export async function GET() {
         // Keep its name/caps, then apply explicit overrides as in the editor.
         const saved = savedByModel.get(routedModel);
         const override = capsOverrides[`${providerAlias}|${m.model}`] || capsOverrides[`${providerId}|${m.model}`];
-        const c = { ...getCapabilitiesForModel(providerId, m.model), ...(saved?.caps || {}), ...(override || {}) };
+        const c = { ...capsFor(providerId, m.model), ...(saved?.caps || {}), ...(override || {}) };
         return {
           ...m,
           name: resolveModelName(modelNames, providerId, m.model, saved?.name || m.name),
@@ -71,7 +88,7 @@ export async function GET() {
       const providerId = getProviderByAlias(m.providerAlias)?.id || m.providerAlias;
       const override = capsOverrides[`${m.providerAlias}|${m.id}`] || capsOverrides[`${providerId}|${m.id}`];
       const c = {
-        ...getCapabilitiesForModel(providerId, m.id),
+        ...capsFor(providerId, m.id),
         ...(m.caps || {}),
         ...(override || {}),
       };

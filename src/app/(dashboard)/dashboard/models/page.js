@@ -25,7 +25,6 @@ export default function ModelsPage() {
   const [disabledMap, setDisabledMap] = useState({});
   const [aliasByModel, setAliasByModel] = useState({});
   const [pricing, setPricing] = useState({});
-  const [capsOverrides, setCapsOverrides] = useState({});
   const [modelsDev, setModelsDev] = useState(null);
   const [search, setSearch] = useState("");
   const [providerFilter, setProviderFilter] = useState("");
@@ -36,17 +35,19 @@ export default function ModelsPage() {
   const [mdAction, setMdAction] = useState({});
   const [refreshing, setRefreshing] = useState(false);
   const [catalogSync, setCatalogSync] = useState(null);
-  const { getCaps } = useModelCaps();
+  const { getCaps, overrides: hookCapsOverrides, ready: capsReady } = useModelCaps();
   const { getName, overrides: nameOverrides } = useModelNames();
 
   const fetchData = useCallback(async () => {
     try {
-      const [customRes, disabledRes, aliasRes, pricingRes, capsRes, mdRes, provRes, nodesRes, syncRes] = await Promise.all([
+      // useModelCaps already fetches /api/models/caps?summary=1, so the page
+      // takes overrides from there; the full provenance endpoint (5 kv reads +
+      // bulk source metadata) is only loaded when a single model is edited.
+      const [customRes, disabledRes, aliasRes, pricingRes, mdRes, provRes, nodesRes, syncRes] = await Promise.all([
         fetch("/api/models/custom"),
         fetch("/api/models/disabled"),
         fetch("/api/models/alias"),
         fetch("/api/pricing"),
-        fetch("/api/models/caps"),
         fetch("/api/models-dev"),
         fetch("/api/providers"),
         fetch("/api/provider-nodes"),
@@ -67,10 +68,6 @@ export default function ModelsPage() {
         setAliasByModel(reversed);
       }
       if (pricingRes.ok) setPricing(await pricingRes.json());
-      if (capsRes.ok) {
-        const data = await capsRes.json();
-        setCapsOverrides(data.overrides || {});
-      }
       if (mdRes.ok) setModelsDev(await mdRes.json());
       if (provRes.ok) {
         const data = await provRes.json();
@@ -208,6 +205,8 @@ export default function ModelsPage() {
 
     for (const c of customModels) {
       if (c.type && c.type !== "llm") continue;
+      // catalogOnly rows are sync discoveries, hidden until explicitly promoted.
+      if (c.catalogOnly === true) continue;
       const group = ensure(getProviderAlias(c.providerAlias));
       const row = {
         key: `${c.providerAlias}|${c.id}|custom`,
@@ -333,7 +332,7 @@ export default function ModelsPage() {
         // never the registry id.
         providerId: row.isCustom ? undefined : row.providerId,
         alias: getAliasFor(row),
-        overrides: capsOverrides,
+        overrides: hookCapsOverrides,
         getCaps,
         getPricing: (provider, model) => pricing[provider]?.[model] || null,
       }),
@@ -354,7 +353,13 @@ export default function ModelsPage() {
           body: JSON.stringify({ providerAlias: row.providerAlias, ids: [row.id] }),
         });
       }
-      await fetchData();
+      // Only the disabled list changed: a full 9-endpoint refetch made every
+      // toggle cost about one page reload.
+      const listRes = await fetch("/api/models/disabled");
+      if (listRes.ok) {
+        const listData = await listRes.json();
+        setDisabledMap(listData.disabled || {});
+      }
     } catch (error) {
       console.log("Error toggling model:", error);
     }
@@ -372,7 +377,13 @@ export default function ModelsPage() {
             { method: "DELETE" }
           );
           globalThis.dispatchEvent(new Event("customModelChanged"));
-          await fetchData();
+          // Only the custom list changed: refresh the single endpoint instead
+          // of re-running the whole 9-fetch reload.
+          const listRes = await fetch("/api/models/custom");
+          if (listRes.ok) {
+            const listData = await listRes.json();
+            setCustomModels(listData.models || []);
+          }
         } catch (error) {
           console.log("Error deleting model:", error);
         }
@@ -454,7 +465,7 @@ export default function ModelsPage() {
     }
   };
 
-  if (loading) {
+  if (loading || !capsReady) {
     return (
       <div className="flex flex-col gap-6">
         <CardSkeleton />
@@ -614,7 +625,7 @@ export default function ModelsPage() {
                       row={row}
                       caps={{
                         ...getCaps(`${row.providerAlias}/${row.id}`),
-                        ...(capsOverrides[`${row.providerAlias}|${row.id}`] || capsOverrides[`${row.providerId}|${row.id}`] || {}),
+                        ...(hookCapsOverrides[`${row.providerAlias}|${row.id}`] || hookCapsOverrides[`${row.providerId}|${row.id}`] || {}),
                       }}
                       alias={getAliasFor(row)}
                       disabled={isDisabled(row)}
