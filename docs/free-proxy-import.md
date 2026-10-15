@@ -72,3 +72,34 @@ that a proxy can sustain long model streams or is accepted by every provider.
 - The compiled server preserved those policies. Its live-catalog probe with the selected proxy inactive was blocked by the transport and returned the existing static-catalog fallback; no direct provider request was attempted.
 - ESLint has no new diagnostics in changed JavaScript files. Eight existing diagnostics remain on the provider/proxy-pool pages.
 - A chat request against the compiled server with an inactive selected proxy returned 502 with `direct connection is disabled`, before upstream dispatch. No provider model inference or production deployment was performed.
+
+## Production acceptance (2026-10-15)
+
+- Source revision: `03370476e7294ff83146073ffad417781b82a5e8`. Deployed image: `sha256:0413ed1234a36696955ba21f11b836f9d57e026213ab99832eadb685f5ae762d`.
+- The exact image passed offline checks on a production database copy. Cutover
+  started with zero active/pending requests; health recovered in
+  5.93 seconds. The previous container and a consistent SQLite backup
+  are retained for rollback.
+- The scheduler started automatically after deployment and fetched 20 candidates
+  from each source. All 40 failed the first HTTPS validation pass. A subsequent
+  refresh checked another 40 candidates and imported two working IPLocate
+  endpoints. Exit-IP checks confirmed egress different from the server's direct IP.
+- Live requests for `oc/big-pickle`, `oc/deepseek-v4.1-flash-free`, and
+  `oc/mimo-v2.6-flash-free` reached OpenCode through the selected proxies but
+  returned `403 FreeTierError`. Muse Spark returned a country restriction.
+  An up-to-date client header and canonical session were also tested; successful
+  model inference is **not** claimed. Similar current provider-side rejections are
+  reported in [OpenCode issue 55483](https://github.com/anomalyco/opencode/issues/55483).
+- Concurrent changes to the test provider's saved proxy selection were preserved.
+  Source synchronization never assigned provider proxies or expanded a saved
+  selection automatically.
+- All other provider policies, non-transient account configuration, and their bound
+  proxy pools matched their pre-deployment fingerprints after the live checks.
+- With the same deployed image and no external network, both an unavailable fixed
+  proxy and two unavailable selected round-robin proxies returned 502 before
+  upstream dispatch. Production proxy selection was preserved during this check.
+- Final health: HTTP 200; SQLite `quick_check`: `ok`; container restart count: 0.
+
+A fixed proxy **address** does not guarantee a fixed exit IP: one public endpoint
+observed during verification changed its upstream egress address between probes.
+Public proxy availability and provider acceptance remain time-dependent.
