@@ -131,3 +131,30 @@ References:
 A controlled upstream request through a public proxy returned HTTP 200 with the
 requested `PROXY_OC_OK` model response. Another selected public proxy reached the
 same endpoint but returned HTTP 429. No direct fallback or paid account was used.
+
+### Deployed verification
+
+- Code: `9bb6c3ce61fcdfa93687c9119047338cff12b675`; image:
+  `sha256:0f783cfeb4bf615c6bd2514fa637568bab228c4de89424bd74646958bb5d8912`.
+- 269 tests passed in 22 suites (one existing TODO). ESLint reported no errors;
+  the registry retains its existing anonymous-default-export warning.
+- The exact image returned 502 with an unavailable required proxy on an isolated
+  production database copy with no external network. Live QA on that copy
+  verified a different proxy exit IP, HTTP 200 with `PROXY_OC_OK`, and two
+  successful tool-call/history turns preserving the caller's `read(file_path)`
+  schema. No tool was actually executed by the diagnostic client.
+- Production cutover began with no active/pending requests; health recovered in
+  4.75 seconds. The prior container and consistent SQLite backup are retained.
+- A production request for `oc/mimo-v2.6-flash-free` through the existing selected
+  proxy returned HTTP 200, `finish_reason=stop`, and exactly `PROXY_OC_OK`
+  in 21.525 seconds. Routing logs confirm the selected proxy and new inference
+  endpoint. The next request through the other selected proxy returned 429.
+- The saved OpenCode rotation selection was preserved. All other provider
+  policies, stable account configuration and their bound pools matched the
+  pre-change fingerprints. No paid provider inference was requested.
+- Final health: HTTP 200; SQLite `quick_check`: `ok`; restart count: 0.
+
+The current OpenCode tool-schema fingerprint can change again. Public proxy
+rate limits and uptime remain independent of protocol compatibility; a successful
+request through one selected endpoint does not establish that every selected
+endpoint or every free model will succeed.
