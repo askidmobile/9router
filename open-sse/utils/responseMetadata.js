@@ -2,6 +2,7 @@ import { getModelUpstreamId, PROVIDER_ID_TO_ALIAS } from "../config/providerMode
 import { stripThinkingSuffix } from "../translator/concerns/thinkingUnified.js";
 import { MODEL_FALLBACK, RESPONSES_ITEM } from "../translator/schema/index.js";
 import { RESPONSE_METADATA_HEADERS } from "../config/responseMetadata.js";
+import { PROVIDERS } from "../config/providers.js";
 import { getPricingForModel } from "../providers/pricing.js";
 import { extractUsage, mergeUsage } from "./usageTracking.js";
 import { calculateResponseCost } from "./responseCost.js";
@@ -18,6 +19,7 @@ function responseEnvelope(payload) {
 /** Per-attempt identity: observe raw upstream data before lossy translation. */
 export function createResponseMetadata({ provider, model, translatedBody, finalBody, resolvePricing = id => getPricingForModel(provider, id) } = {}) {
   const alias = PROVIDER_ID_TO_ALIAS[provider] || provider;
+  const internalModelPrefixes = PROVIDERS[provider]?.quirks?.internalModelPrefixes || [];
   let actualModel = modelId(finalBody?.model) || modelId(translatedBody?.model)
     || (model ? stripThinkingSuffix(getModelUpstreamId(alias, model)) : null);
   // Prices belong to the configured route (including free/subscription
@@ -42,7 +44,8 @@ export function createResponseMetadata({ provider, model, translatedBody, finalB
   return {
     observe(payload) {
       const envelope = responseEnvelope(payload);
-      actualModel = modelId(envelope?.modelVersion) || modelId(envelope?.model) || actualModel;
+      const reportedModel = modelId(envelope?.modelVersion) || modelId(envelope?.model);
+      if (reportedModel && !internalModelPrefixes.some(prefix => reportedModel.startsWith(prefix))) actualModel = reportedModel;
       const upstreamUsage = envelope?.usage || envelope?.usageMetadata;
       const extracted = extractUsage(payload?.event ? payload.data : payload);
       if (extracted || upstreamUsage) {

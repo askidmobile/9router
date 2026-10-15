@@ -1,6 +1,7 @@
 # v0.5.99 (2026-10-08)
 
 ## Askid fork
+- **ClinePass**: keep the selected public model in JSON, SSE and Responses replies when Cline reports a private `vmc/` route; preserve ordinary upstream model IDs and revisions.
 - **Model metadata**: merge partial provider and exact models.dev catalogs per field, import declared reasoning effort choices, and separate automatic observations from manual overrides. Model APIs/editor expose sources, dates and unconfirmed defaults. The DSH catalog updater refreshes configured CTX/OUT/reasoning while preserving later local pins and credentials. Legacy overrides retain uncertain provenance.
 - **Error boundary**: sanitize HTML embedded in JSON errors or persisted account cooldown messages before sending JSON/SSE to clients, retaining the provider/model prefix and the page title.
 - **Combo recovery**: retry an upstream 502/503 once within the original first-response window, respecting Retry-After. Quota errors/timeouts fall through immediately; exhausted HTML errors remain clean JSON with the actual HTTP status.

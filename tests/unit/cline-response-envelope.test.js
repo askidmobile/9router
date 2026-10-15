@@ -17,10 +17,10 @@ const completion = {
   usage: { prompt_tokens: 17, completion_tokens: 40, total_tokens: 57 },
 };
 
-async function run(payload, provider = "clinepass", format = "openai", stream = false) {
+async function run(payload, provider = "clinepass", format = "openai", stream = false, model = "cline-pass/glm-5.3-flash") {
   mocks.fetch.mockResolvedValue(new Response(JSON.stringify(payload), { headers: { "content-type": "application/json" } }));
   const onRequestSuccess = vi.fn();
-  const body = { model: "cline-pass/glm-5.3-flash", messages: [{ role: "user", content: "Reply with OK" }], max_tokens: 128, stream };
+  const body = { model, messages: [{ role: "user", content: "Reply with OK" }], max_tokens: 128, stream };
   const result = await handleChatCore({
     body, modelInfo: { provider, model: body.model }, credentials: { apiKey: "test-api-key" },
     sourceFormatOverride: format, connectionId: "cline-envelope-test", onRequestSuccess,
@@ -49,6 +49,18 @@ describe("Cline JSON envelopes through chatCore and the real executor", () => {
   it("still accepts flat OpenAI completions", async () => {
     const { result } = await run(completion);
     expect((await result.response.json()).choices[0].message.content).toBe("OK");
+  });
+
+  it("normalizes a private ClinePass route without changing the request, content or quoted cost", async () => {
+    const model = "cline-pass/glm-5.3";
+    const payload = { ...completion, model: "vmc/glm-5p3-contributor-fallbacks", usage: { ...completion.usage, cost: 0.007037 } };
+    const { result } = await run({ success: true, data: payload }, "clinepass", "openai", false, model);
+    expect(result.success).toBe(true);
+    expect(JSON.parse(mocks.fetch.mock.calls[0][1].body).model).toBe(model);
+    expect(await result.response.json()).toMatchObject({
+      provider: "clinepass", model, choices: [{ message: { content: "OK" } }], usage: { completion_tokens: 40, cost: 0.007037 },
+    });
+    expect(mocks.usage).toHaveBeenCalledWith(expect.objectContaining({ model, tokens: expect.objectContaining({ cost: 0.007037 }) }));
   });
 
   it.each(["openai-responses", "claude"])("translates the unwrapped completion to %s", async format => {

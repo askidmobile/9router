@@ -94,6 +94,37 @@ describe("client response identity through chatCore", () => {
     expect(await result.response.json()).toMatchObject({ provider: "openai-compatible-primary", model: "gpt-4o" });
   });
 
+  it.each([FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, FORMATS.CLAUDE].flatMap(format =>
+    [false, true].map(stream => [format, stream])))(
+    "keeps ClinePass's public model instead of its internal route for %s (stream=%s)", async (format, stream) => {
+      const internalModel = "vmc/glm-5p3-contributor-fallbacks";
+      respond(stream ? sse([
+        chunk({ role: "assistant", content: "Привет" }, internalModel), chunk({}, internalModel, "stop"), "[DONE]",
+      ]) : { success: true, data: completion(internalModel) }, { stream, split: stream });
+      const result = await request({ provider: "clinepass", model: "cline-pass/glm-5.3(high)", format, stream });
+      expect(result.success).toBe(true);
+      expect(result.response.headers.get("x-9router-model")).toBe("cline-pass/glm-5.3");
+      const text = await result.response.text();
+      const events = stream ? frames(text) : [JSON.parse(text)];
+      const envelopes = !stream || format === FORMATS.OPENAI ? events
+        : format === FORMATS.OPENAI_RESPONSES ? events.filter(e => e.response).map(e => e.response)
+          : events.filter(e => e.type === "message_start").map(e => e.message);
+      expect(envelopes.length).toBeGreaterThan(0);
+      for (const envelope of envelopes) expect(envelope).toMatchObject({ provider: "clinepass", model: "cline-pass/glm-5.3" });
+      expect(text).toContain("Привет");
+      expect(text).not.toContain(internalModel);
+    });
+
+  it.each([
+    ["clinepass", "z-ai/glm-5.3-20260816"],
+    ["cline", "vmc/glm-5p3-contributor-fallbacks"],
+    ["openai-compatible-primary", "vmc/glm-5p3-contributor-fallbacks"],
+  ])("preserves public ClinePass revisions and other providers' identity (%s, %s)", async (provider, model) => {
+    respond(completion(model));
+    const result = await request({ provider, model: "cline-pass/glm-5.3" });
+    expect(await result.response.json()).toMatchObject({ provider, model });
+  });
+
   it.each([FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES])("preserves native Gemini modelVersion when translating to %s", async format => {
     respond({
       modelVersion: "gemini-2.5-flash-001",
@@ -215,6 +246,25 @@ describe("client response identity through chatCore", () => {
     const envelopes = stream ? frames(await result.text()) : [await result.json()];
     expect(execute).toHaveBeenCalledTimes(2);
     for (const envelope of envelopes) expect(envelope).toMatchObject({ provider: "openai-compatible-backup", model: "fallback-revision" });
+  });
+
+  it.each([false, true])("keeps the successful ClinePass Combo member's public model (stream=%s)", async stream => {
+    execute.mockResolvedValueOnce({ response: new Response("unavailable", { status: 503 }) });
+    const internalModel = "vmc/glm-5p3-contributor-fallbacks";
+    respond(stream ? sse([chunk({ content: "Привет" }, internalModel), chunk({}, internalModel, "stop"), "[DONE]"])
+      : completion(internalModel), { stream });
+    const result = await handleComboChat({
+      body: { model: "Coding", stream }, models: ["openai/primary", "clinepass/cline-pass/glm-5.3"],
+      log, comboName: "Coding", skipCooldown: true,
+      handleSingleModel: async (_body, modelStr) => {
+        const slash = modelStr.indexOf("/");
+        return (await request({ provider: modelStr.slice(0, slash), model: modelStr.slice(slash + 1), stream })).response;
+      },
+    });
+    const envelopes = stream ? frames(await result.text()) : [await result.json()];
+    expect(execute).toHaveBeenCalledTimes(2);
+    expect(envelopes.length).toBeGreaterThan(0);
+    for (const envelope of envelopes) expect(envelope).toMatchObject({ provider: "clinepass", model: "cline-pass/glm-5.3" });
   });
 
   it.each([false, true])("reports the model actually selected for vision (capacity adapter=%s)", async useAdapter => {

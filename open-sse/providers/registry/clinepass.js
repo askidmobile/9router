@@ -27,6 +27,8 @@ export default {
     quirks: {
       responseDataEnvelope: true,
       clineEnvelope: true,
+      // Cline's private routing IDs do not identify a public model.
+      internalModelPrefixes: ["vmc/"],
       // OpenInference emits tool intent as ordinary text on long GLM Flash
       // conversations in auto mode. Z.AI preserves native automatic tool calls.
       autoToolRouting: {
