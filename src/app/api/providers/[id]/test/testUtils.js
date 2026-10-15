@@ -1,3 +1,4 @@
+import { withProxyContext } from "open-sse/utils/proxyContext.js";
 import { getProviderConnectionById, updateProviderConnection } from "@/lib/localDb";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { testProxyUrl } from "@/lib/network/proxyTest";
@@ -482,24 +483,9 @@ async function fetchWithConnectionProxy(url, options = {}, effectiveProxy = null
     options.signal = AbortSignal.timeout(15000);
   }
 
-  // Vercel relay: forward via relay URL
-  if (effectiveProxy?.vercelRelayUrl) {
-    const { proxyAwareFetch } = await import("open-sse/utils/proxyFetch.js");
-    return proxyAwareFetch(url, options, {
-      vercelRelayUrl: effectiveProxy.vercelRelayUrl,
-    });
-  }
-
-  if (!effectiveProxy?.connectionProxyEnabled || !effectiveProxy?.connectionProxyUrl) {
-    return fetch(url, options);
-  }
-
+  if (!effectiveProxy || (!effectiveProxy.proxyRequired && !effectiveProxy.connectionProxyEnabled && !effectiveProxy.vercelRelayUrl)) return fetch(url, options);
   const { proxyAwareFetch } = await import("open-sse/utils/proxyFetch.js");
-  return proxyAwareFetch(url, options, {
-    connectionProxyEnabled: true,
-    connectionProxyUrl: effectiveProxy.connectionProxyUrl,
-    connectionNoProxy: effectiveProxy.connectionNoProxy || "",
-  });
+  return proxyAwareFetch(url, options, effectiveProxy);
 }
 
 async function testApiKeyConnection(connection, effectiveProxy = null) {
@@ -905,7 +891,7 @@ export async function testSingleConnection(id) {
   const connection = await getProviderConnectionById(id);
   if (!connection) return { valid: false, error: "Connection not found", latencyMs: 0, testedAt: new Date().toISOString() };
 
-  const effectiveProxy = await resolveConnectionProxyConfig(connection.providerSpecificData || {});
+  const effectiveProxy = await resolveConnectionProxyConfig(connection.providerSpecificData || {}, connection.provider);
 
   if (effectiveProxy.connectionProxyEnabled && effectiveProxy.connectionProxyUrl && !effectiveProxy.vercelRelayUrl) {
     const proxyResult = await testProxyUrl({ proxyUrl: effectiveProxy.connectionProxyUrl });
@@ -920,6 +906,7 @@ export async function testSingleConnection(id) {
     }
   }
 
+  return withProxyContext(effectiveProxy, async () => {
   const start = Date.now();
   let result;
 
@@ -967,4 +954,5 @@ export async function testSingleConnection(id) {
   await updateProviderConnection(id, updateData);
 
   return { valid: result.valid, error: result.error, refreshed: !!result.refreshed, latencyMs, testedAt: new Date().toISOString() };
+  });
 }

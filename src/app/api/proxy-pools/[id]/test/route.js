@@ -1,3 +1,4 @@
+import { testFreeProxy } from "@/lib/network/freeProxies.js";
 import { NextResponse } from "next/server";
 import { getProxyPoolById, updateProxyPool } from "@/models";
 import { testProxyUrl } from "@/lib/network/proxyTest";
@@ -43,7 +44,9 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: "Proxy pool not found" }, { status: 404 });
     }
 
-    const result = proxyPool.type === "vercel" || proxyPool.type === "cloudflare" || proxyPool.type === "deno" || proxyPool.type === "netlify"
+    const result = proxyPool.managedBy === "free-proxy-sync"
+      ? await testFreeProxy(proxyPool.proxyUrl)
+      : proxyPool.type === "vercel" || proxyPool.type === "cloudflare" || proxyPool.type === "deno" || proxyPool.type === "netlify"
       ? await testVercelRelay(proxyPool.proxyUrl)
       : await testProxyUrl({ proxyUrl: proxyPool.proxyUrl });
     const now = new Date().toISOString();
@@ -53,6 +56,7 @@ export async function POST(request, { params }) {
       lastTestedAt: now,
       lastError: result.ok ? null : (result.error || `Proxy test failed with status ${result.status}`),
       isActive: result.ok,
+      ...(proxyPool.managedBy === "free-proxy-sync" ? { autoDisabled: !result.ok, exitIp: result.exitIp || null, latencyMs: result.elapsedMs || null } : {}),
     });
 
     return NextResponse.json({

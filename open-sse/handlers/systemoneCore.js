@@ -1,3 +1,4 @@
+import { withProxyContext } from "../utils/proxyContext.js";
 import { createErrorResult, parseUpstreamError, formatProviderError } from "../utils/error.js";
 import { HTTP_STATUS, FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { PROVIDER_MEDIA } from "../providers/index.js";
@@ -11,7 +12,11 @@ import { generateSessionId } from "../executors/opencode-zen.js";
  *
  * @returns {Promise<{ success: boolean, response: Response, usage?: object, status?: number, error?: string }>}
  */
-export async function handleSystemoneCore({
+export function handleSystemoneCore(options) {
+  return withProxyContext(options.credentials?.providerSpecificData?.proxyConfig, () => handleSystemoneCoreWithProxy(options));
+}
+
+async function handleSystemoneCoreWithProxy({
   body,
   modelInfo,
   credentials,

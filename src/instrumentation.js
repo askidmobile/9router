@@ -14,5 +14,8 @@ export async function register() {
     // Prices and limits from each provider's own catalog (opt-in per provider).
     const { startProviderCatalogSync } = await import("@/lib/providerCatalog/sync.js");
     startProviderCatalogSync();
+
+    const { startFreeProxySync } = await import("@/lib/network/freeProxies.js");
+    startFreeProxySync();
   }
 }

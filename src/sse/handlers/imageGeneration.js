@@ -1,3 +1,4 @@
+import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import {
   getProviderCredentials,
   markAccountUnavailable,
@@ -101,10 +102,11 @@ async function handleSingleModelImage(body, modelStr, { wantsStream, binaryOutpu
 
   // noAuth providers — no credential needed
   if (NO_AUTH_PROVIDERS.has(provider)) {
+    const proxyCredentials = { providerSpecificData: { proxyConfig: await resolveConnectionProxyConfig({}, provider) } };
     const result = await handleImageGenerationCore({
       body,
       modelInfo: { provider, model },
-      credentials: null,
+      credentials: proxyCredentials,
       binaryOutput,
     });
     if (result.success) return result.response;

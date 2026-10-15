@@ -13,6 +13,7 @@ const DEFAULT_SETTINGS = {
   tailscaleUrl: "",
   stickyRoundRobinLimit: 3,
   providerStrategies: {},
+  freeProxyAutoSync: true,
   quotaVisibility: {},
   comboStrategy: "fallback",
   comboStickyRoundRobinLimit: 1,
@@ -124,6 +125,18 @@ export async function updateSettings(updates) {
     );
   });
   return mergeWithDefaults(next);
+}
+
+export async function updateProviderProxyPolicy(providerId, policy) {
+  const db = await getAdapter();
+  db.transaction(() => {
+    const row = db.get(`SELECT data FROM settings WHERE id = 1`);
+    const current = row ? parseJson(row.data, {}) : {};
+    const strategies = current.providerStrategies || {};
+    current.providerStrategies = { ...strategies, [providerId]: { ...strategies[providerId], ...policy } };
+    db.run(`INSERT INTO settings(id, data) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data`, [stringifyJson(current)]);
+  });
+  return policy;
 }
 
 export async function isCloudEnabled() {

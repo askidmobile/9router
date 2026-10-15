@@ -1,3 +1,4 @@
+import { withProxyContext } from "../utils/proxyContext.js";
 import { createErrorResult, parseUpstreamError, formatProviderError } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { refreshWithRetry } from "../services/tokenRefresh.js";
@@ -28,7 +29,11 @@ function serializeRequestBody(requestBody) {
  * @param {function} [options.onUsage] - Receives exact provider-reported usage when available
  * @returns {Promise<{ success: boolean, response: Response, status?: number, error?: string }>}
  */
-export async function handleImageGenerationCore({
+export function handleImageGenerationCore(options) {
+  return withProxyContext(options.credentials?.providerSpecificData?.proxyConfig, () => handleImageGenerationCoreWithProxy(options));
+}
+
+async function handleImageGenerationCoreWithProxy({
   body,
   modelInfo,
   credentials,

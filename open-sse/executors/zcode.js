@@ -26,6 +26,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { BaseExecutor } from "./base.js";
+import { getProxyContext } from "../utils/proxyContext.js";
 import { ZcodeAppServerClient, ZcodeProtocolError } from "../shared/zcode/protocol.js";
 import { errorResponse } from "../utils/error.js";
 import { SSE_DONE, SSE_HEADERS } from "../utils/sseConstants.js";
@@ -261,7 +262,8 @@ export class ZcodeExecutor extends BaseExecutor {
     return {};
   }
 
-  async execute({ model, body, stream, credentials, signal, log }) {
+  async execute({ model, body, stream, credentials, signal, log, proxyOptions }) {
+    if ((proxyOptions || getProxyContext())?.proxyRequired) throw new Error("ZCode CLI cannot guarantee provider proxy routing");
     const resolution = resolveZcodeModel(model);
     if (!resolution.ok) {
       return { response: errorResponse(400, resolution.error), url: ZCODE_URL, headers: {}, transformedBody: { model } };

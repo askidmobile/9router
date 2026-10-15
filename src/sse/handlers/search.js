@@ -1,3 +1,4 @@
+import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import {
   getProviderCredentials,
   markAccountUnavailable,
@@ -137,12 +138,13 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKey, 
 
   // No-auth providers (e.g. searxng) bypass credential lookup
   if (resolvedProvider.noAuth) {
+    const proxyCredentials = { providerSpecificData: { proxyConfig: await resolveConnectionProxyConfig({}, providerId) } };
     log.info("AUTH", `\x1b[32m${providerId} no-auth mode\x1b[0m`);
     const result = await handleSearchCore({
       body: coreBody,
       provider: resolvedProvider,
       providerConfig,
-      credentials: null,
+      credentials: proxyCredentials,
       log
     });
     if (result.success) return result.response;

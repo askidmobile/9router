@@ -6,7 +6,7 @@ import { refreshGoogleToken, updateProviderCredentials } from "@/sse/services/to
 export async function resolveAntigravityModels(connection) {
   if (!connection.accessToken) return { error: "No valid Antigravity token found", status: 401 };
   try {
-    const proxyOptions = await resolveConnectionProxyConfig(connection.providerSpecificData || {});
+    const proxyOptions = await resolveConnectionProxyConfig(connection.providerSpecificData || {}, "antigravity");
     const providerSpecificData = {
       ...connection.providerSpecificData,
       projectId: connection.projectId || connection.providerSpecificData?.projectId,

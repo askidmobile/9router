@@ -1,3 +1,4 @@
+import { withProxyContext } from "../utils/proxyContext.js";
 import { Buffer } from "node:buffer";
 import { createErrorResult } from "../utils/error.js";
 import { transcribeGeminiLive } from "./geminiLiveStt.js";
@@ -271,7 +272,11 @@ function resolveModelTransport(provider, model) {
  * it in the app layer; built-ins fall back to the registry entry marker).
  * @returns {Promise<{success, response, status?, error?}>}
  */
-export async function handleSttCore(options) {
+export function handleSttCore(options) {
+  return withProxyContext(options.credentials?.providerSpecificData?.proxyConfig, () => handleSttCoreWithProxy(options));
+}
+
+async function handleSttCoreWithProxy(options) {
   return withResponseMetadata(await transcribe(options), { provider: options.provider, finalBody: { model: options.model } });
 }
 

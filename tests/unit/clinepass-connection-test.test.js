@@ -185,7 +185,7 @@ describe.each(["cline", "clinepass"])("%s OAuth connection test", (provider) => 
     expect(mocks.proxyFetch.mock.calls.map(([url]) => url)).toEqual([USER_URL, REFRESH_URL, USER_URL]);
     for (const [, options, usedProxy] of mocks.proxyFetch.mock.calls) {
       expect(options.signal).toBeInstanceOf(AbortSignal);
-      expect(usedProxy).toEqual(proxy.vercelRelayUrl ? { vercelRelayUrl: proxy.vercelRelayUrl } : proxy);
+      expect(usedProxy).toEqual(proxy);
     }
   });
 });
@@ -264,6 +264,6 @@ describe("ClinePass API key connection test", () => {
     expect(mocks.proxyFetch).toHaveBeenCalledExactlyOnceWith(USER_URL, expect.objectContaining({
       headers: expect.objectContaining({ Authorization: "Bearer account-key" }),
       signal: expect.any(AbortSignal),
-    }), { vercelRelayUrl: proxy.vercelRelayUrl });
+    }), proxy);
   });
 });

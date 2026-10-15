@@ -70,6 +70,10 @@ export async function createProxyPool(data) {
     testStatus: data.testStatus || "unknown",
     lastTestedAt: data.lastTestedAt || null,
     lastError: data.lastError || null,
+    ...(data.managedBy === "free-proxy-sync" ? {
+      managedBy: data.managedBy, source: data.source,
+      latencyMs: data.latencyMs, exitIp: data.exitIp,
+    } : {}),
     createdAt: now,
     updatedAt: now,
   };
@@ -100,4 +104,20 @@ export async function deleteProxyPool(id) {
     db.run(`DELETE FROM proxyPools WHERE id = ?`, [id]);
   });
   return removed;
+}
+
+// Keep user selections stable; only discard failed automatic entries nobody selected.
+export async function pruneUnusedFreeProxies() {
+  const db = await getAdapter();
+  db.transaction(() => {
+    const settings = parseJson(db.get(`SELECT data FROM settings WHERE id = 1`)?.data, {});
+    const used = new Set(Object.values(settings.providerStrategies || {}).flatMap(policy => [policy?.proxyPoolId, ...(Array.isArray(policy?.proxyPoolIds) ? policy.proxyPoolIds : [])]));
+    for (const row of db.all(`SELECT data FROM providerConnections`)) used.add(parseJson(row.data, {}).providerSpecificData?.proxyPoolId);
+    for (const row of db.all(`SELECT * FROM proxyPools`)) {
+      const pool = rowToPool(row);
+      if (pool.managedBy === "free-proxy-sync" && pool.autoDisabled === true && pool.testStatus === "error" && !used.has(pool.id)) {
+        db.run(`DELETE FROM proxyPools WHERE id = ?`, [pool.id]);
+      }
+    }
+  });
 }

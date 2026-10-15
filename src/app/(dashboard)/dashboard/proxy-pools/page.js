@@ -1,5 +1,7 @@
 "use client";
 
+import FreeProxySyncCard from "@/shared/components/FreeProxySyncCard";
+
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { Badge, Button, Card, CardSkeleton, Input, Modal, Toggle, ConfirmModal } from "@/shared/components";
 import { useNotificationStore } from "@/store/notificationStore";
@@ -682,6 +684,8 @@ export default function ProxyPoolsPage() {
           <Button size="sm" icon="add" onClick={openCreateModal}>Add Proxy Pool</Button>
         </div>
       </div>
+
+      <FreeProxySyncCard onComplete={fetchProxyPools} />
 
       <Card>
         <div className="mb-4 flex flex-wrap items-center gap-2">

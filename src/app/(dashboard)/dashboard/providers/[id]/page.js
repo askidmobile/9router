@@ -1509,10 +1509,10 @@ export default function ProviderDetailPage() {
         </Card>
       )}
 
+      <NoAuthProxyCard key={providerId} providerId={providerId} />
+
       {/* Connections */}
-      {isFreeNoAuth ? (
-        <NoAuthProxyCard providerId={providerId} />
-      ) : (
+      {!isFreeNoAuth && (
         <Card>
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-lg font-semibold">Connections</h2>

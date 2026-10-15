@@ -20,6 +20,7 @@
  */
 
 import { spawn } from "node:child_process";
+import { getProxyContext } from "../utils/proxyContext.js";
 import path from "node:path";
 import os from "node:os";
 import fs from "node:fs";
@@ -319,7 +320,8 @@ export class DevinCliExecutor extends BaseExecutor {
     return null;
   }
 
-  async execute({ model, body, credentials, signal, log }) {
+  async execute({ model, body, credentials, signal, log, proxyOptions }) {
+    if ((proxyOptions || getProxyContext())?.proxyRequired) throw new Error("Devin CLI cannot guarantee provider proxy routing");
     const b = body ?? {};
     const messages = Array.isArray(b.messages)
       ? b.messages

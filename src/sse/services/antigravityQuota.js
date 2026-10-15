@@ -201,8 +201,9 @@ export async function refreshAntigravityQuota(connectionId, accessToken, provide
 
 async function _doRefresh(connectionId, accessToken, providerSpecificData, now) {
   try {
-    const proxyCfg = await resolveConnectionProxyConfig(providerSpecificData || {});
+    const proxyCfg = await resolveConnectionProxyConfig(providerSpecificData || {}, "antigravity");
     const proxyOptions = {
+      ...proxyCfg,
       connectionProxyEnabled: proxyCfg.connectionProxyEnabled === true,
       connectionProxyUrl: proxyCfg.connectionProxyUrl || "",
       connectionNoProxy: proxyCfg.connectionNoProxy || "",

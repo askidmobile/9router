@@ -1,3 +1,4 @@
+import { withProxyContext } from "../../utils/proxyContext.js";
 // Web Fetch handler — dispatches to firecrawl, jina-reader, tavily, exa, ollama, tinyfish
 // Returns normalized shape across all providers
 
@@ -90,7 +91,11 @@ async function readJsonOrText(res) {
  * @param {Function} [params.log]
  * @returns {Promise<FetchResult>}
  */
-export async function handleFetchCore({ url, format, maxCharacters, provider, providerConfig, credentials, log }) {
+export function handleFetchCore(options) {
+  return withProxyContext(options.credentials?.providerSpecificData?.proxyConfig, () => handleFetchCoreWithProxy(options));
+}
+
+async function handleFetchCoreWithProxy({ url, format, maxCharacters, provider, providerConfig, credentials, log }) {
   if (!url || typeof url !== "string") {
     return { success: false, status: 400, error: "url is required" };
   }

@@ -157,9 +157,8 @@ export default function MediaProviderDetailPage() {
       )}
 
       {/* Connections */}
-      {!isCustom && provider.noAuth ? (
-        <NoAuthProxyCard providerId={id} />
-      ) : (
+      <NoAuthProxyCard key={id} providerId={id} />
+      {(isCustom || !provider.noAuth) && (
         <ConnectionsCard providerId={id} isOAuth={false} />
       )}
 

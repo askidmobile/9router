@@ -83,6 +83,15 @@ export async function PUT(request, { params }) {
       return NextResponse.json({ error: normalized.error }, { status: 400 });
     }
 
+    if (existing.managedBy === "free-proxy-sync") {
+      if ((normalized.updates.proxyUrl && normalized.updates.proxyUrl !== existing.proxyUrl)
+        || (normalized.updates.type && normalized.updates.type !== existing.type)) {
+        return NextResponse.json({ error: "Imported proxy addresses cannot be edited" }, { status: 400 });
+      }
+      normalized.updates.strictProxy = true;
+      if (Object.hasOwn(normalized.updates, "isActive")) normalized.updates.autoDisabled = false;
+    }
+
     const updated = await updateProxyPool(id, normalized.updates);
     return NextResponse.json({ proxyPool: updated });
   } catch (error) {

@@ -1,3 +1,4 @@
+import { withProxyContext } from "../utils/proxyContext.js";
 import { Buffer } from "node:buffer";
 import { createErrorResult } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
@@ -49,7 +50,11 @@ function createTtsResponse(base64Audio, format, responseFormat) {
  *
  * @returns {Promise<{success, response, status?, error?}>}
  */
-export async function handleTtsCore({ provider, model, input, credentials, responseFormat = "mp3", language, style }) {
+export function handleTtsCore(options) {
+  return withProxyContext(options.credentials?.providerSpecificData?.proxyConfig, () => handleTtsCoreWithProxy(options));
+}
+
+async function handleTtsCoreWithProxy({ provider, model, input, credentials, responseFormat = "mp3", language, style }) {
   if (!input?.trim()) {
     return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Missing required field: input");
   }

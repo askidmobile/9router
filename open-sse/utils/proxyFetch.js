@@ -1,4 +1,6 @@
 import { Readable } from "stream";
+import { getProxyContext } from "./proxyContext.js";
+export { withProxyContext } from "./proxyContext.js";
 import { MEMORY_CONFIG } from "../config/runtimeConfig.js";
 import { dbg } from "./debugLog.js";
 
@@ -317,12 +319,12 @@ async function getDispatcher(proxyUrl, insecure = false) {
   return proxyDispatchers.get(key);
 }
 
-async function fetchWithTlsFallback(url, options, proxyUrl) {
+async function fetchWithTlsFallback(url, options, proxyUrl, allowInsecure = true) {
   try {
     const dispatcher = proxyUrl ? await getDispatcher(proxyUrl) : await getDirectAgent();
     return await fetchWithDispatcher(url, options, dispatcher);
   } catch (err) {
-    const allowInsecureTls = process.env.STRICT_SSL === "false" || process.env.STRICT_SSL === "0";
+    const allowInsecureTls = allowInsecure && (process.env.STRICT_SSL === "false" || process.env.STRICT_SSL === "0");
     if (allowInsecureTls && isTlsCertError(err)) {
       if (options.body && typeof options.body.getReader === "function" && options.body.locked) {
         throw err;
@@ -379,6 +381,13 @@ function fetchWithDispatcher(url, options, dispatcher) {
 }
 
 export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
+  const context = getProxyContext();
+  proxyOptions = { ...proxyOptions, ...context };
+  if (context) {
+    proxyOptions.enabled = context.connectionProxyEnabled === true;
+    proxyOptions.url = context.connectionProxyUrl || "";
+    proxyOptions.noProxy = context.connectionNoProxy || "";
+  }
   const targetUrl = typeof url === "string" ? url : url.toString();
 
   // Vercel relay: forward request via relay headers
@@ -399,7 +408,10 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
   }
 
   const connectionProxyUrl = resolveConnectionProxyUrl(targetUrl, proxyOptions);
-  const envProxyUrl = connectionProxyUrl ? null : normalizeProxyUrl(getEnvProxyUrl(targetUrl));
+  if (proxyOptions.proxyRequired && !connectionProxyUrl) {
+    throw new Error("[ProxyFetch] Selected provider proxy is unavailable; direct connection is disabled");
+  }
+  const envProxyUrl = connectionProxyUrl || proxyOptions.useEnvProxy === false ? null : normalizeProxyUrl(getEnvProxyUrl(targetUrl));
   const proxyUrl = connectionProxyUrl || envProxyUrl;
 
   // MITM DNS bypass: for known MITM-intercepted hosts, resolve real IP to avoid DNS spoof
@@ -407,7 +419,7 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
     if (proxyUrl) {
       // Proxy resolves DNS externally (not affected by /etc/hosts) — use proxy directly
       try {
-        return await fetchWithTlsFallback(url, options, proxyUrl);
+        return await fetchWithTlsFallback(url, options, proxyUrl, !proxyOptions.proxyRequired);
       } catch (proxyError) {
         if (proxyOptions?.strictProxy === true) {
           throw new Error(`[ProxyFetch] Proxy required but failed (strictProxy=true): ${proxyError.message}`);
@@ -427,7 +439,7 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
 
   if (proxyUrl) {
     try {
-      return await fetchWithTlsFallback(url, options, proxyUrl);
+      return await fetchWithTlsFallback(url, options, proxyUrl, !proxyOptions.proxyRequired);
     } catch (proxyError) {
       if (proxyOptions?.strictProxy === true) {
         throw new Error(`[ProxyFetch] Proxy required but failed (strictProxy=true): ${proxyError.message}`);
@@ -464,6 +476,7 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
  * Patched global fetch with env-proxy support, MITM DNS bypass, and connection limits
  */
 async function patchedFetch(url, options = {}) {
+  if (getProxyContext()) return proxyAwareFetch(url, options);
   const targetUrl = typeof url === "string" ? url : url.toString();
 
   if (shouldBypassMitmDns(targetUrl)) {

@@ -1,3 +1,4 @@
+import { withProxyContext } from "../../utils/proxyContext.js";
 /**
  * Search Dispatcher — routes /v1/search requests to dedicated search APIs
  * or chat-based LLM search wrappers, with retry-friendly error envelope.
@@ -163,7 +164,11 @@ async function tryDedicatedProvider({ provider, providerConfig, body, credential
  * @param {object|null} options.credentials  Provider credentials
  * @param {object}   [options.log]           Logger
  */
-export async function handleSearchCore({ body, provider, providerConfig, credentials, log }) {
+export function handleSearchCore(options) {
+  return withProxyContext(options.credentials?.providerSpecificData?.proxyConfig, () => handleSearchCoreWithProxy(options));
+}
+
+async function handleSearchCoreWithProxy({ body, provider, providerConfig, credentials, log }) {
   const globalStartTime = Date.now();
 
   // 1. Sanitize query

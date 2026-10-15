@@ -1,3 +1,4 @@
+import { withProxyContext } from "../utils/proxyContext.js";
 import { createErrorResult, parseUpstreamError, formatProviderError } from "../utils/error.js";
 import { HTTP_STATUS, FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { getExecutor } from "../executors/index.js";
@@ -11,7 +12,11 @@ import { createResponseMetadata } from "../utils/responseMetadata.js";
  *
  * @returns {Promise<{ success: boolean, response: Response, status?: number, error?: string }>}
  */
-export async function handleEmbeddingsCore({
+export function handleEmbeddingsCore(options) {
+  return withProxyContext(options.credentials?.providerSpecificData?.proxyConfig, () => handleEmbeddingsCoreWithProxy(options));
+}
+
+async function handleEmbeddingsCoreWithProxy({
   body,
   modelInfo,
   credentials,

@@ -1,3 +1,4 @@
+import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import {
   getProviderCredentials,
   markAccountUnavailable,
@@ -142,6 +143,7 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, s
 
   // No-auth fetch path (kept for parity though no current fetch provider sets noAuth)
   if (resolvedProvider.noAuth) {
+    const proxyCredentials = { providerSpecificData: { proxyConfig: await resolveConnectionProxyConfig({}, providerId) } };
     log.info("AUTH", `\x1b[32m${providerId} no-auth mode\x1b[0m`);
     const result = await handleFetchCore({
       url: targetUrl,
@@ -149,7 +151,7 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, s
       maxCharacters,
       provider: resolvedProvider.id,
       providerConfig,
-      credentials: null,
+      credentials: proxyCredentials,
       log
     });
     if (result.success) {

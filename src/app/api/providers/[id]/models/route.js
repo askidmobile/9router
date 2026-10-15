@@ -1,3 +1,4 @@
+import { withProxyContext } from "open-sse/utils/proxyContext.js";
 import { NextResponse } from "next/server";
 import { getProviderConnectionById } from "@/models";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
@@ -592,6 +593,8 @@ export async function GET(request, { params }) {
       });
     }
 
+    const proxyConfig = await resolveConnectionProxyConfig(connection.providerSpecificData || {}, connection.provider);
+    return await withProxyContext(proxyConfig, async () => {
     if (isOpenAICompatibleProvider(connection.provider)) {
       const baseUrl = connection.providerSpecificData?.baseUrl;
       if (!baseUrl) {
@@ -744,6 +747,7 @@ export async function GET(request, { params }) {
       provider: connection.provider,
       connectionId: connection.id,
       models
+    });
     });
   } catch (error) {
     console.log("Error fetching provider models:", error);

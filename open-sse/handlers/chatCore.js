@@ -1,3 +1,4 @@
+import { withProxyContext } from "../utils/proxyContext.js";
 import { detectFormat, getTargetFormat, resolveTransport } from "../services/provider.js";
 import { translateRequest } from "../translator/index.js";
 import { applyProviderThinking, applyThinking, extractThinking, stripThinkingSuffix } from "../translator/concerns/thinkingUnified.js";
@@ -360,11 +361,12 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
 
   let streamHandedOff = false;
   try {
-    const proxyOptions = {
+    const proxyOptions = credentials?.providerSpecificData?.proxyConfig || {
       connectionProxyEnabled: credentials?.providerSpecificData?.connectionProxyEnabled === true,
       connectionProxyUrl: credentials?.providerSpecificData?.connectionProxyUrl || "",
       connectionNoProxy: credentials?.providerSpecificData?.connectionNoProxy || "",
       vercelRelayUrl: credentials?.providerSpecificData?.vercelRelayUrl || "",
+      strictProxy: credentials?.providerSpecificData?.strictProxy === true,
     };
 
     if (proxyOptions.vercelRelayUrl) {
@@ -399,7 +401,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     // exception: it is decoded by the executor into OpenAI-compatible output.
     let providerResponseFormat = targetFormat;
     try {
-      const result = await executor.execute({
+      const result = await withProxyContext(proxyOptions, () => executor.execute({
         model,
         body: translatedBody,
         stream,
@@ -411,7 +413,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
         log,
         proxyOptions,
         providerOverrides,
-      });
+      }));
       providerResponse = result.response;
       providerUrl = result.url;
       providerHeaders = result.headers;
@@ -460,7 +462,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
         // invalid_grant → auth_failed retryable=false.
         const newCredentials = await refreshWithRetry(async () => {
           throwIfAborted(signal);
-          const result = await executor.refreshCredentials(credentials, log);
+          const result = await withProxyContext(proxyOptions, () => executor.refreshCredentials(credentials, log, proxyOptions));
           if (result?.refreshToken && result.refreshToken !== credentials.refreshToken) {
             if (result.accessToken) credentials.accessToken = result.accessToken;
             credentials.refreshToken = result.refreshToken;
@@ -477,7 +479,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
           // and persist that result even if the caller left, then stop inference.
           throwIfAborted(signal);
           try {
-            const retryResult = await executor.execute({
+            const retryResult = await withProxyContext(proxyOptions, () => executor.execute({
               model,
               body: translatedBody,
               stream,
@@ -489,7 +491,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
               log,
               proxyOptions,
               providerOverrides,
-            });
+            }));
             if (retryResult.response.ok) {
               providerResponse = retryResult.response;
               providerUrl = retryResult.url;

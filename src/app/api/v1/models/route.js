@@ -1,4 +1,5 @@
 import { selectedModelIds } from "@/shared/utils/modelSelection";
+import { withProxyContext } from "open-sse/utils/proxyContext.js";
 import { PROVIDER_MODELS, PROVIDER_ID_TO_ALIAS, getModelKind } from "@/shared/constants/models";
 import {
   ALIAS_TO_ID,
@@ -494,7 +495,8 @@ export async function buildModelsList(kindFilter, options = {}) {
         .filter((modelId) => modelId !== "");
 
       if (isCompatibleProvider && !hasExplicitEnabledModels && rawModelIds.length === 0 && customModelIds.length === 0 && !skipDynamicFetch) {
-        rawModelIds = await fetchCompatibleModelIds(conn);
+        const proxy = await resolveConnectionProxyConfig(conn.providerSpecificData || {}, providerId);
+        rawModelIds = await withProxyContext(proxy, () => fetchCompatibleModelIds(conn));
       }
 
       // Config-driven live catalog override for providers that have no static list (or explicit enabledModels).
@@ -502,7 +504,8 @@ export async function buildModelsList(kindFilter, options = {}) {
       const liveResolver = LIVE_MODEL_RESOLVERS[providerId];
       if (liveResolver && !hasExplicitEnabledModels && providerModels.length === 0 && customModelIds.length === 0) {
         try {
-          const live = await liveResolver(conn);
+          const proxy = await resolveConnectionProxyConfig(conn.providerSpecificData || {}, providerId);
+          const live = await withProxyContext(proxy, () => liveResolver(conn));
           if (live?.models?.length) {
             rawModelIds = live.models.map((m) => m.id);
             liveModelKindById = new Map(

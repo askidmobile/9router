@@ -10,6 +10,8 @@ import {
   getProviderConnectionById, getProviderConnections,
   addCustomModelsBulk, updatePricing, setCapsOverridesBulk,
 } from "@/lib/db/index.js";
+import { withProxyContext } from "open-sse/utils/proxyContext.js";
+import { resolveConnectionProxyConfig } from "../network/connectionProxy.js";
 import { getProviderModels as getModelsDevProviderModels, getExactModelFallbacks } from "@/lib/modelsDev/index.js";
 import {
   getProviderAlias, isOpenAICompatibleProvider, isAnthropicCompatibleProvider,
@@ -48,10 +50,11 @@ function catalogRequest(connection) {
 export async function resolveProviderCatalog(connection) {
   const request = catalogRequest(connection);
   if (!request) return null;
-  const res = await fetch(request.url, {
+  const proxy = await resolveConnectionProxyConfig(connection.providerSpecificData || {}, connection.provider);
+  const res = await withProxyContext(proxy, () => fetch(request.url, {
     headers: { "Content-Type": "application/json", Accept: "application/json", ...request.headers },
     signal: AbortSignal.timeout(60000),
-  });
+  }));
   if (!res.ok) throw new Error(`Provider /models responded ${res.status}`);
   const models = parseOpenAIStyleModels(await res.json());
   return models.length ? { models, source: "provider" } : null;

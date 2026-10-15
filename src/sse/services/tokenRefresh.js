@@ -1,3 +1,5 @@
+import { withProxyContext } from "open-sse/utils/proxyContext.js";
+import { resolveProviderProxyConfig } from "@/lib/network/connectionProxy";
 // Re-export from open-sse with local logger
 import * as log from "../utils/logger.js";
 import { getProviderConnectionById, updateProviderConnection } from "../../lib/localDb.js";
@@ -194,6 +196,7 @@ export async function updateProviderCredentials(connectionId, newCredentials) {
     }
     if (newCredentials.projectId)            updates.projectId = newCredentials.projectId;
 
+    if (updates.providerSpecificData) delete updates.providerSpecificData.proxyConfig;
     const result = await updateProviderConnection(connectionId, updates);
     log.info("TOKEN_REFRESH", "Credentials updated in localDb", {
       connectionId,
@@ -222,6 +225,12 @@ export async function updateProviderCredentials(connectionId, newCredentials) {
  * @returns {Promise<object>} updated credentials object
  */
 export async function checkAndRefreshToken(provider, credentials, options = {}) {
+  const proxyConfig = credentials?.providerSpecificData?.proxyConfig
+    || await resolveProviderProxyConfig(provider, credentials?.providerSpecificData || {});
+  return withProxyContext(proxyConfig, () => checkAndRefreshTokenWithProxy(provider, credentials, options));
+}
+
+async function checkAndRefreshTokenWithProxy(provider, credentials, options = {}) {
   let creds = { ...credentials };
   if (!creds.connectionId && creds.id) {
     creds.connectionId = creds.id;

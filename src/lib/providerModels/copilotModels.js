@@ -3,7 +3,7 @@ import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { updateProviderCredentials } from "@/sse/services/tokenRefresh";
 
 export async function resolveCopilotModels(connection) {
-  const proxyOptions = await resolveConnectionProxyConfig(connection.providerSpecificData || {});
+  const proxyOptions = await resolveConnectionProxyConfig(connection.providerSpecificData || {}, "github");
   const result = await resolveCatalog(connection, {
     forceRefresh: true, includeUnavailable: true, proxyOptions,
     onCredentialsRefreshed: async refreshed => {

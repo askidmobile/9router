@@ -1,3 +1,4 @@
+import { withProxyContext } from "../utils/proxyContext.js";
 import { createErrorResult } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { refreshTokenByProvider } from "../services/tokenRefresh.js";
@@ -76,7 +77,11 @@ function combineSignals(signal, timeoutMs) {
  * @param {function} [options.onCredentialsRefreshed]
  * @returns {Promise<{ success: boolean, response: Response, status?: number, error?: string }>}
  */
-export async function handleVideoProxyCore({
+export function handleVideoProxyCore(options) {
+  return withProxyContext(options.credentials?.providerSpecificData?.proxyConfig, () => handleVideoProxyCoreWithProxy(options));
+}
+
+async function handleVideoProxyCoreWithProxy({
   provider,
   model = null,
   action = null,

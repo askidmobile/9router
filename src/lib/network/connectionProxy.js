@@ -1,4 +1,5 @@
 import { getProxyPoolById } from "@/models";
+import { getSettings } from "../db/repos/settingsRepo.js";
 
 // Safely normalize any value into a trimmed string.
 function normalizeString(value) {
@@ -33,6 +34,35 @@ export function pickProxyPoolId(poolIds, strategy, providerId) {
   return poolIds[0]; // "none" or unknown
 }
 
+function isUsablePool(pool) {
+  if (!pool?.isActive || !pool.proxyUrl) return false;
+  return pool.managedBy !== "free-proxy-sync" || (pool.testStatus === "active"
+    && Date.now() - Date.parse(pool.lastTestedAt) < 60 * 60 * 1000);
+}
+
+/** Provider policy never enrolls new pool entries or falls back to a connection/environment proxy. */
+export async function resolveProviderProxyConfig(providerId, connectionData = {}, settings) {
+  const override = ((settings || await getSettings()).providerStrategies || {})[providerId] || {};
+  const direct = { connectionProxyEnabled: false, connectionProxyUrl: "", connectionNoProxy: "", vercelRelayUrl: "", useEnvProxy: false };
+  if (override.proxyEnabled === false) return direct;
+  if (override.proxyEnabled !== true) {
+    // Preserve existing, explicitly assigned connection proxies on upgrade.
+    const resolved = await resolveConnectionProxyConfig(connectionData);
+    const intended = (!!connectionData.proxyPoolId && connectionData.proxyPoolId !== "__none__") || connectionData.connectionProxyEnabled === true || !!resolved.vercelRelayUrl;
+    return { ...resolved, useEnvProxy: false, strictProxy: intended, proxyRequired: intended };
+  }
+  const ids = Array.isArray(override.proxyPoolIds) ? override.proxyPoolIds : [];
+  const strategy = override.rotateStrategy || "none";
+  let id = ids[0] || null;
+  if (strategy === "round-robin" || strategy === "random") {
+    const pools = await Promise.all(ids.map(getProxyPoolById));
+    id = pickProxyPoolId(pools.filter(isUsablePool).map(pool => pool.id), strategy, providerId);
+  }
+  const pool = id ? await getProxyPoolById(id) : null;
+  const resolved = isUsablePool(pool) ? await resolveConnectionProxyConfig({ proxyPoolId: id }) : direct;
+  return { ...resolved, proxyPoolId: id, connectionNoProxy: "", useEnvProxy: false, strictProxy: true, proxyRequired: true };
+}
+
 /**
  * Normalize legacy proxy configuration.
  */
@@ -64,8 +94,9 @@ function normalizeLegacyProxy(providerSpecificData = {}) {
  * 3. No Proxy
  */
 export async function resolveConnectionProxyConfig(
-  providerSpecificData = {}
+  providerSpecificData = {}, providerId = null, settings = undefined
 ) {
+  if (providerId) return resolveProviderProxyConfig(providerId, providerSpecificData, settings);
   try {
     const proxyPoolIdRaw = normalizeString(
       providerSpecificData?.proxyPoolId

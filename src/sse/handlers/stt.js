@@ -1,3 +1,4 @@
+import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import {
   extractApiKey, isValidApiKey,
   getProviderCredentials, markAccountUnavailable,
@@ -72,7 +73,8 @@ export async function handleStt(request) {
 
   // noAuth providers
   if (!CREDENTIALED_PROVIDERS.has(provider)) {
-    const result = await handleSttCore({ provider, model, formData, sttConfig: AI_PROVIDERS[provider]?.sttConfig, transport: modelTransport });
+    const credentials = { providerSpecificData: { proxyConfig: await resolveConnectionProxyConfig({}, provider) } };
+    const result = await handleSttCore({ provider, model, formData, credentials, sttConfig: AI_PROVIDERS[provider]?.sttConfig, transport: modelTransport });
     if (result.success) return result.response;
     return errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "STT failed");
   }

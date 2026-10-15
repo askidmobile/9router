@@ -13,7 +13,7 @@
 //    attempt. When no proxy URL resolves there is nothing to try, so it
 //    reaches the trailing `return originalFetch(url, options)` and connects
 //    directly.
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/models", () => ({
   getProxyPoolById: vi.fn(),
@@ -21,7 +21,10 @@ vi.mock("@/models", () => ({
 
 const { getProxyPoolById } = await import("@/models");
 const { resolveConnectionProxyConfig } = await import("../../src/lib/network/connectionProxy.js");
+const savedFetch = globalThis.fetch;
+globalThis.fetch = vi.fn().mockRejectedValue(new Error("fixture network failure"));
 const { proxyAwareFetch } = await import("../../open-sse/utils/proxyFetch.js");
+afterAll(() => { globalThis.fetch = savedFetch; });
 
 describe("strict pool keeps strictProxy when the pool is unusable (#4333)", () => {
   it("keeps strictProxy for an inactive strict pool", async () => {

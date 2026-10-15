@@ -1,3 +1,4 @@
+import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import {
   extractApiKey, isValidApiKey,
   getProviderCredentials, markAccountUnavailable,
@@ -79,7 +80,8 @@ async function handleSingleModelTts(body, modelStr, responseFormat, language, st
 
   // noAuth providers — no credential needed
   if (!CREDENTIALED_PROVIDERS.has(provider)) {
-    const result = await handleTtsCore({ provider, model, input: body.input, responseFormat, language, style });
+    const credentials = { providerSpecificData: { proxyConfig: await resolveConnectionProxyConfig({}, provider) } };
+    const result = await handleTtsCore({ provider, model, credentials, input: body.input, responseFormat, language, style });
     if (result.success) return result.response;
     return errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "TTS failed");
   }
