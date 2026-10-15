@@ -13,9 +13,10 @@ export default {
   category: "free",
   noAuth: true,
   transport: {
-    baseUrl: "https://opencode.ai",
+    baseUrl: "https://opencode.ai/inference",
     headers: {
-      "x-opencode-client": "desktop",
+      "x-opencode-client": "cli",
+      "User-Agent": "opencode/latest/2.0.29/cli",
     },
     forceStream: true,
     noAuth: true,

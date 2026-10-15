@@ -1,25 +1,19 @@
-/**
- * Helpers for the OpenCode Zen free-tier client fingerprint.
- *
- * Live upstream probes show that free-tier requests must include the lowercase
- * file-search quartet (bash/glob/grep/read). Agent clients such as Claude Code
- * may declare the same tools with different casing, so those case variants must
- * be renamed instead of duplicated. The response side restores the caller's
- * original spelling so downstream clients still recognise their own tool calls.
- */
+// OpenCode 2.0.29 wire schemas from anomalyco/opencode (MIT; see config/opencodeTools.LICENSE).
+import toolDefinitions from "../config/opencodeTools.json" with { type: "json" };
 
 /** Canonical names required by the upstream free-tier gate. */
-export const OPENCODE_FINGERPRINT_TOOLS = ["bash", "glob", "grep", "read"];
+export const OPENCODE_FINGERPRINT_TOOLS = Object.keys(toolDefinitions);
+const RECOGNIZED_TOOLS = ["bash", "shell", "read", "edit", "execute", "glob", "grep", "question", "skill", "subagent", "webfetch", "websearch", "write"];
 
 // Request body -> names renamed for that request. transformRequest() mutates the
 // same body object that chatCore passed into the executor, so a WeakMap keeps the
 // mapping request-local without putting transport metadata on the wire.
 const renamedToolNames = new WeakMap();
 
-/** Canonical lowercase name when `name` is a quartet member; "" otherwise. */
+/** Recognized CLI tool name; "" otherwise. */
 export function fingerprintToolKey(name) {
   const lower = String(name ?? "").trim().toLowerCase();
-  return OPENCODE_FINGERPRINT_TOOLS.includes(lower) ? lower : "";
+  return RECOGNIZED_TOOLS.includes(lower) ? lower : "";
 }
 
 /** Read a tool name from either flat ({name}) or chat ({function:{name}}) shape. */
@@ -34,9 +28,7 @@ function toolNameOf(tool) {
 }
 
 /**
- * Canonicalise only the fingerprint quartet and remove duplicate quartet
- * variants. Non-fingerprint tools are preserved verbatim, including tools whose
- * names differ only by case; they are outside OpenCode's fingerprint contract.
+ * Alias caller tools whose names trigger CLI schema checks, preserving their schemas.
  *
  * @param {Array} tools
  * @returns {{ tools: Array, map: Map<string,string> }} map: sent name -> original name
@@ -45,7 +37,7 @@ export function concealFingerprintToolNames(tools) {
   const map = new Map();
   if (!Array.isArray(tools) || tools.length === 0) return { tools, map };
 
-  const seenQuartet = new Set();
+  const names = new Set(tools.map(toolNameOf));
   const out = [];
   for (const tool of tools) {
     if (!tool || typeof tool !== "object" || Array.isArray(tool)) {
@@ -60,83 +52,84 @@ export function concealFingerprintToolNames(tools) {
       continue;
     }
 
-    // `Bash` + `bash` is rejected upstream as a duplicate. Keep exactly one
-    // declaration for each quartet member.
-    if (seenQuartet.has(key)) continue;
-    seenQuartet.add(key);
-
-    if (current !== key) {
-      map.set(key, current);
-      const fn = tool.function && typeof tool.function === "object" && !Array.isArray(tool.function)
-        ? tool.function
-        : null;
-      out.push(fn ? { ...tool, function: { ...fn, name: key } } : { ...tool, name: key });
-    } else {
+    const definition = toolDefinitions[current];
+    const original = tool.function || tool;
+    if (definition && original.description === definition.description
+      && JSON.stringify(original.parameters || original.input_schema) === JSON.stringify(definition.parameters)) {
       out.push(tool);
+      continue;
     }
+    // Keep caller schemas intact under aliases; recognized names require exact CLI schemas.
+    let alias = `client_${current}`;
+    while (names.has(alias)) alias = `_${alias}`;
+    names.add(alias);
+    map.set(alias, current);
+    const fn = tool.function && typeof tool.function === "object" && !Array.isArray(tool.function)
+      ? tool.function
+      : null;
+    out.push(fn ? { ...tool, function: { ...fn, name: alias } } : { ...tool, name: alias });
   }
   return { tools: out, map };
 }
 
-/** Append only genuinely missing quartet declarations. */
-export function appendMissingFingerprintTools(tools, flat) {
+/** Append the required CLI declarations. */
+export function appendMissingFingerprintTools(tools, flat, claude = false) {
   const list = Array.isArray(tools) ? tools : [];
   for (const name of OPENCODE_FINGERPRINT_TOOLS) {
-    if (list.some((tool) => fingerprintToolKey(toolNameOf(tool)) === name)) continue;
-    list.push(flat ? {
-      type: "function",
-      name,
-      description: "This tool is currently unavailable and must not be used.",
-      parameters: { type: "object", properties: {} },
-    } : {
+    if (list.some((tool) => toolNameOf(tool) === name)) continue;
+    const definition = structuredClone(toolDefinitions[name]);
+    list.push(claude ? { name, description: definition.description, input_schema: definition.parameters }
+      : flat ? { type: "function", name, ...definition } : {
       type: "function",
       function: {
         name,
-        description: "This tool is currently unavailable and must not be used.",
-        parameters: { type: "object", properties: {} },
+        ...definition,
       },
     });
   }
   return list;
 }
 
-/** Point an explicit tool_choice at a quartet member after canonicalisation. */
+/** Point an explicit tool_choice at the caller alias. */
 export function retargetToolChoice(body, map) {
   if (!body || typeof body !== "object" || !map?.size) return;
   const choice = body.tool_choice;
   if (!choice || typeof choice !== "object" || Array.isArray(choice)) return;
 
   if (typeof choice.name === "string") {
-    const key = fingerprintToolKey(choice.name);
-    if (key && map.has(key)) body.tool_choice = { ...choice, name: key };
+    const alias = [...map].find(([, original]) => original === choice.name)?.[0];
+    if (alias) body.tool_choice = { ...choice, name: alias };
     return;
   }
 
   const fn = choice.function;
   if (fn && typeof fn === "object" && !Array.isArray(fn) && typeof fn.name === "string") {
-    const key = fingerprintToolKey(fn.name);
-    if (key && map.has(key)) {
-      body.tool_choice = { ...choice, function: { ...fn, name: key } };
+    const alias = [...map].find(([, original]) => original === fn.name)?.[0];
+    if (alias) {
+      body.tool_choice = { ...choice, function: { ...fn, name: alias } };
     }
   }
 }
 
 /**
- * Full request-side pass: canonicalise quartet case variants, remove duplicate
- * quartet declarations, append missing members and preserve the legacy
- * tool_choice defaults used by the OpenCode executor.
+ * Preserve caller tools/history under aliases and add the required CLI schemas.
  *
  * @param {object} body
  * @param {boolean} flat - true for Responses tools ({name}), false for chat tools
  * @returns {Map<string,string>} map: sent name -> original name
  */
-export function applyFingerprintTools(body, flat) {
+export function applyFingerprintTools(body, flat, claude = false) {
   if (!body || typeof body !== "object") return new Map();
 
   const hadClientTools = Array.isArray(body.tools) && body.tools.length > 0;
-  const { tools, map } = concealFingerprintToolNames(body.tools);
-  body.tools = appendMissingFingerprintTools(tools, flat);
+  const { tools, map: renamed } = concealFingerprintToolNames(body.tools);
+  const map = new Map([...(renamedToolNames.get(body) || []), ...renamed]);
+  body.tools = appendMissingFingerprintTools(tools, flat, claude);
   retargetToolChoice(body, map);
+  const forward = new Map([...map].map(([alias, original]) => [original, alias]));
+  for (const key of ["messages", "input"]) {
+    if (Array.isArray(body[key])) body[key] = restoreToolNames(body[key], forward);
+  }
 
   // Preserve the existing executor semantics. Responses uses auto when the
   // fingerprint helper supplies tools; chat requests with no caller tools use
@@ -175,6 +168,14 @@ export function restoreToolNames(payload, map) {
     if (out === payload) out = { ...payload };
     out[key] = value;
   };
+
+  for (const key of ["messages", "input", "tool_calls"]) {
+    if (Array.isArray(payload[key])) put(key, restoreToolNames(payload[key], map));
+  }
+  if (payload.type === "function_call" && map.has(payload.name)) put("name", map.get(payload.name));
+  if (payload.function && map.has(payload.function.name)) {
+    put("function", { ...payload.function, name: map.get(payload.function.name) });
+  }
 
   // Claude streaming content_block_start event.
   if (payload.type === "content_block_start") {

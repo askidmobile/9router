@@ -103,3 +103,31 @@ that a proxy can sustain long model streams or is accepted by every provider.
 A fixed proxy **address** does not guarantee a fixed exit IP: one public endpoint
 observed during verification changed its upstream egress address between probes.
 Public proxy availability and provider acceptance remain time-dependent.
+
+## OpenCode Free inference migration (2026-10-15)
+
+OpenCode moved anonymous inference to `/inference/openai/v1/*` and
+`/inference/anthropic/v1/messages`. Its legacy Zen console proxy removes the
+`public` credential before forwarding; the new anonymous endpoint requires it.
+The model listing remains on `/zen/v1/models`.
+
+The free executor now sends the v2 client User-Agent and both session headers,
+omits the rejected legacy request header, and encodes accepted descending session
+counter bits without losing deterministic conversation affinity. Required `shell`
+and `read` declarations use the OpenCode 2.0.29 wire schemas. Caller tools with
+recognized names retain their schemas under aliases; tool choices, history and
+returned names follow those aliases. Paid OpenCode Go/Zen executors are unchanged.
+
+References:
+
+- [OpenCode console forwarding source](https://github.com/anomalyco/opencode/blob/dev/packages/console/app/src/lib/inference-proxy.ts)
+- [OpenCode request headers](https://github.com/anomalyco/opencode/blob/dev/packages/core/src/session/model-request.ts)
+- [Current interoperability findings and live checks](https://github.com/jasonxu114514/opencode2api/pull/84)
+- Tool schema provenance: OpenCode's [shell](https://github.com/anomalyco/opencode/blob/dev/packages/core/src/tool/plugin/shell.ts)
+  and [read](https://github.com/anomalyco/opencode/blob/dev/packages/core/src/tool/plugin/read.ts)
+  definitions, wire snapshot cross-checked against opencode2api's captured CLI
+  definitions. Original MIT notice is retained in `open-sse/config/opencodeTools.LICENSE`.
+
+A controlled upstream request through a public proxy returned HTTP 200 with the
+requested `PROXY_OC_OK` model response. Another selected public proxy reached the
+same endpoint but returned HTTP 429. No direct fallback or paid account was used.
