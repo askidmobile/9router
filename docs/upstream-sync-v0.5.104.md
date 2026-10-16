@@ -1,6 +1,6 @@
 # Обновление 9router v0.5.104 — 2026-10-16
 
-Upstream v0.5.104 объединён с нашим fork с сохранением истории. Изменение подготовлено и проверено локально; push и production-деплой не выполнялись.
+Upstream v0.5.104 объединён с нашим fork с сохранением истории. Изменение отправлено в origin и развёрнуто на omni-fr. Проверенный source commit: `02bf19b6`; production acceptance приведена ниже.
 
 Исходный fork: `fc49692f`. Предыдущая upstream-база: `ce4460ef` (v0.5.99). Целевой upstream: `87a74e1b` (v0.5.104), 38 commits, 140 изменённых файлов. Резервная ветка: `codex/backup-before-v0.5.104-20261016`.
 
@@ -44,4 +44,21 @@ OpenCode Free сохранён на нашей уже развёрнутой р�
 
 В одном промежуточном прогоне одновременно со сборкой проявилась существующая timing race `zcode-protocol.test.js` (`replies.json` ещё не создан). Тест и соответствующий код не менялись; два последующих полных прогона прошли. Существующий native `better-sqlite3` имеет другой ABI; штатный `node:sqlite` fallback успешно использован при сборке и QA.
 
-Live inference, настоящий OAuth login, публикация npm, Docker image и production-проверки не выполнялись. Локальные проверки не подтверждают доступность внешних аккаунтов и моделей на production.
+Предварительные проверки выше выполнены до деплоя. Результаты последующей production acceptance приведены ниже.
+
+
+## Production — 2026-10-16
+
+Из commit `02bf19b6` собран официальный Dockerfile и развёрнут exact image `sha256:d1b8818dbc4ac617c7e3a6f6416f0ae96b314f0ab0a94673fe8846b2c3c3851d`. Docker build разрешил Next.js 16.4.2 по существующему semver range; локальные unit/build проверки использовали 16.3.0. HTTP acceptance выполнена отдельно на настоящем серверном образе.
+
+Exact image прошёл 12 HTTP/asset проверок на копии production SQLite с `--network none`: API, Models и Combo pages, Nous asset и 17 JS/CSS файлов. Настройки QA не изменились.
+
+Переключение выполнено при `active=0, pending=0`; health восстановился за **4.48 секунды**. Environment, mounts и port bindings сохранены; `restartCount=0`, SQLite `quick_check=ok`. Сохранены 47 подключений, 14 API keys, 11 Combos, прежние пользовательские модели, names/aliases/selection/caps, адреса и привязки proxy pools.
+
+При старте отработала ранее включённая пользователем автосинхронизация. У управляемых бесплатных прокси обновились health-поля. У opted-in `cheaper` обновились цены 17 моделей; у `requesty` добавились цена и одна `catalogOnly` модель `deepinfra/step-5-preview`. Прежние модели не удалены и не изменены, выбор не расширен. Код синхронизации и сохранённый список opted-in providers совпадают с прежней production revision; возврат этих штатных обновлений к устаревшим значениям не выполнялся. Поэтому цены не объявляются побайтно неизменными.
+
+Те же API/страницы и 17 JS/CSS проверены через публичный HTTPS `https://omni-fr.archteam.org`, включая сверку bytes с файлами image. Одна ограниченная OpenCode Free probe через сохранённую proxy policy вернула HTTP 429 за 2.1 секунды; успешная live генерация этим деплоем не подтверждена. Платные модели в проверках не запрашивались.
+
+Rollback container: `9router-before-v0.5.104-20261016-02bf19b6`. Backup: `/root/9router-releases/v0.5.104-20261016-02bf19b6/backup`. Старый image/container сохранены.
+
+Receipts: [deployment](audit/2026-10-16-upstream-v0.5.104-deploy/deployment-result.json), [offline QA](audit/2026-10-16-upstream-v0.5.104-deploy/qa-result.json), [production](audit/2026-10-16-upstream-v0.5.104-deploy/production-result.json), [public HTTPS](audit/2026-10-16-upstream-v0.5.104-deploy/public-result.json), [free probe](audit/2026-10-16-upstream-v0.5.104-deploy/free-probe-result.json).

@@ -1,0 +1,79 @@
+{
+  "passed": true,
+  "checks": [
+    {
+      "path": "/api/health",
+      "ok": true
+    },
+    {
+      "path": "/api/settings",
+      "ok": true
+    },
+    {
+      "path": "/api/providers",
+      "ok": true
+    },
+    {
+      "path": "/api/combos",
+      "ok": true
+    },
+    {
+      "path": "/api/keys",
+      "ok": true
+    },
+    {
+      "path": "/api/models",
+      "ok": true
+    },
+    {
+      "path": "/api/models/caps?summary=1",
+      "ok": true
+    },
+    {
+      "path": "/api/usage/stats?period=today",
+      "ok": true
+    },
+    {
+      "path": "/dashboard/models",
+      "ok": true
+    },
+    {
+      "path": "dashboard JS/CSS",
+      "assets": 17,
+      "ok": true
+    },
+    {
+      "path": "/dashboard/combos",
+      "ok": true
+    },
+    {
+      "path": "/providers/nous.png",
+      "ok": true
+    }
+  ],
+  "image": "sha256:d1b8818dbc4ac617c7e3a6f6416f0ae96b314f0ab0a94673fe8846b2c3c3851d",
+  "revision": "02bf19b6",
+  "restartCount": 0,
+  "sqlite": "ok",
+  "manualAndRoutingSettingsUnchanged": true,
+  "existingCustomModelsUnchanged": true,
+  "catalogOnlyModelsAdded": 1,
+  "optedInPricingRefresh": {
+    "cheaper": {
+      "added": 0,
+      "updated": 17,
+      "removed": 0
+    },
+    "req": {
+      "added": 1,
+      "updated": 0,
+      "removed": 0
+    }
+  },
+  "pricingByteForByteUnchanged": false,
+  "stableBoundPoolConfigUnchanged": true,
+  "freeProxyHealthChangedDuringAutoSync": true,
+  "connections": 47,
+  "keys": 14,
+  "combos": 11
+}
