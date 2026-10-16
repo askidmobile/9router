@@ -1,6 +1,6 @@
 import { platform, arch, hostname } from "os";
 import { PROVIDERS, PROVIDER_OAUTH } from "./providers.js";
-import { ANTIGRAVITY_IDE_USER_AGENT } from "../providers/shared.js";
+import { ANTIGRAVITY_IDE_USER_AGENT, ANTIGRAVITY_APP_USER_AGENT } from "../providers/shared.js";
 import { createRequire } from "module";
 
 // Nous Portal requires attribution for some API-key models. Use a neutral
@@ -145,7 +145,7 @@ export const AG_DEFAULT_TOOLS = new Set([
 
 // Antigravity chat/stream headers
 export const ANTIGRAVITY_HEADERS = {
-  "User-Agent": ANTIGRAVITY_IDE_USER_AGENT
+  "User-Agent": ANTIGRAVITY_APP_USER_AGENT
 };
 
 export const ANTIGRAVITY_CATALOG_TIMEOUT_MS = 10000;

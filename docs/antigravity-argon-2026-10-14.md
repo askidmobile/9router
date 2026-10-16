@@ -54,3 +54,17 @@ The user authorized push and deployment after the initial source-only verificati
 An existing Antigravity OpenAI-SSE limitation was independently confirmed: the old production image and the new image emit one terminal `finish_reason` and close without `[DONE]`. The initial QA assertion requiring `[DONE]` therefore failed; QA was rerun with explicit terminal-choice validation after verifying the same behavior on the old live Gemini route. The SSE converter is unchanged by this release; strict clients requiring `[DONE]` still need that separate fix.
 
 Protected server evidence: `acceptance-result.json`, `qa-result.json`, `deployment-result.json`, `live-result.json`, and backup files in the release directory. Local copies of the non-secret acceptance reports are in `/tmp/9router-argon-deploy-20261014.rFfo5m/`. This documentation update follows the deployment and does not change the deployed code revision.
+
+## Argon 404 correction — 2026-10-16
+
+The earlier missing catalogue entries were not sufficient evidence of an account rollout delay. The provider used an IDE User-Agent, while [Google's model table](https://antigravity.google/docs/models) explicitly excludes Argon from Antigravity IDE and includes the App, CLI and extensions.
+
+Paired requests from `omni-fr`, using the same stored token and project, reproduced the cause: `antigravity/ide/2.22.0 darwin/arm64` returned no Argon entries and inference HTTP 404; `antigravity/hub/2.23.1 darwin/arm64` returned all three tiers and successful inference. Two accounts expose the three tiers. The third exposes only `gemini-4-argon-disabled`, which remains an upstream account restriction.
+
+There was a second independent 404: even with App identity, upstream rejects the bare `gemini-4-argon` ID. The public alias now resolves to `gemini-4-argon-high`, without forcing a thinking suffix, so explicit client reasoning levels remain intact.
+
+Chat, streaming, image executor headers, model import, per-model quota discovery and chat-based search now share App identity. Existing OAuth onboarding and weekly-quota identity are retained. The provider baseline changes only the Antigravity transport User-Agent; provider aliases and OAuth URLs remain unchanged.
+
+Verification: the new assertions reproduced both bugs before the correction; the targeted suite then passed 185 tests, with 6 existing skips. Production build and asset copy passed; lint has zero errors and the existing registry-export warning.
+
+The corrected source was exercised separately inside the server's running container, with isolated temporary modules and state and read-only access to the credentials database. All seven live translation/executor checks returned HTTP 200 with text: Low/Medium/High, the base alias, Low SSE, Flash Low on the first account, and Argon Low on the second. Upstream reported `gemini-4-argon-trial` for Argon. These checks did not replace the public gateway's code. Claude Sonnet Low returned the same individual-quota HTTP 429 with both IDE and App headers, so successful Claude inference was not verified. No production deployment or push is included in this correction.

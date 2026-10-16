@@ -11,6 +11,7 @@ import { parseModel } from "../../open-sse/services/model.js";
 import { translateRequest } from "../../open-sse/translator/index.js";
 import { applyThinking, stripThinkingSuffix } from "../../open-sse/translator/concerns/thinkingUnified.js";
 import { AntigravityExecutor } from "../../open-sse/executors/antigravity.js";
+import { handleChatSearch } from "../../open-sse/handlers/search/chatSearch.js";
 import { MITM_TOOLS } from "../../src/shared/constants/cliTools.js";
 
 const { fetch } = vi.hoisted(() => ({ fetch: vi.fn() }));
@@ -18,7 +19,7 @@ vi.mock("../../open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: fetch })
 const require = createRequire(import.meta.url);
 const mitm = require("../../src/mitm/config.js");
 const ids = ["gemini-4-argon", ...["high", "medium", "low"].map(tier => `gemini-4-argon-${tier}`)];
-afterEach(() => vi.clearAllMocks());
+afterEach(() => { vi.clearAllMocks(); vi.unstubAllGlobals(); });
 
 describe("Antigravity Gemini 4 Argon", () => {
   it.each(ids)("exposes %s across the registry, MITM and CLI", id => {
@@ -56,6 +57,7 @@ describe("Antigravity Gemini 4 Argon", () => {
       const result = await new AntigravityExecutor().execute({ model: upstream, body, stream, credentials });
       const [url, options] = fetch.mock.calls.at(-1);
       const wire = JSON.parse(options.body);
+      expect(options.headers["User-Agent"]).toBe("antigravity/hub/2.23.1 darwin/arm64");
       expect(url).toContain(stream ? ":streamGenerateContent?alt=sse" : ":generateContent");
       expect(wire.model).toBe(id);
       expect(wire.project).toBe("test-project");
@@ -66,6 +68,28 @@ describe("Antigravity Gemini 4 Argon", () => {
       expect(schema.properties.encrypted).toEqual({ type: "boolean" });
       expect(result.response.ok).toBe(true);
     }
+  });
+
+  it.each(["low", "medium", "high"])("routes the base alias to an available ID while preserving client effort %s", effort => {
+    const upstream = getModelUpstreamId("ag", "gemini-4-argon");
+    expect(upstream).toBe("gemini-4-argon-high");
+    const body = translateRequest("openai", "antigravity", upstream, {
+      messages: [{ role: "user", content: "Hello" }], reasoning_effort: effort,
+    }, false, {}, "antigravity");
+    expect(body.request.generationConfig.thinkingConfig.thinkingLevel).toBe(effort);
+  });
+
+  it("uses App identity and the available model ID for web search", async () => {
+    vi.stubGlobal("fetch", fetch);
+    fetch.mockResolvedValueOnce(Response.json({ response: { candidates: [{ content: { parts: [{ text: "An answer" }] } }] } }));
+    const result = await handleChatSearch({
+      provider: "antigravity", model: "gemini-4-argon", query: "A question",
+      credentials: { accessToken: "test-token", projectId: "test-project" },
+    });
+    expect(result.success).toBe(true);
+    const [, options] = fetch.mock.calls.at(-1);
+    expect(options.headers["User-Agent"]).toBe("antigravity/hub/2.23.1 darwin/arm64");
+    expect(JSON.parse(options.body).model).toBe("gemini-4-argon-high");
   });
 
   it.each(["none", "minimal", "max"])("clamps %s to an allowed Argon thinking level without changing Flash", effort => {

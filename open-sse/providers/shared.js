@@ -96,6 +96,10 @@ export const ANTIGRAVITY_IDE_VERSION = "2.22.0";
 export const ANTIGRAVITY_IDE_BASE_URL = "https://daily-cloudcode-pa.googleapis.com";
 export const ANTIGRAVITY_IDE_USER_AGENT = `antigravity/ide/${ANTIGRAVITY_IDE_VERSION} darwin/arm64`;
 
+// Argon is available to the App/CLI, but Google rejects it for IDE clients.
+export const ANTIGRAVITY_APP_VERSION = "2.23.1";
+export const ANTIGRAVITY_APP_USER_AGENT = `antigravity/hub/${ANTIGRAVITY_APP_VERSION} darwin/arm64`;
+
 // Antigravity OAuth client credentials (public CLI client — duplicated in usage.js + src/lib/oauth)
 export const ANTIGRAVITY_OAUTH_CLIENT = {
   clientId: "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com",

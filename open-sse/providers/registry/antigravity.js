@@ -1,4 +1,4 @@
-import { ANTIGRAVITY_IDE_BASE_URL, ANTIGRAVITY_IDE_USER_AGENT, ANTIGRAVITY_OAUTH_CLIENT } from "../shared.js";
+import { ANTIGRAVITY_IDE_BASE_URL, ANTIGRAVITY_IDE_USER_AGENT, ANTIGRAVITY_APP_USER_AGENT, ANTIGRAVITY_OAUTH_CLIENT } from "../shared.js";
 
 export default {
   id: "antigravity",
@@ -22,7 +22,7 @@ export default {
     baseUrls: [ANTIGRAVITY_IDE_BASE_URL],
     format: "antigravity",
     headers: {
-      "User-Agent": ANTIGRAVITY_IDE_USER_AGENT,
+      "User-Agent": ANTIGRAVITY_APP_USER_AGENT,
     },
     retry: {
       "429": {
@@ -49,8 +49,8 @@ export default {
     { id: "gemini-3.8-flash-medium", name: "Gemini 3.8 Flash (Medium)", upstreamModelId: "gemini-3.8-flash-medium(medium)" },
     { id: "gemini-3.8-flash-low", name: "Gemini 3.8 Flash (Low)", upstreamModelId: "gemini-3.8-flash-low(low)" },
     { id: "gemini-3.8-flash", name: "Gemini 3.8 Flash", upstreamModelId: "gemini-3.8-flash-medium(medium)" },
-    // IDs verified in Antigravity 2.23.0; availability depends on the account's plan.
-    { id: "gemini-4-argon", name: "Gemini 4 Argon" },
+    // The catalog exposes only tiered IDs; leave client thinking controls intact on the base alias.
+    { id: "gemini-4-argon", name: "Gemini 4 Argon", upstreamModelId: "gemini-4-argon-high" },
     { id: "gemini-4-argon-high", name: "Gemini 4 Argon (High)", upstreamModelId: "gemini-4-argon-high(high)" },
     { id: "gemini-4-argon-medium", name: "Gemini 4 Argon (Medium)", upstreamModelId: "gemini-4-argon-medium(medium)" },
     { id: "gemini-4-argon-low", name: "Gemini 4 Argon (Low)", upstreamModelId: "gemini-4-argon-low(low)" },

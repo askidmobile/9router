@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import antigravity from "../../open-sse/providers/registry/antigravity.js";
-import { ANTIGRAVITY_IDE_USER_AGENT, ANTIGRAVITY_IDE_VERSION } from "../../open-sse/providers/shared.js";
 import { parseAntigravityModels } from "../../open-sse/services/antigravityModels.js";
 
 const mocks = vi.hoisted(() => ({
@@ -63,13 +62,13 @@ describe("Antigravity model import", () => {
       expect(url).toMatch(/^https:\/\/(?:daily-)?cloudcode-pa\.googleapis\.com\//);
       expect(url).not.toContain("sandbox");
       expect(options.headers.Authorization).toBe("Bearer old-token");
-      expect(options.headers["User-Agent"]).toBe(ANTIGRAVITY_IDE_USER_AGENT);
+      expect(options.headers["User-Agent"]).toBe("antigravity/hub/2.23.1 darwin/arm64");
       expect(options.cache).toBe("no-store");
       expect(options.signal).toBeInstanceOf(AbortSignal);
       expect(proxy.strictProxy).toBe(true);
     }
     const [, options] = mocks.fetch.mock.calls.find(([url]) => url === modelsUrl);
-    expect(options.headers["X-Client-Version"]).toBe(ANTIGRAVITY_IDE_VERSION);
+    expect(options.headers["X-Client-Version"]).toBe("2.23.1");
     expect(JSON.parse(options.body)).toEqual({ project: "live-project" });
   });
 
