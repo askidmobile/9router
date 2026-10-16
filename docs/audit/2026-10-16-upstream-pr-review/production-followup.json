@@ -1,0 +1,10 @@
+{
+  "checkedAt": "2026-10-16T12:39:40.969135+00:00",
+  "url": "https://omni-fr.archteam.org/api/health",
+  "httpStatus": 200,
+  "ok": true,
+  "containerState": "running",
+  "restartCount": 0,
+  "imageId": "sha256:d1b8818dbc4ac617c7e3a6f6416f0ae96b314f0ab0a94673fe8846b2c3c3851d",
+  "sourceRevision": "02bf19b6"
+}

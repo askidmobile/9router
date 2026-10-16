@@ -1,0 +1,469 @@
+{
+  "checkedAt": "2026-10-16T12:43:43.620031+00:00",
+  "upstream": "decolua/9router",
+  "base": "87a74e1bda3677193c6f71a7e2100c90311f0689",
+  "release": "v0.5.104",
+  "pullRequests": [
+    {
+      "number": 4954,
+      "title": "fix(models): preserve configured catalogs in /v1/models",
+      "url": "https://github.com/decolua/9router/pull/4954",
+      "state": "OPEN",
+      "isDraft": false,
+      "baseRefOid": "87a74e1bda3677193c6f71a7e2100c90311f0689",
+      "headRefOid": "9aa952c160a81a55ef3615869b1c2a6810fa0c0a",
+      "mergeable": "MERGEABLE",
+      "mergeStateStatus": "CLEAN",
+      "changedFiles": 2,
+      "additions": 124,
+      "deletions": 23,
+      "statusCheckRollup": [],
+      "branch": "codex/pr-selection-v05104",
+      "focused": {
+        "passed": 15,
+        "failed": 0,
+        "collectionFailures": [],
+        "failureIdentitiesOutsideBaseline": []
+      },
+      "full": {
+        "passed": 3589,
+        "failed": 90,
+        "collectionFailures": [
+          "auth/saml.test.js",
+          "unit/cline-auth.test.js",
+          "unit/embeddings.cloud.test.js",
+          "unit/kimchi-strip-reasoning.test.js",
+          "unit/kimchi.test.js"
+        ],
+        "failureIdentitiesOutsideBaseline": [
+          {
+            "file": "unit/strict-proxy-enforcement.test.js",
+            "name": "strictProxy refuses a direct connection (#4333) does not block a caller that sets strictProxy with no proxy configured"
+          }
+        ]
+      },
+      "bodySha256": "043319f08502836e17370f2ee1f412e822b3dcfecf24e798217f8b455a3c4094"
+    },
+    {
+      "number": 4955,
+      "title": "fix(kiro): advertise canonical models without synthetic duplicates",
+      "url": "https://github.com/decolua/9router/pull/4955",
+      "state": "OPEN",
+      "isDraft": false,
+      "baseRefOid": "87a74e1bda3677193c6f71a7e2100c90311f0689",
+      "headRefOid": "709674ffa6f0d91b77827103dac157ceb4ff9c20",
+      "mergeable": "MERGEABLE",
+      "mergeStateStatus": "CLEAN",
+      "changedFiles": 5,
+      "additions": 69,
+      "deletions": 121,
+      "statusCheckRollup": [],
+      "branch": "codex/pr-kiro-v05104",
+      "focused": {
+        "passed": 27,
+        "failed": 0,
+        "collectionFailures": [],
+        "failureIdentitiesOutsideBaseline": []
+      },
+      "full": {
+        "passed": 3587,
+        "failed": 92,
+        "collectionFailures": [
+          "auth/saml.test.js",
+          "unit/cline-auth.test.js",
+          "unit/embeddings.cloud.test.js",
+          "unit/kimchi-strip-reasoning.test.js",
+          "unit/kimchi.test.js"
+        ],
+        "failureIdentitiesOutsideBaseline": [
+          {
+            "file": "unit/strict-proxy-enforcement.test.js",
+            "name": "strictProxy refuses a direct connection (#4333) does not block a caller that sets strictProxy with no proxy configured"
+          }
+        ]
+      },
+      "bodySha256": "8b6c5267a16a9a14966178b35de146c5b8163a9e0af05d434fb3c256ec86d9ae"
+    },
+    {
+      "number": 4956,
+      "title": "feat(cloudflare-ai): discover account models with inference IDs",
+      "url": "https://github.com/decolua/9router/pull/4956",
+      "state": "OPEN",
+      "isDraft": false,
+      "baseRefOid": "87a74e1bda3677193c6f71a7e2100c90311f0689",
+      "headRefOid": "87e82355764c3daecb561576eb58974a7e5f3b05",
+      "mergeable": "MERGEABLE",
+      "mergeStateStatus": "CLEAN",
+      "changedFiles": 2,
+      "additions": 180,
+      "deletions": 0,
+      "statusCheckRollup": [],
+      "branch": "codex/pr-cf-models-v05104",
+      "focused": {
+        "passed": 6,
+        "failed": 0,
+        "collectionFailures": [],
+        "failureIdentitiesOutsideBaseline": []
+      },
+      "full": {
+        "passed": 3590,
+        "failed": 90,
+        "collectionFailures": [
+          "auth/saml.test.js",
+          "unit/cline-auth.test.js",
+          "unit/embeddings.cloud.test.js",
+          "unit/kimchi-strip-reasoning.test.js",
+          "unit/kimchi.test.js"
+        ],
+        "failureIdentitiesOutsideBaseline": [
+          {
+            "file": "unit/strict-proxy-enforcement.test.js",
+            "name": "strictProxy refuses a direct connection (#4333) does not block a caller that sets strictProxy with no proxy configured"
+          }
+        ]
+      },
+      "bodySha256": "2b034eeb29aec8160d4ddf21db2a8b940379a727a95b278ae14b46a70d2966b3"
+    },
+    {
+      "number": 4957,
+      "title": "feat(cloudflare-ai): report daily free neuron allocation",
+      "url": "https://github.com/decolua/9router/pull/4957",
+      "state": "OPEN",
+      "isDraft": false,
+      "baseRefOid": "87a74e1bda3677193c6f71a7e2100c90311f0689",
+      "headRefOid": "5e0bb52d7d5f95d876e7e320745c5235c72f1aaf",
+      "mergeable": "MERGEABLE",
+      "mergeStateStatus": "CLEAN",
+      "changedFiles": 5,
+      "additions": 243,
+      "deletions": 0,
+      "statusCheckRollup": [],
+      "branch": "codex/pr-cf-usage-v05104",
+      "focused": {
+        "passed": 10,
+        "failed": 0,
+        "collectionFailures": [],
+        "failureIdentitiesOutsideBaseline": []
+      },
+      "full": {
+        "passed": 3592,
+        "failed": 90,
+        "collectionFailures": [
+          "auth/saml.test.js",
+          "unit/cline-auth.test.js",
+          "unit/embeddings.cloud.test.js",
+          "unit/kimchi-strip-reasoning.test.js",
+          "unit/kimchi.test.js"
+        ],
+        "failureIdentitiesOutsideBaseline": [
+          {
+            "file": "unit/strict-proxy-enforcement.test.js",
+            "name": "strictProxy refuses a direct connection (#4333) does not block a caller that sets strictProxy with no proxy configured"
+          }
+        ]
+      },
+      "bodySha256": "43c2fdf50ba1968870752baca8589205a5692090bc66c47f4128df78f04c1055"
+    },
+    {
+      "number": 4958,
+      "title": "fix(fallback): do not cool down accounts for malformed 400s",
+      "url": "https://github.com/decolua/9router/pull/4958",
+      "state": "OPEN",
+      "isDraft": false,
+      "baseRefOid": "87a74e1bda3677193c6f71a7e2100c90311f0689",
+      "headRefOid": "167d726170f54b2284734e95a5245a0eb0dd00d8",
+      "mergeable": "MERGEABLE",
+      "mergeStateStatus": "CLEAN",
+      "changedFiles": 2,
+      "additions": 21,
+      "deletions": 1,
+      "statusCheckRollup": [],
+      "branch": "codex/pr-request-errors-v05104",
+      "focused": {
+        "passed": 9,
+        "failed": 0,
+        "collectionFailures": [],
+        "failureIdentitiesOutsideBaseline": []
+      },
+      "full": {
+        "passed": 3588,
+        "failed": 91,
+        "collectionFailures": [
+          "auth/saml.test.js",
+          "unit/cline-auth.test.js",
+          "unit/embeddings.cloud.test.js",
+          "unit/kimchi-strip-reasoning.test.js",
+          "unit/kimchi.test.js"
+        ],
+        "failureIdentitiesOutsideBaseline": []
+      },
+      "bodySha256": "e8a135b6b283436bff4e9366ddb0f8c6ce6f948f8d2488357de2d60ee6627200"
+    },
+    {
+      "number": 4959,
+      "title": "fix(cline): exclude ClinePass IDs from the regular catalog",
+      "url": "https://github.com/decolua/9router/pull/4959",
+      "state": "OPEN",
+      "isDraft": false,
+      "baseRefOid": "87a74e1bda3677193c6f71a7e2100c90311f0689",
+      "headRefOid": "ddbf135f17316829e5dc9a74d10a2477311114d7",
+      "mergeable": "MERGEABLE",
+      "mergeStateStatus": "CLEAN",
+      "changedFiles": 3,
+      "additions": 45,
+      "deletions": 7,
+      "statusCheckRollup": [],
+      "branch": "codex/pr-cline-catalog-v05104",
+      "focused": {
+        "passed": 16,
+        "failed": 0,
+        "collectionFailures": [],
+        "failureIdentitiesOutsideBaseline": []
+      },
+      "full": {
+        "passed": 3585,
+        "failed": 91,
+        "collectionFailures": [
+          "auth/saml.test.js",
+          "unit/cline-auth.test.js",
+          "unit/embeddings.cloud.test.js",
+          "unit/kimchi-strip-reasoning.test.js",
+          "unit/kimchi.test.js"
+        ],
+        "failureIdentitiesOutsideBaseline": []
+      },
+      "bodySha256": "4282c314a34f0af2fc3a817f42681a344b40b7618aa63999b548c7984ccd794a"
+    },
+    {
+      "number": 4960,
+      "title": "feat(models): manage provider imports and persisted model metadata",
+      "url": "https://github.com/decolua/9router/pull/4960",
+      "state": "OPEN",
+      "isDraft": false,
+      "baseRefOid": "87a74e1bda3677193c6f71a7e2100c90311f0689",
+      "headRefOid": "868f9140d32d45bdb0f17ad462a0c2d93857aaa4",
+      "mergeable": "MERGEABLE",
+      "mergeStateStatus": "CLEAN",
+      "changedFiles": 41,
+      "additions": 3048,
+      "deletions": 99,
+      "statusCheckRollup": [],
+      "branch": "codex/pr-model-catalog-management-v05104",
+      "focused": {
+        "passed": 73,
+        "failed": 0,
+        "collectionFailures": [],
+        "failureIdentitiesOutsideBaseline": []
+      },
+      "full": {
+        "passed": 3642,
+        "failed": 91,
+        "collectionFailures": [
+          "auth/saml.test.js",
+          "unit/cline-auth.test.js",
+          "unit/embeddings.cloud.test.js",
+          "unit/kimchi-strip-reasoning.test.js",
+          "unit/kimchi.test.js"
+        ],
+        "failureIdentitiesOutsideBaseline": []
+      },
+      "bodySha256": "4d66998b12895c2d3f9d90b8df98e1afb3a0fe887354f8da8ee9a2cb97a097ba"
+    }
+  ],
+  "superseded": [
+    {
+      "number": 3032,
+      "state": "CLOSED",
+      "preservedHead": "1627f5afe97a01b55514c38dc1c25a120327bc8e"
+    },
+    {
+      "number": 3346,
+      "state": "CLOSED",
+      "preservedHead": "324250e517b17691def260a7f69f2f0710426911"
+    }
+  ],
+  "baseline": {
+    "passed": 3583,
+    "failed": 91,
+    "collectionFailures": [
+      "auth/saml.test.js",
+      "unit/cline-auth.test.js",
+      "unit/embeddings.cloud.test.js",
+      "unit/kimchi-strip-reasoning.test.js",
+      "unit/kimchi.test.js"
+    ],
+    "failureIdentitiesOutsideBaseline": []
+  },
+  "pairwiseMerges": [
+    {
+      "a": "codex/pr-model-catalog-management-v05104",
+      "b": "codex/pr-selection-v05104",
+      "clean": true
+    },
+    {
+      "a": "codex/pr-model-catalog-management-v05104",
+      "b": "codex/pr-kiro-v05104",
+      "clean": true
+    },
+    {
+      "a": "codex/pr-model-catalog-management-v05104",
+      "b": "codex/pr-cf-models-v05104",
+      "clean": true
+    },
+    {
+      "a": "codex/pr-model-catalog-management-v05104",
+      "b": "codex/pr-cf-usage-v05104",
+      "clean": true
+    },
+    {
+      "a": "codex/pr-model-catalog-management-v05104",
+      "b": "codex/pr-request-errors-v05104",
+      "clean": true
+    },
+    {
+      "a": "codex/pr-model-catalog-management-v05104",
+      "b": "codex/pr-cline-catalog-v05104",
+      "clean": true
+    },
+    {
+      "a": "codex/pr-selection-v05104",
+      "b": "codex/pr-kiro-v05104",
+      "clean": true
+    },
+    {
+      "a": "codex/pr-selection-v05104",
+      "b": "codex/pr-cf-models-v05104",
+      "clean": true
+    },
+    {
+      "a": "codex/pr-selection-v05104",
+      "b": "codex/pr-cf-usage-v05104",
+      "clean": true
+    },
+    {
+      "a": "codex/pr-selection-v05104",
+      "b": "codex/pr-request-errors-v05104",
+      "clean": true
+    },
+    {
+      "a": "codex/pr-selection-v05104",
+      "b": "codex/pr-cline-catalog-v05104",
+      "clean": true
+    },
+    {
+      "a": "codex/pr-kiro-v05104",
+      "b": "codex/pr-cf-models-v05104",
+      "clean": true
+    },
+    {
+      "a": "codex/pr-kiro-v05104",
+      "b": "codex/pr-cf-usage-v05104",
+      "clean": true
+    },
+    {
+      "a": "codex/pr-kiro-v05104",
+      "b": "codex/pr-request-errors-v05104",
+      "clean": true
+    },
+    {
+      "a": "codex/pr-kiro-v05104",
+      "b": "codex/pr-cline-catalog-v05104",
+      "clean": true
+    },
+    {
+      "a": "codex/pr-cf-models-v05104",
+      "b": "codex/pr-cf-usage-v05104",
+      "clean": true
+    },
+    {
+      "a": "codex/pr-cf-models-v05104",
+      "b": "codex/pr-request-errors-v05104",
+      "clean": true
+    },
+    {
+      "a": "codex/pr-cf-models-v05104",
+      "b": "codex/pr-cline-catalog-v05104",
+      "clean": true
+    },
+    {
+      "a": "codex/pr-cf-usage-v05104",
+      "b": "codex/pr-request-errors-v05104",
+      "clean": true
+    },
+    {
+      "a": "codex/pr-cf-usage-v05104",
+      "b": "codex/pr-cline-catalog-v05104",
+      "clean": true
+    },
+    {
+      "a": "codex/pr-request-errors-v05104",
+      "b": "codex/pr-cline-catalog-v05104",
+      "clean": true
+    }
+  ],
+  "isolatedRechecks": {
+    "isolatedStrictBase": {
+      "passed": 8,
+      "failed": 0,
+      "collectionFailures": [],
+      "failureIdentitiesOutsideBaseline": []
+    },
+    "isolatedStrictKiro": {
+      "passed": 8,
+      "failed": 0,
+      "collectionFailures": [],
+      "failureIdentitiesOutsideBaseline": []
+    },
+    "isolatedStrictSelection": {
+      "passed": 8,
+      "failed": 0,
+      "collectionFailures": [],
+      "failureIdentitiesOutsideBaseline": []
+    },
+    "isolatedStrictCloudflareModels": {
+      "passed": 8,
+      "failed": 0,
+      "collectionFailures": [],
+      "failureIdentitiesOutsideBaseline": []
+    },
+    "isolatedStrictCloudflareUsage": {
+      "passed": 8,
+      "failed": 0,
+      "collectionFailures": [],
+      "failureIdentitiesOutsideBaseline": []
+    }
+  },
+  "catalogBuild": {
+    "command": "npm run build",
+    "passed": true,
+    "nextVersion": "16.3.0"
+  },
+  "catalogBrowserAcceptance": {
+    "data": "isolated temporary DB; local provider/models.dev fixtures; external fetches blocked",
+    "selectedModelsImported": 2,
+    "duplicateReimportAvailable": 0,
+    "nonLlmImageExcluded": true,
+    "editCapsPricingAliasAndReset": true,
+    "compatiblePrefixAndAliasHttpLimits": {
+      "contextLength": 72000,
+      "maxCompletionTokens": 4096
+    },
+    "modelsDevImportPrices": 1,
+    "modelsDevImportCaps": 1,
+    "invalidBulkProviderHttpStatus": 400,
+    "failedVisibilityWriteSurfaced": true,
+    "failedVisibilityWriteChangedStoredState": false
+  },
+  "lint": {
+    "newErrors": 0,
+    "preexistingProviderComponentErrors": 4,
+    "preexistingRegistryWarningsRetained": true
+  },
+  "limits": [
+    "Upstream baseline has 91 failed assertions and 5 collection failures; no green-CI claim.",
+    "DNS-dependent strict-proxy assertion timed out during concurrent full runs; isolated checks pass on unchanged base and affected branches.",
+    "Cloudflare schema introspection succeeded; usage query returned analytics authorization error. Successful live usage retrieval/billing reconciliation is not verified.",
+    "Catalog browser acceptance uses fixtures; successful live Kiro/Cline/Cloudflare inference is not claimed.",
+    "Individual PR branches are independent of the deployed fork revision; their new corrections are not represented as deployed."
+  ]
+}
