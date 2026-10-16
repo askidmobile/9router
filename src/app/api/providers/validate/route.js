@@ -52,11 +52,11 @@ async function probeWebProvider(provider, apiKey) {
 async function probeMediaProvider(provider, apiKey) {
   const p = AI_PROVIDERS[provider];
   if (!p) return null;
-  const MEDIA_KINDS = new Set(["tts", "embedding", "stt", "image", "video", "music", "imageToText"]);
+  const MEDIA_KINDS = new Set(["tts", "embedding", "stt", "image", "video", "music", "imageToText", "systemone"]);
   const kinds = p.serviceKinds || ["llm"];
   const isMediaOnly = kinds.every((k) => MEDIA_KINDS.has(k));
   if (!isMediaOnly) return null;
-  const cfg = p.ttsConfig || p.sttConfig || p.embeddingConfig || p.imageConfig || p.videoConfig || p.musicConfig;
+  const cfg = p.ttsConfig || p.sttConfig || p.embeddingConfig || p.imageConfig || p.videoConfig || p.musicConfig || p.systemoneConfig;
   // No probe config → best-effort accept (validate at usage time)
   if (!cfg) return true;
   if (p.noAuth || cfg.authType === "none") return true;
@@ -77,10 +77,19 @@ async function probeMediaProvider(provider, apiKey) {
   }
 
   const method = cfg.method || "POST";
+  // System One decision endpoints take state+questions, not completion fields.
+  // Without this shape the probe 422s before auth is exercised meaningfully.
+  const probeBody = cfg === p.systemoneConfig
+    ? {
+        model: getDefaultModel(provider) || "jev-latest",
+        state: "ping",
+        questions: { ping: { type: "noul", instructions: "Is this a connection test?" } },
+      }
+    : { input: "ping", text: "ping", prompt: "ping", model: getDefaultModel(provider) || "test" };
   const res = await fetch(cfg.baseUrl, {
     method,
     headers,
-    body: method === "GET" ? undefined : JSON.stringify({ input: "ping", text: "ping", prompt: "ping", model: getDefaultModel(provider) || "test" }),
+    body: method === "GET" ? undefined : JSON.stringify(probeBody),
     signal: AbortSignal.timeout(8000),
   });
   return res.status !== 401 && res.status !== 403;
