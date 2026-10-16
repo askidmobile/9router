@@ -1149,6 +1149,12 @@ function CapacityAdapterCap({ cap, entry, onChange, activeProviders, getCaps }) 
           onClose={() => setShowModelSelect(false)}
           onSelect={handleAdd}
           onDeselect={handleDeselect}
+          onSelectBatch={(items) => patch({ models: [...new Set([...models, ...items.map((m) => m.value)])] })}
+          onDeselectBatch={(items) => {
+            const removed = new Set(items.map((m) => m.value));
+            const next = models.filter((m) => !removed.has(m));
+            patch({ models: next.length ? next : [DEFAULT_FALLBACK_MODEL] });
+          }}
           activeProviders={activeProviders}
           title={`Add ${cap.label} Model`}
           addedModelValues={models}
@@ -1555,6 +1561,11 @@ function ComboFormModal({ isOpen, combo, strategy = {}, onClose, onSave, activeP
           onClose={() => setShowModelSelect(false)}
           onSelect={handleAddModel}
           onDeselect={handleDeselectModel}
+          onSelectBatch={(items) => setModels((prev) => [...new Set([...prev, ...items.map((m) => m.value)])])}
+          onDeselectBatch={(items) => {
+            const removed = new Set(items.map((m) => m.value));
+            setModels((prev) => prev.filter((m) => !removed.has(m)));
+          }}
           activeProviders={activeProviders}
           modelAliases={modelAliases}
           title="Add Model to Combo"

@@ -1,0 +1,92 @@
+{
+  "date": "2026-10-16",
+  "upstream": {
+    "base": "ce4460ef79382bfddb4aa5fc0ff9f3cb0d5f95a8",
+    "target": "87a74e1bda3677193c6f71a7e2100c90311f0689",
+    "tag": "v0.5.104",
+    "commits": 38,
+    "changedFiles": 140
+  },
+  "forkBefore": "fc49692fdcdfdfc04e4d33f8e68b77811e3d7eb9",
+  "backupBranch": "codex/backup-before-v0.5.104-20261016",
+  "mergeConflictsResolved": 31,
+  "tests": {
+    "before": {
+      "files": 437,
+      "passed": 4538,
+      "failed": 0,
+      "skipped": 96,
+      "todo": 1
+    },
+    "final": {
+      "files": 457,
+      "passed": 4755,
+      "failed": 0,
+      "skipped": 96,
+      "todo": 1
+    }
+  },
+  "productionBuild": {
+    "command": "npm run build",
+    "exitCode": 0,
+    "nextVersion": "16.3.0",
+    "nodeVersion": "22.17.1",
+    "sqliteDriver": "node:sqlite",
+    "nativeSqliteFallback": "Existing better-sqlite3 binary uses ABI 147; Node 22 requires ABI 127. The supported node:sqlite fallback completed the build and QA."
+  },
+  "lint": {
+    "baselineErrors": 22,
+    "finalErrors": 22,
+    "newErrors": 0,
+    "scope": "changed JavaScript files; existing files compared with forkBefore"
+  },
+  "registryChecks": {
+    "providers": 98,
+    "aliases": 136,
+    "oauthUrls": "unchanged"
+  },
+  "browser": {
+    "build": "production standalone",
+    "database": "isolated temporary database without provider credentials",
+    "publicModels": 32,
+    "openCodeNoAuthModels": 4,
+    "modelPicker": {
+      "regex": "/gpt-6/",
+      "filteredModels": 7,
+      "selected": 7,
+      "deselected": 7,
+      "providerNegation": "codex -review",
+      "providerNegationResults": 15
+    },
+    "schedule": {
+      "browserTimezone": "Europe/Moscow",
+      "savedTimezone": "Pacific/Honolulu",
+      "anchor": "09:00",
+      "windowHours": 5,
+      "slotsPerDay": 2,
+      "persisted": true
+    },
+    "consoleErrors": 0
+  },
+  "preservation": {
+    "claudeWorkingChange": "SHA-256 unchanged; excluded from commit",
+    "openCodeFree": "Preserved deployed 2.0.29 endpoints, genuine schemas, stable sessions and tool-name/history restoration",
+    "forkRegressionAreas": [
+      "ClinePass private model IDs and envelopes",
+      "per-provider proxies and strict no-direct-fallback policy",
+      "response provider/model/cost metadata",
+      "Combo recovery, cancellation, circuit health and output caps",
+      "Codex native catalog, history transfer, namespaces and compaction",
+      "Gemini Standard/Flex/native and editable reasoning",
+      "provider balances and quota snapshots",
+      "manual model names, capabilities, selections and prices"
+    ]
+  },
+  "limitations": [
+    "No push or production deployment",
+    "No live credentialed provider inference or OAuth login",
+    "Existing lint errors remain",
+    "One earlier concurrent-build run hit the unchanged zcode-protocol.test.js timing race (missing replies.json); two subsequent complete runs passed without changing that test",
+    "CLI callers without atomic batch callbacks retain individual selection; bulk actions are shown only when the caller supports one atomic update"
+  ]
+}

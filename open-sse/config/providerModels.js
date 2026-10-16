@@ -88,6 +88,11 @@ export function getModelType(aliasOrId, modelId) {
   return found?.kind || found?.type || null;
 }
 
+// Raw registry entry for a model (suffix-aware) — executor lookups of per-model hints (e.g. defaultLocation).
+export function getModelMeta(aliasOrId, modelId) {
+  return findModel(PROVIDER_MODELS[aliasOrId], modelId, aliasOrId) || null;
+}
+
 export function getModelUpstreamId(aliasOrId, modelId) {
   if (aliasOrId === "gemini") modelId = splitGeminiModelId(modelId).modelId;
   // Split off thinking suffix "(level)" so lookup hits the base id; re-append it to

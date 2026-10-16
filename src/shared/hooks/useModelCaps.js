@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
+import { ALIAS_TO_ID } from "@/shared/constants/providers";
 
 // Module cache: one /api/models + /api/models/caps fetch shared by every useModelCaps instance.
 let cache = null; // { byFull, byId, overrides } | null
@@ -68,14 +69,15 @@ const pickCaps = (c) => ({
 });
 
 // Resolve caps from a "provider/model" string or a bare model id.
-function resolveCaps(byFull, byId, overrides, key) {
+export function resolveCaps(byFull, byId, overrides, key) {
   if (!key) return null;
   if (byFull[key]) return byFull[key]; // built-ins: server already merged overrides
   const bare = key.includes("/") ? key.slice(key.indexOf("/") + 1) : key;
-  const provider = key.includes("/") ? key.slice(0, key.indexOf("/")) : null;
+  const alias = key.includes("/") ? key.slice(0, key.indexOf("/")) : null;
+  const provider = alias ? (ALIAS_TO_ID[alias] || alias) : null;
   // Provider-specific override wins over a cross-provider byId match
   // (e.g. custom "ollama/glm-5.2" must not inherit built-in glm-5.2 caps).
-  const override = provider ? overrides[`${provider}|${bare}`] : null;
+  const override = alias ? overrides[`${alias}|${bare}`] || overrides[`${provider}|${bare}`] : null;
   if (override) {
     return pickCaps({ ...getCapabilitiesForModel(provider, bare), ...override });
   }
