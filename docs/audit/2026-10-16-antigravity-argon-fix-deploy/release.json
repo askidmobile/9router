@@ -1,0 +1,8 @@
+{
+  "tag": "argon-fix-20261016-e36bc30f",
+  "commit": "e36bc30f",
+  "fullCommit": "e36bc30f310506e1abd9903c538eb2c874c1e7d6",
+  "version": "0.5.104",
+  "image": "9router-local:argon-fix-20261016-e36bc30f",
+  "sourceArchiveSha256": "b6adb5f6d9d01b0cee1cbdb83cc16c8fa30c9e6a9a476e48c94cac4824e2cbf1"
+}

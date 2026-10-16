@@ -1,0 +1,67 @@
+{
+  "passed": true,
+  "accounts": [
+    {
+      "priority": 1,
+      "modelCount": 27,
+      "argon": [
+        "gemini-4-argon-medium",
+        "gemini-4-argon-low",
+        "gemini-4-argon-high"
+      ]
+    },
+    {
+      "priority": 2,
+      "modelCount": 27,
+      "argon": [
+        "gemini-4-argon-medium",
+        "gemini-4-argon-low",
+        "gemini-4-argon-high"
+      ]
+    },
+    {
+      "priority": 3,
+      "modelCount": 21,
+      "argon": [
+        "gemini-4-argon-disabled"
+      ]
+    }
+  ],
+  "manualAndRoutingConfigurationUnchanged": true,
+  "restartCount": 0,
+  "managedProxyHealthUpdates": [
+    {
+      "poolId": "b20a5c04-cad7-44aa-a2d1-804f9d898270",
+      "changedHealthFields": [
+        "exitIp",
+        "lastTestedAt",
+        "latencyMs",
+        "updatedAt"
+      ]
+    },
+    {
+      "poolId": "72c6e3e7-3446-4fdb-af1d-fc79c3729bdb",
+      "changedHealthFields": [
+        "exitIp",
+        "lastTestedAt",
+        "latencyMs",
+        "updatedAt"
+      ]
+    }
+  ],
+  "optedInPricingRefresh": [
+    {
+      "provider": "cheaper",
+      "updatedModels": 7,
+      "modelIds": [
+        "claude-opus-5.5",
+        "claude-sonnet-5.5",
+        "deepseek-v4.1-flash",
+        "claude-fable-5",
+        "minimax-m2.7",
+        "claude-opus-5-fast",
+        "deepseek-v4-pro-0813"
+      ]
+    }
+  ]
+}

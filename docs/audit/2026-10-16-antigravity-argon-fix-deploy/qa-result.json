@@ -1,0 +1,62 @@
+{
+  "passed": true,
+  "checks": [
+    {
+      "path": "/api/health",
+      "ok": true
+    },
+    {
+      "path": "/api/settings",
+      "ok": true
+    },
+    {
+      "path": "/api/providers",
+      "ok": true
+    },
+    {
+      "path": "/api/combos",
+      "ok": true
+    },
+    {
+      "path": "/api/keys",
+      "ok": true
+    },
+    {
+      "path": "/api/models",
+      "ok": true
+    },
+    {
+      "path": "/api/models/caps?summary=1",
+      "ok": true
+    },
+    {
+      "path": "/api/usage/stats?period=today",
+      "ok": true
+    },
+    {
+      "path": "/dashboard/models",
+      "ok": true
+    },
+    {
+      "path": "dashboard JS/CSS",
+      "assets": 17,
+      "ok": true
+    },
+    {
+      "path": "/dashboard/combos",
+      "ok": true
+    },
+    {
+      "path": "/providers/nous.png",
+      "ok": true
+    }
+  ],
+  "network": "none",
+  "image": "sha256:b9426e562f817a28865bc1acb328afa2b42a41793f771aabaf1cd8373b5ff548",
+  "revision": "e36bc30f",
+  "copiedProductionData": true,
+  "settingsUnchanged": true,
+  "connections": 47,
+  "keys": 14,
+  "combos": 11
+}

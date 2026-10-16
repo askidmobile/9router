@@ -1,0 +1,144 @@
+{
+  "passed": true,
+  "checks": [
+    {
+      "model": "ag/gemini-4-argon",
+      "stream": false,
+      "endpoint": "local gateway",
+      "status": 200,
+      "hasText": true,
+      "terminal": true,
+      "providers": [
+        "antigravity"
+      ],
+      "models": [
+        "gemini-4-argon-trial"
+      ],
+      "elapsedMs": 2893,
+      "parseError": false
+    },
+    {
+      "model": "ag/gemini-4-argon-low",
+      "stream": false,
+      "endpoint": "local gateway",
+      "status": 200,
+      "hasText": true,
+      "terminal": true,
+      "providers": [
+        "antigravity"
+      ],
+      "models": [
+        "gemini-4-argon-trial"
+      ],
+      "elapsedMs": 3087,
+      "parseError": false
+    },
+    {
+      "model": "ag/gemini-4-argon-medium",
+      "stream": false,
+      "endpoint": "local gateway",
+      "status": 200,
+      "hasText": true,
+      "terminal": true,
+      "providers": [
+        "antigravity"
+      ],
+      "models": [
+        "gemini-4-argon-trial"
+      ],
+      "elapsedMs": 2730,
+      "parseError": false
+    },
+    {
+      "model": "ag/gemini-4-argon-high",
+      "stream": false,
+      "endpoint": "local gateway",
+      "status": 200,
+      "hasText": true,
+      "terminal": true,
+      "providers": [
+        "antigravity"
+      ],
+      "models": [
+        "gemini-4-argon-trial"
+      ],
+      "elapsedMs": 6082,
+      "parseError": false
+    },
+    {
+      "model": "antigravity/gemini-4-argon",
+      "stream": true,
+      "endpoint": "public HTTPS",
+      "status": 200,
+      "hasText": true,
+      "terminal": true,
+      "providers": [
+        "antigravity"
+      ],
+      "models": [
+        "gemini-4-argon-trial"
+      ],
+      "elapsedMs": 4177,
+      "parseError": false,
+      "done": true
+    },
+    {
+      "model": "antigravity/gemini-4-argon-low",
+      "stream": true,
+      "endpoint": "public HTTPS",
+      "status": 200,
+      "hasText": true,
+      "terminal": true,
+      "providers": [
+        "antigravity"
+      ],
+      "models": [
+        "gemini-4-argon-trial"
+      ],
+      "elapsedMs": 4733,
+      "parseError": false,
+      "done": true
+    },
+    {
+      "model": "antigravity/gemini-4-argon-medium",
+      "stream": true,
+      "endpoint": "public HTTPS",
+      "status": 200,
+      "hasText": true,
+      "terminal": true,
+      "providers": [
+        "antigravity"
+      ],
+      "models": [
+        "gemini-4-argon-trial"
+      ],
+      "elapsedMs": 4404,
+      "parseError": false,
+      "done": true
+    },
+    {
+      "model": "antigravity/gemini-4-argon-high",
+      "stream": true,
+      "endpoint": "public HTTPS",
+      "status": 200,
+      "hasText": true,
+      "terminal": true,
+      "providers": [
+        "antigravity"
+      ],
+      "models": [
+        "gemini-4-argon-trial"
+      ],
+      "elapsedMs": 4297,
+      "parseError": false,
+      "done": true
+    }
+  ],
+  "baseAlias": true,
+  "tiers": [
+    "low",
+    "medium",
+    "high"
+  ],
+  "publicHttps": true
+}

@@ -1,0 +1,30 @@
+{
+  "passed": true,
+  "accounts": [
+    {
+      "priority": 1,
+      "modelCount": 27,
+      "argon": [
+        "gemini-4-argon-medium",
+        "gemini-4-argon-low",
+        "gemini-4-argon-high"
+      ]
+    },
+    {
+      "priority": 2,
+      "modelCount": 27,
+      "argon": [
+        "gemini-4-argon-medium",
+        "gemini-4-argon-low",
+        "gemini-4-argon-high"
+      ]
+    },
+    {
+      "priority": 3,
+      "modelCount": 21,
+      "argon": [
+        "gemini-4-argon-disabled"
+      ]
+    }
+  ]
+}

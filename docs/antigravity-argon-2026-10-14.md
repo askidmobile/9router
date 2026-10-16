@@ -67,4 +67,29 @@ Chat, streaming, image executor headers, model import, per-model quota discovery
 
 Verification: the new assertions reproduced both bugs before the correction; the targeted suite then passed 185 tests, with 6 existing skips. Production build and asset copy passed; lint has zero errors and the existing registry-export warning.
 
-The corrected source was exercised separately inside the server's running container, with isolated temporary modules and state and read-only access to the credentials database. All seven live translation/executor checks returned HTTP 200 with text: Low/Medium/High, the base alias, Low SSE, Flash Low on the first account, and Argon Low on the second. Upstream reported `gemini-4-argon-trial` for Argon. These checks did not replace the public gateway's code. Claude Sonnet Low returned the same individual-quota HTTP 429 with both IDE and App headers, so successful Claude inference was not verified. No production deployment or push is included in this correction.
+The corrected source was exercised separately inside the server's running container, with isolated temporary modules and state and read-only access to the credentials database. All seven live translation/executor checks returned HTTP 200 with text: Low/Medium/High, the base alias, Low SSE, Flash Low on the first account, and Argon Low on the second. Upstream reported `gemini-4-argon-trial` for Argon. These checks did not replace the public gateway's code. Claude Sonnet Low returned the same individual-quota HTTP 429 with both IDE and App headers, so successful Claude inference was not verified. This source verification preceded the push and production deployment recorded below.
+
+## Production correction deployment — 2026-10-16
+
+After the user authorized push and deployment, `e36bc30f310506e1abd9903c538eb2c874c1e7d6` was pushed to `origin/master`. The exact committed source archive, excluding the unrelated local `CLAUDE.md` edit, produced image `sha256:b9426e562f817a28865bc1acb328afa2b42a41793f771aabaf1cd8373b5ff548` using the repository Dockerfile and Next.js 16.4.2. [Release identity](audit/2026-10-16-antigravity-argon-fix-deploy/release.json).
+
+The exact image passed 12 API/page/asset checks on a consistent copy of production SQLite with `--network none`, including 17 dashboard JS/CSS files. QA startup and the checks preserved the copied settings. Production cutover ran at `active=0, pending=0`; health recovered in 6.22 seconds. Environment, mounts and port bindings were preserved; `restartCount=0` and SQLite `quick_check=ok`. The same 12 checks passed against the working gateway and public HTTPS.
+
+All eight live inference checks passed with HTTP 200, nonempty text, and terminal `finish_reason`:
+
+| Public model | JSON through the working gateway | SSE through public HTTPS |
+| --- | --- | --- |
+| `gemini-4-argon` | Passed | Passed |
+| `gemini-4-argon-low` | Passed | Passed |
+| `gemini-4-argon-medium` | Passed | Passed |
+| `gemini-4-argon-high` | Passed | Passed |
+
+JSON requests exercised the `ag/` provider alias; public SSE requests exercised `antigravity/`. Every response identified provider `antigravity` and actual model `gemini-4-argon-trial`. All four SSE streams included `[DONE]`. Checks used short prompts with a 2,048-token output limit; long sessions and live tool calls were not retested.
+
+Fresh account catalogues through the deployed management API contain all three Argon tiers for priorities 1 and 2. Priority 3 still exposes only `gemini-4-argon-disabled`; that upstream account restriction is unchanged.
+
+Final comparison preserved all 47 connection configurations, 14 API keys, 11 Combos, provider nodes, routing settings, manual model settings, proxy URLs and bindings. Previously enabled background sync refreshed the rates of seven `cheaper` models and health metadata (`exitIp`, `lastTestedAt`, `latencyMs`, `updatedAt`) of two managed free proxies. Those dynamic fields are recorded separately rather than described as byte-for-byte unchanged.
+
+Rollback container: `9router-before-argon-fix-20261016-e36bc30f`. Consistent SQLite and container configuration backup: `/root/9router-releases/argon-fix-20261016-e36bc30f/backup` on `omni-fr`. The old image/container are retained.
+
+Receipts: [deployment](audit/2026-10-16-antigravity-argon-fix-deploy/deployment-result.json), [offline QA](audit/2026-10-16-antigravity-argon-fix-deploy/qa-result.json), [production](audit/2026-10-16-antigravity-argon-fix-deploy/production-result.json), [public HTTPS](audit/2026-10-16-antigravity-argon-fix-deploy/public-result.json), [all Argon requests](audit/2026-10-16-antigravity-argon-fix-deploy/live-result.json), [final configuration and account checks](audit/2026-10-16-antigravity-argon-fix-deploy/postcheck-result.json).

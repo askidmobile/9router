@@ -1,0 +1,15 @@
+{
+  "deployed": true,
+  "revision": "e36bc30f",
+  "image": "sha256:b9426e562f817a28865bc1acb328afa2b42a41793f771aabaf1cd8373b5ff548",
+  "paidSettingsUnchanged": true,
+  "protectedConnections": 47,
+  "healthRestoredSeconds": 6.22,
+  "drain": {
+    "active": 0,
+    "pending": 0
+  },
+  "rollbackContainer": "9router-before-argon-fix-20261016-e36bc30f",
+  "sqliteBackup": "ok",
+  "backup": "/root/9router-releases/argon-fix-20261016-e36bc30f/backup"
+}
