@@ -509,7 +509,7 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
       modelsBase = modelsBase.replace(/\/$/, "");
       if (modelsBase.endsWith("/messages")) modelsBase = modelsBase.slice(0, -9);
       const messagesUrl = `${modelsBase}/v1/messages`;
-      const model = connection.defaultModel || "claude-3-haiku-20240307";
+      const model = connection.defaultModel || "claude-haiku-4-5-20251001";
       const res = await fetchWithConnectionProxy(messagesUrl, {
         method: "POST",
         headers: {
@@ -589,12 +589,10 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
         return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
       }
       case "anthropic": {
-        const res = await fetchWithConnectionProxy("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: { "x-api-key": connection.apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: "claude-3-haiku-20240307", max_tokens: 1, messages: [{ role: "user", content: "test" }] }),
+        const res = await fetchWithConnectionProxy("https://api.anthropic.com/v1/models", {
+          headers: { "x-api-key": connection.apiKey, "anthropic-version": "2023-06-01" },
         }, effectiveProxy);
-        const valid = res.status !== 401;
+        const valid = res.ok;
         return { valid, error: valid ? null : "Invalid API key" };
       }
       case "gemini": {

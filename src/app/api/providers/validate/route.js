@@ -161,7 +161,7 @@ export async function POST(request) {
         }
 
         const messagesUrl = `${normalizedBase}/v1/messages`;
-        const model = node.defaultModel || "claude-3-haiku-20240307";
+        const model = node.defaultModel || "claude-haiku-4-5-20251001";
 
         const res = await fetch(messagesUrl, {
           method: "POST",
@@ -278,20 +278,14 @@ export async function POST(request) {
           break;
 
         case "anthropic":
-          const anthropicRes = await fetch("https://api.anthropic.com/v1/messages", {
-            method: "POST",
+          const anthropicRes = await fetch("https://api.anthropic.com/v1/models", {
             headers: {
               "x-api-key": apiKey,
               "anthropic-version": "2023-06-01",
-              "content-type": "application/json",
             },
-            body: JSON.stringify({
-              model: "claude-3-haiku-20240307",
-              max_tokens: 1,
-              messages: [{ role: "user", content: "test" }],
-            }),
+            signal: AbortSignal.timeout(15000),
           });
-          isValid = anthropicRes.status !== 401;
+          isValid = anthropicRes.ok;
           break;
 
         case "gemini":
