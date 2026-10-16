@@ -1,0 +1,15 @@
+{
+  "deployed": true,
+  "revision": "02bf19b6",
+  "image": "sha256:d1b8818dbc4ac617c7e3a6f6416f0ae96b314f0ab0a94673fe8846b2c3c3851d",
+  "paidSettingsUnchanged": true,
+  "protectedConnections": 47,
+  "healthRestoredSeconds": 4.48,
+  "drain": {
+    "active": 0,
+    "pending": 0
+  },
+  "rollbackContainer": "9router-before-v0.5.104-20261016-02bf19b6",
+  "sqliteBackup": "ok",
+  "backup": "/root/9router-releases/v0.5.104-20261016-02bf19b6/backup"
+}

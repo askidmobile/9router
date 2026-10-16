@@ -1,0 +1,7 @@
+{
+  "tag": "v0.5.104-20261016-02bf19b6",
+  "commit": "02bf19b6",
+  "version": "0.5.104",
+  "image": "9router-local:v0.5.104-20261016-02bf19b6",
+  "sourceArchiveSha256": "f8094cf9e5fe4c657e9490a79d32ce40a9d1c4d0fb33769b4144a66ca3698fcf"
+}
