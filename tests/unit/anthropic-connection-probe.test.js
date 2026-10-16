@@ -91,7 +91,7 @@ describe.each(["validate", "saved"])("Anthropic %s connection probe", (entry) =>
     expect(url).toBe("https://gateway.test/v1/messages");
     expect(options.method).toBe("POST");
     expect(JSON.parse(options.body)).toEqual({
-      model: defaultModel || "claude-haiku-4-5-20251001",
+      model: defaultModel || "claude-haiku-5-5",
       max_tokens: 1,
       messages: [{ role: "user", content: "test" }],
     });

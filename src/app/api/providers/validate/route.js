@@ -161,7 +161,7 @@ export async function POST(request) {
         }
 
         const messagesUrl = `${normalizedBase}/v1/messages`;
-        const model = node.defaultModel || "claude-haiku-4-5-20251001";
+        const model = node.defaultModel || "claude-haiku-5-5";
 
         const res = await fetch(messagesUrl, {
           method: "POST",
