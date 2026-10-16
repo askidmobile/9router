@@ -1,0 +1,210 @@
+{
+  "date": "2026-10-16",
+  "upstreamBase": "87a74e1b",
+  "originalOpenPrCount": 6,
+  "unifiedPrCreated": false,
+  "reason": "Maintainer requested self-contained, one-concern PRs in #3456. Keep independent fixes separate; retain unmerged model-management/provider areas as drafts.",
+  "baseline": {
+    "passed": 3583,
+    "failed": 91,
+    "skipped": 98,
+    "todo": 1,
+    "collectionFailures": [
+      "auth/saml.test.js",
+      "unit/cline-auth.test.js",
+      "unit/embeddings.cloud.test.js",
+      "unit/kimchi-strip-reasoning.test.js",
+      "unit/kimchi.test.js"
+    ]
+  },
+  "prs": [
+    {
+      "number": 3611,
+      "url": "https://github.com/decolua/9router/pull/3611",
+      "title": "fix(stream): preserve reasoning, usage and terminal events in passthrough",
+      "state": "OPEN",
+      "isDraft": false,
+      "mergeable": "MERGEABLE",
+      "mergeStateStatus": "CLEAN",
+      "headRefOid": "36d14d820e0758ea8b63560b43c3fa1b18859dcf",
+      "changedFiles": 6,
+      "additions": 190,
+      "deletions": 13,
+      "statusCheckRollup": [],
+      "bodyReadbackMatches": true,
+      "bodySha256": "d2dd8d57ae98f1834d145a21b1556e3b5efc3f7c50db15396a17ae957962409d",
+      "fullSuite": {
+        "passed": 3594,
+        "failed": 91,
+        "skipped": 98,
+        "todo": 1,
+        "collectionFailures": [
+          "auth/saml.test.js",
+          "unit/cline-auth.test.js",
+          "unit/embeddings.cloud.test.js",
+          "unit/kimchi-strip-reasoning.test.js",
+          "unit/kimchi.test.js"
+        ]
+      },
+      "focusedTests": {
+        "passed": 19,
+        "failed": 0,
+        "skipped": 0,
+        "todo": 0,
+        "collectionFailures": []
+      },
+      "failuresUniqueToPr": [],
+      "collectionFailuresUniqueToPr": [],
+      "scopedEslint": "passed"
+    },
+    {
+      "number": 3612,
+      "url": "https://github.com/decolua/9router/pull/3612",
+      "title": "fix(fallback): honor provider-reported rate-limit reset times",
+      "state": "OPEN",
+      "isDraft": false,
+      "mergeable": "MERGEABLE",
+      "mergeStateStatus": "CLEAN",
+      "headRefOid": "df279f00ce5522306967a3ff168f39ff7fe160ab",
+      "changedFiles": 3,
+      "additions": 104,
+      "deletions": 2,
+      "statusCheckRollup": [],
+      "bodyReadbackMatches": true,
+      "bodySha256": "a8bc9a844661ceaab7943d4093189fd0ce66a4e8e68f7ce14bde68ba70a6518e",
+      "fullSuite": {
+        "passed": 3594,
+        "failed": 89,
+        "skipped": 98,
+        "todo": 1,
+        "collectionFailures": [
+          "auth/saml.test.js",
+          "unit/cline-auth.test.js",
+          "unit/embeddings.cloud.test.js",
+          "unit/kimchi-strip-reasoning.test.js",
+          "unit/kimchi.test.js"
+        ]
+      },
+      "focusedTests": {
+        "passed": 9,
+        "failed": 0,
+        "skipped": 0,
+        "todo": 0,
+        "collectionFailures": []
+      },
+      "failuresUniqueToPr": [],
+      "collectionFailuresUniqueToPr": [],
+      "scopedEslint": "passed"
+    },
+    {
+      "number": 3989,
+      "url": "https://github.com/decolua/9router/pull/3989",
+      "title": "feat(codex): keep native and 9router models in one picker",
+      "state": "OPEN",
+      "isDraft": false,
+      "mergeable": "MERGEABLE",
+      "mergeStateStatus": "CLEAN",
+      "headRefOid": "d282c3bda974874ae33e3dfc7b9ce0bbe3df0040",
+      "changedFiles": 52,
+      "additions": 4243,
+      "deletions": 232,
+      "statusCheckRollup": [],
+      "bodyReadbackMatches": true,
+      "bodySha256": "e2da101bab6418fd80c6f71313d04c258640fbb07a57ed18b57f0df3be0aa491",
+      "fullSuite": {
+        "passed": 3740,
+        "failed": 91,
+        "skipped": 98,
+        "todo": 1,
+        "collectionFailures": [
+          "auth/saml.test.js",
+          "unit/cline-auth.test.js",
+          "unit/embeddings.cloud.test.js",
+          "unit/kimchi-strip-reasoning.test.js",
+          "unit/kimchi.test.js"
+        ]
+      },
+      "focusedTests": {
+        "passed": 217,
+        "failed": 0,
+        "skipped": 0,
+        "todo": 0,
+        "collectionFailures": []
+      },
+      "failuresUniqueToPr": [],
+      "collectionFailuresUniqueToPr": [],
+      "productionBuild": "passed"
+    },
+    {
+      "number": 3345,
+      "url": "https://github.com/decolua/9router/pull/3345",
+      "title": "fix(models): respect UI configured models and prevent live catalog/upstream override",
+      "state": "CLOSED",
+      "isDraft": false,
+      "mergeable": "CONFLICTING",
+      "mergeStateStatus": "DIRTY",
+      "headRefOid": "b2ff7bc59a1cf124c6964dc485b1fe2df60c6c59",
+      "changedFiles": 124,
+      "additions": 6559,
+      "deletions": 1233,
+      "statusCheckRollup": [],
+      "bodyReadbackMatches": true,
+      "bodySha256": "619c352e916ce11168aa28a552b6bb3809a3b398f9165d38fc0a22c02cedbf60",
+      "action": "closed duplicate"
+    },
+    {
+      "number": 3032,
+      "url": "https://github.com/decolua/9router/pull/3032",
+      "title": "feat(models): provider imports, models.dev metadata, and Models dashboard",
+      "state": "OPEN",
+      "isDraft": true,
+      "mergeable": "CONFLICTING",
+      "mergeStateStatus": "DIRTY",
+      "headRefOid": "1627f5afe97a01b55514c38dc1c25a120327bc8e",
+      "changedFiles": 124,
+      "additions": 6560,
+      "deletions": 1210,
+      "statusCheckRollup": [],
+      "bodyReadbackMatches": true,
+      "bodySha256": "00ebc5222f0ef95b15be90955721cd40d560d13d05666e5fde1d99b3c44f06d6",
+      "action": "converted to draft; description rewritten with current scope and blockers"
+    },
+    {
+      "number": 3346,
+      "url": "https://github.com/decolua/9router/pull/3346",
+      "title": "fix(kiro/cloudflare): dedup catalogs, request-scoped 400s, live model import + usage",
+      "state": "OPEN",
+      "isDraft": true,
+      "mergeable": "CONFLICTING",
+      "mergeStateStatus": "DIRTY",
+      "headRefOid": "324250e517b17691def260a7f69f2f0710426911",
+      "changedFiles": 135,
+      "additions": 6816,
+      "deletions": 1393,
+      "statusCheckRollup": [],
+      "bodyReadbackMatches": true,
+      "bodySha256": "cc6ee24c4eceb88519550623cf8c832e6a0795d5124bdaf4ce31e408f82da060",
+      "action": "converted to draft; description rewritten with current scope and blockers"
+    }
+  ],
+  "sourcePreservation": {
+    "mainSourceNotModified": true,
+    "branchesDeleted": false,
+    "closedDuplicateCommits": [
+      "f7c960e3",
+      "b2ff7bc5"
+    ],
+    "duplicateCommitsPresentIn": [
+      "#3346 head 324250e5",
+      "local master 5b7846bf"
+    ]
+  },
+  "validationLimits": [
+    "No GitHub status checks are attached to the PRs; mergeable/clean reports conflict status, not green CI.",
+    "Full upstream suite has 91 failing assertions and 5 collection failures under the same installed-dependency setup.",
+    "Live inference, production deployment and installed Codex helper acceptance were not repeated.",
+    "The #3989 first full run hit a DNS-dependent test timeout; an isolated 8-test suite and the final complete run passed that case.",
+    "One intermediate #3611 run failed the unchanged DB priority test; the final full run passed it. Three focused clean-upstream DB runs each passed 23 tests.",
+    "Model-management #3032 and Kiro/Cloudflare #3346 remain conflicting drafts; their current stacks have not been recut or validated against v0.5.104."
+  ]
+}
