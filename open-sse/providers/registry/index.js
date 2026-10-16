@@ -141,6 +141,8 @@ import p136 from "./apinex.js";
 
 import p137 from "./nous.js";
 
+import p138 from "./typesafe.js";
+
 export default [
   p0,
   p1,
@@ -280,4 +282,5 @@ export default [
   p135,
   p136,
   p137,
+  p138,
 ];
