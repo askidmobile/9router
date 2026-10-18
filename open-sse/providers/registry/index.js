@@ -143,6 +143,8 @@ import p137 from "./nous.js";
 
 import p138 from "./typesafe.js";
 
+import p139 from "./orcarouter.js";
+
 export default [
   p0,
   p1,
@@ -283,4 +285,5 @@ export default [
   p136,
   p137,
   p138,
+  p139,
 ];

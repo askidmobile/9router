@@ -1,5 +1,6 @@
 import { parseTokenCount } from "../../../../lib/providerCatalog/metadata.js";
 import { normalizeNousFreeModels } from "open-sse/services/nous.js";
+import { normalizeOrcaRouterFreeModels } from "open-sse/services/orcarouter.js";
 
 // Free OpenCode models that don't use the "-free" id suffix
 const KNOWN_FREE_OPENCODE_MODELS = ["big-pickle"];
@@ -62,4 +63,5 @@ export const FILTERS = {
       .sort((a, b) => String(a.id).localeCompare(String(b.id))),
 
   "nous-free": normalizeNousFreeModels,
+  "orcarouter-free": normalizeOrcaRouterFreeModels,
 };

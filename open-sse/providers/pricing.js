@@ -1,3 +1,5 @@
+import { isOrcaRouterFreeModel } from "../services/orcarouter.js";
+
 // Pricing rates for AI models — all rates in $/1M tokens
 //
 // Fallback order (first match wins):
@@ -429,6 +431,9 @@ export function getPricingForModel(provider, model) {
 
   // 2. Free namespaces bill $0 regardless of the model name behind them.
   if (isFreeModel(model)) return ZERO_PRICING;
+  if ((provider === "orcarouter" || provider === "orca") && isOrcaRouterFreeModel(model)) {
+    return ZERO_PRICING;
+  }
 
   // 3. Canonical model pricing (strip vendor prefix if needed: "deepseek/deepseek-chat" → "deepseek-chat")
   const baseModel = model.includes("/") ? model.split("/").pop() : model;
