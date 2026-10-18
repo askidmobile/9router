@@ -125,9 +125,9 @@ export function catalogMetadata(entry) {
   const pricing = {};
   const price = entry.pricing;
   if (price && typeof price === "object") {
-    const input = toNumber(price.input_per_million ?? price.input);
-    const outputPrice = toNumber(price.output_per_million ?? price.output);
-    const cached = toNumber(price.cache_read_input_per_million ?? price.cached);
+    const input = toNumber(price.input_per_million ?? price.prompt_per_million ?? price.input) ?? perToken(price.prompt);
+    const outputPrice = toNumber(price.output_per_million ?? price.completion_per_million ?? price.output) ?? perToken(price.completion);
+    const cached = toNumber(price.cache_read_input_per_million ?? price.cached) ?? perToken(price.input_cache_read);
     const cacheCreation = toNumber(price.cache_write_input_per_million ?? price.cache_creation);
     if (input !== undefined) pricing.input = input;
     if (outputPrice !== undefined) pricing.output = outputPrice;

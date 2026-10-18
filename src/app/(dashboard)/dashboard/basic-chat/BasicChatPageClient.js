@@ -126,6 +126,7 @@ function normalizeStaticModel(model, connection) {
 }
 
 function normalizeLiveModel(model, connection) {
+  if (model?.available === false) return null;
   const rawId = typeof model === "string" ? model : model?.id || model?.name || model?.model || "";
   if (!rawId) return null;
 

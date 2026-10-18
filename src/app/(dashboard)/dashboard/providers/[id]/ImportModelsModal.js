@@ -5,6 +5,7 @@ import PropTypes from "prop-types";
 import { Modal, Button } from "@/shared/components";
 import { useTranslation } from "@/i18n/useTranslation";
 import { resolveProviderId } from "@/shared/constants/providers";
+import { normalizeProviderImportModels } from "@/shared/utils/providerImportModels";
 
 // Generic "import models from the provider's /models endpoint" modal.
 // Fetches GET /api/providers/{connectionId}/models, lets the user pick models
@@ -57,16 +58,7 @@ export default function ImportModelsModal({
           setError(data.error || "Failed to fetch models");
           return;
         }
-        const seen = new Set();
-        const normalized = [];
-        for (const m of data.models || []) {
-          let id = m?.id || m?.name || m?.model;
-          if (!id) continue;
-          if (transformId) id = transformId(id);
-          if (!id || seen.has(id)) continue;
-          seen.add(id);
-          normalized.push({ id, name: m?.name && m.name !== m.id && m.name !== id ? m.name : null, available: m.available !== false });
-        }
+        const normalized = normalizeProviderImportModels(data.models, transformId);
         setModels(normalized);
         if (data.warning) setWarning(data.warning);
         if (normalized.length === 0 && !data.warning) setWarning("Provider returned 0 models");
@@ -175,7 +167,7 @@ export default function ImportModelsModal({
   };
 
   return (
-    <Modal isOpen={isOpen} title="Import Models from Provider" onClose={onClose}>
+    <Modal isOpen={isOpen} title="Import Models from Provider" onClose={onClose} size="full">
       <div className="flex flex-col gap-3">
         {result ? (
           <>
@@ -231,7 +223,7 @@ export default function ImportModelsModal({
                     <label
                       key={m.id}
                       className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs ${!m.available ? "border-border bg-background-alt" : m.added ? "border-border opacity-50" : "border-border hover:border-primary/40 cursor-pointer"}`}
-                      title={!m.available ? t("Access disabled by GitHub for this account") : undefined}
+                      title={!m.available ? t(m.unavailableReason || "Access disabled by GitHub for this account") : m.id}
                     >
                       <input
                         type="checkbox"
@@ -240,9 +232,9 @@ export default function ImportModelsModal({
                         onChange={() => toggleOne(m.id)}
                         className="h-3.5 w-3.5 rounded border-gray-300 text-primary focus:ring-primary"
                       />
-                      <span className="min-w-0 flex-1 truncate font-mono">{m.id}</span>
-                      {m.name && <span className="truncate text-text-muted/70 italic">{m.name}</span>}
-                      {!m.available && <span className="shrink-0 text-[10px] text-amber-600 dark:text-amber-400">{t("No access")}</span>}
+                      <span className="min-w-0 flex-1 break-all font-mono">{m.id}</span>
+                      {m.name && <span className="max-w-[40%] truncate text-text-muted/70 italic">{m.name}</span>}
+                      {!m.available && <span className="shrink-0 text-[10px] text-amber-600 dark:text-amber-400">{t(m.unavailableReason || "No access")}</span>}
                       {m.added && <span className="shrink-0 text-[10px] text-text-muted">added</span>}
                     </label>
                   ))}

@@ -2,9 +2,7 @@ import { ORCAROUTER_FREE_ROUTER, ORCAROUTER_MODELS_URL } from "../../config/orca
 
 export default {
   id: "orcarouter",
-  alias: "orcarouter",
-  aliases: ["orca"],
-  uiAlias: "orca",
+  alias: "orca",
   category: "freeTier",
   hasFree: true,
   authType: "apikey",

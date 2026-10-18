@@ -68,6 +68,7 @@ vi.mock("../../open-sse/utils/requestLogger.js", () => ({
 }));
 
 import { BaseExecutor } from "../../open-sse/executors/base.js";
+import { OrcaRouterExecutor } from "../../open-sse/executors/orcarouter.js";
 import { checkFallbackError } from "../../open-sse/services/accountFallback.js";
 import { handleChat } from "../../src/sse/handlers/chat.js";
 
@@ -399,5 +400,29 @@ describe("chat caller cancellation across the public production path", () => {
 
   it("never classifies 499 as retryable even when its message contains transient-error keywords", () => {
     expect(checkFallbackError(499, "fetch connect timeout; overloaded; rate limit").shouldFallback).toBe(false);
+  });
+
+  it.each([
+    [429, "err_free_access_denied", "Link an established GitHub account to unlock free access."],
+    [400, "err_free_prompt_cap", "The free prompt cap was exceeded."],
+  ])("preserves OrcaRouter's non-retryable HTTP %s policy error without an account lock", async (status, reason, message) => {
+    const model = "deepseek/deepseek-v4.1-flash-free";
+    mocks.executor = new OrcaRouterExecutor();
+    mocks.getComboModels.mockResolvedValue(null);
+    mocks.getModelInfo.mockResolvedValue({ provider: "orcarouter", model });
+    mocks.transport.mockResolvedValue(new Response(JSON.stringify({ error: {
+      code: "free_rate_limited", type: "rate_limit_error", message,
+      metadata: { reason, retryable: false },
+    } }), { status, headers: { "content-type": "application/json" } }));
+
+    const result = await handleChat(request(undefined, `orcarouter/${model}`));
+    expect(result.status).toBe(status);
+    expect(result.headers.has("retry-after")).toBe(false);
+    expect((await result.json()).error).toMatchObject({
+      code: "free_rate_limited", retryable: false, message: expect.stringContaining(message),
+      metadata: { reason, retryable: false },
+    });
+    assertNoFallback();
+    assertPendingSettledOnce();
   });
 });

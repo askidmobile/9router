@@ -19,7 +19,7 @@ import { resolveCopilotModels } from "@/lib/providerModels/copilotModels.js";
 import { resolveZedModels } from "open-sse/shared/zedAuth.js";
 import { NOUS_MODELS_URL, normalizeNousModels } from "open-sse/services/nous.js";
 import { ORCAROUTER_MODELS_URL } from "open-sse/config/orcarouter.js";
-import { normalizeOrcaRouterFreeModels } from "open-sse/services/orcarouter.js";
+import { normalizeOrcaRouterModels } from "open-sse/services/orcarouter.js";
 import codexProvider from "open-sse/providers/registry/codex.js";
 
 const GEMINI_CLI_MODELS_URL = "https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels";
@@ -220,7 +220,7 @@ const PROVIDER_MODELS_CONFIG = {
   openrouter: createOpenAIModelsConfig("https://openrouter.ai/api/v1/models"),
   orcarouter: {
     ...createOpenAIModelsConfig(ORCAROUTER_MODELS_URL),
-    parseResponse: (data) => normalizeOrcaRouterFreeModels(data).map((model) => ({
+    parseResponse: (data) => normalizeOrcaRouterModels(data).map((model) => ({
       ...model,
       id: `orcarouter/${model.id}`,
       upstreamModelId: model.id,

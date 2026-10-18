@@ -6,7 +6,10 @@ import { parseModel } from "../../open-sse/services/model.js";
 import { getExecutor } from "../../open-sse/executors/index.js";
 import { DefaultExecutor } from "../../open-sse/executors/default.js";
 import { getPricingForModel, ZERO_PRICING } from "../../open-sse/providers/pricing.js";
-import { normalizeOrcaRouterFreeModels } from "../../open-sse/services/orcarouter.js";
+import { normalizeOrcaRouterFreeModels, normalizeOrcaRouterModels } from "../../open-sse/services/orcarouter.js";
+import { normalizeProviderImportModels } from "@/shared/utils/providerImportModels.js";
+import { catalogMetadata } from "@/lib/providerCatalog/metadata.js";
+import { PROVIDER_ID_TO_ALIAS } from "../../open-sse/config/providerModels.js";
 import { FILTERS } from "../../src/app/api/providers/suggested-models/filters.js";
 
 const mocks = vi.hoisted(() => ({
@@ -43,7 +46,10 @@ const catalog = [
   { id: freeModel, name: "DeepSeek V4.1 Flash (Free)", supported_endpoint_types: null,
     pricing: { prompt: "0.0000000000", completion: "0.0000000000" } },
   { id: "z-ai/glm-5.3-flash-free", pricing: { request: "0.000000" } },
-  { id: "deepseek/deepseek-v4.1-flash", pricing: { prompt: "0.00000015", completion: "0.0000006" } },
+  { id: "deepseek/deepseek-v4.1-flash", pricing: { prompt: "0.00000015", completion: "0.0000006", input_cache_read: "0.00000003" } },
+  { id: "vendor/embedding", supported_endpoint_types: ["embeddings"] },
+  { id: "vendor/video", supported_endpoint_types: ["openai-video"] },
+  { id: "openai/gpt-image-2", supported_endpoint_types: null },
 ];
 const jsonResponse = (body, status = 200) => new Response(JSON.stringify(body), {
   status, headers: { "Content-Type": "application/json" },
@@ -74,8 +80,9 @@ describe("OrcaRouter free tier", () => {
       expect(parseModel(`${prefix}/orcarouter/free`)).toMatchObject({ provider: "orcarouter", model: "orcarouter/free" });
     }
     expect(PROVIDERS.orcarouter.validateUrl).toBe(modelsUrl);
-    expect(PROVIDER_MODELS.orcarouter).toHaveLength(7);
-    expect(PROVIDER_MODELS.orcarouter.every((m) => m.id === "orcarouter/free" || m.id.endsWith("-free"))).toBe(true);
+    expect(PROVIDER_ID_TO_ALIAS.orcarouter).toBe(FREE_TIER_PROVIDERS.orcarouter.alias);
+    expect(PROVIDER_MODELS.orca).toHaveLength(7);
+    expect(PROVIDER_MODELS.orca.every((m) => m.id === "orcarouter/free" || m.id.endsWith("-free"))).toBe(true);
   });
 
   it("keeps the free catalog stubs despite their null endpoint list", () => {
@@ -93,6 +100,24 @@ describe("OrcaRouter free tier", () => {
       { id: "vendor/invalid-free", pricing: { request: "unknown" } },
       { id: "vendor/image-free", pricing: { request: "0" }, supported_endpoint_types: ["image"] },
     ])).toEqual([]);
+  });
+
+  it("keeps the full catalog and identifies media that cannot be imported as chat", () => {
+    const models = normalizeOrcaRouterModels({ data: catalog });
+    expect(models).toHaveLength(catalog.length);
+    expect(models.find((m) => m.id === "deepseek/deepseek-v4.1-flash").available).not.toBe(false);
+    expect(models.find((m) => m.id === "vendor/embedding")).toMatchObject({ type: "embedding", available: false });
+    expect(models.find((m) => m.id === "vendor/video")).toMatchObject({ type: "video", available: false });
+    expect(models.find((m) => m.id === "openai/gpt-image-2")).toMatchObject({ type: "image", available: false });
+  });
+
+  it("imports the actual token prices and explicit zero request prices", () => {
+    const models = normalizeOrcaRouterModels(catalog);
+    expect(catalogMetadata(models.find((m) => m.id === "deepseek/deepseek-v4.1-flash")).pricing)
+      .toEqual({ input: 0.15, output: 0.6, cached: 0.03 });
+    expect(catalogMetadata(models.find((m) => m.id === "z-ai/glm-5.3-flash-free")).pricing)
+      .toEqual({ input: 0, output: 0 });
+    expect(catalogMetadata(models.find((m) => m.id === "vendor/video"))).toBeNull();
   });
 
   it("does not assign paid family prices to free calls or zero prices to paid models", () => {
@@ -155,16 +180,22 @@ describe("OrcaRouter dashboard routes", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("discovers only free models with IDs that route back to OrcaRouter", async () => {
+  it("discovers the full authenticated catalog with routed IDs and canonical import IDs", async () => {
     fetch.mockResolvedValue(jsonResponse({ data: catalog }));
     const response = await listModels(new Request("http://localhost/api/providers/orca-connection/models"), {
       params: Promise.resolve({ id: "orca-connection" }),
     });
     const payload = await response.json();
-    expect(payload.models).toHaveLength(3);
+    expect(payload.models).toHaveLength(catalog.length);
     for (const model of payload.models) {
       expect(parseModel(model.id)).toMatchObject({ provider: "orcarouter", model: model.upstreamModelId });
     }
+    const rows = normalizeProviderImportModels(payload.models);
+    expect(rows.map((m) => m.id)).toEqual(catalog.map((m) => m.id));
+    const existing = new Set(orcarouter.models.map((m) => m.id));
+    expect(rows.filter((m) => existing.has(m.id))).toHaveLength(3);
+    expect(rows.find((m) => m.id === "deepseek/deepseek-v4.1-flash").available).toBe(true);
+    expect(rows.filter((m) => !m.available)).toHaveLength(3);
     expect(fetch).toHaveBeenCalledWith(modelsUrl, expect.objectContaining({
       headers: expect.objectContaining({ Authorization: "Bearer sk-orca-test" }),
     }));

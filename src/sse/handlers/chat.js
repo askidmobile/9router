@@ -382,6 +382,9 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
     if (request?.signal?.aborted || result.status === 499) return errorResponse(499, "Request aborted");
     if (result.success) return result.response;
+    // Explicit provider policy failures (e.g. OrcaRouter's free-access gate)
+    // cannot recover after an invented account cooldown. Preserve the error.
+    if (result.retryable === false) return result.response;
     // A malformed user request cannot be repaired by rotating credentials.
     // Transport/server failures belong to the Combo's provider+model circuit;
     // don't multiply a 45-second network timeout by the number of accounts.

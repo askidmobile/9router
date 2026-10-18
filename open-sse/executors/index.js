@@ -29,8 +29,10 @@ import { DefaultExecutor } from "./default.js";
 import { MinimaxCodeExecutor } from "./minimax-code.js";
 import { DevinCliExecutor } from "./devin-cli.js";
 import { ZcodeExecutor } from "./zcode.js";
+import { OrcaRouterExecutor } from "./orcarouter.js";
 
 const executors = {
+  orcarouter: new OrcaRouterExecutor(),
   antigravity: new AntigravityExecutor(),
   azure: new AzureExecutor(),
   "gemini-cli": new GeminiCLIExecutor(),
