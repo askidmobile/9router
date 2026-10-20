@@ -30,6 +30,8 @@ import { resolveGeminiServiceTier, splitGeminiModelId } from "open-sse/utils/gem
 import { GEMINI_FLEX_SUFFIX } from "open-sse/config/gemini.js";
 import { runComboModelExecution } from "open-sse/services/comboExecution.js";
 import { getKeyAccessContext, enforceKeyAccess, filterAdapterModels } from "../services/keyAccess.js";
+import { deriveSessionAffinityKey } from "../services/sessionAffinity.js";
+import { withSlotRelease, releaseConnectionSlot } from "../services/connectionConcurrency.js";
 
 /**
  * Handle chat completion request
@@ -289,16 +291,39 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   // Extract userAgent from request
   const userAgent = request?.headers?.get("user-agent") || "";
 
-  // Try with available accounts (fallback on errors)
+  // Try with available accounts (fallback on errors). Session affinity keeps
+  // each conversation on one account (upstream prompt cache); per-account
+  // concurrent slots spill overflow to the next account once the first is full.
   const excludeConnectionIds = new Set();
   let lastError = null;
   let lastStatus = null;
   let lastHeaders = null;
+  const sessionAffinityKey = deriveSessionAffinityKey(body, modelStr);
 
   while (true) {
     if (request?.signal?.aborted) return errorResponse(499, "Request aborted");
-    const credentials = await getProviderCredentials(provider, excludeConnectionIds, model, { requestedModel: execution.requestedModel || model });
+    const credentials = await getProviderCredentials(provider, excludeConnectionIds, model, {
+      requestedModel: execution.requestedModel || model,
+      trackConcurrency: true,
+      sessionAffinityKey,
+      affinitySignal: request?.signal,
+      // In a combo, don't starve fallback to the next member on a busy provider.
+      affinityQueueMs: execution.combo ? 5_000 : undefined,
+    });
     if (request?.signal?.aborted) return errorResponse(499, "Request aborted");
+
+    // Every account of this provider is at its concurrent-request cap.
+    if (credentials?.allBusy) {
+      const retryAfter = new Date(Date.now() + 10_000).toISOString();
+      log.warn("CHAT", `[${provider}/${model}] all accounts busy (per-account concurrent limit)`);
+      return unavailableResponse(
+        HTTP_STATUS.SERVICE_UNAVAILABLE,
+        `[${provider}/${model}] All accounts at their concurrent-request limit`,
+        retryAfter,
+        "retry after a few seconds",
+        lastHeaders
+      );
+    }
 
     // All accounts unavailable
     if (!credentials || credentials.allRateLimited) {
@@ -316,6 +341,13 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       return errorResponse(lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE, lastError || "All accounts unavailable", lastHeaders);
     }
 
+    // The slot is held from selection until the upstream response finishes
+    // (release rides the response body via withSlotRelease) or the attempt fails.
+    let slotRelease = credentials._slotAcquired
+      ? () => releaseConnectionSlot(credentials.connectionId)
+      : null;
+    let slotHeld = !!slotRelease;
+    try {
     // Account selection shown in the unified "▶" line (acc:...)
     const refreshedCredentials = await checkAndRefreshToken(provider, credentials);
     if (request?.signal?.aborted) return errorResponse(499, "Request aborted");
@@ -381,7 +413,11 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     });
 
     if (request?.signal?.aborted || result.status === 499) return errorResponse(499, "Request aborted");
-    if (result.success) return result.response;
+    if (result.success) {
+      const released = withSlotRelease(result.response, credentials.connectionId);
+      slotRelease = null;
+      return released;
+    }
     // Explicit provider policy failures (e.g. OrcaRouter's free-access gate)
     // cannot recover after an invented account cooldown. Preserve the error.
     if (result.retryable === false) return result.response;
@@ -420,6 +456,9 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     }
 
     return result.response;
+    } finally {
+      if (slotHeld && slotRelease) slotRelease();
+    }
   }
 }
 

@@ -1,6 +1,9 @@
 import { getProviderConnections, validateApiKey, updateProviderConnection, getSettings } from "@/lib/localDb";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil } from "open-sse/services/accountFallback.js";
+import { abortableDelay } from "open-sse/utils/abort.js";
+import { tryAcquireConnectionSlot, releaseConnectionSlot, getInflightCount, connectionMaxConcurrent } from "./connectionConcurrency.js";
+import { getSessionAffinity, setSessionAffinity } from "./sessionAffinity.js";
 import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
 import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
 import { getAntigravityQuotaCache, getAntigravityModelQuota } from "./antigravityQuota.js";
@@ -25,13 +28,49 @@ function githubMonthlyResetMs(status, errorText, provider) {
  * @param {Set<string>|string|null} excludeConnectionIds - Connection ID(s) to exclude (for retry with next account)
  * @param {string|null} model - Model name for per-model rate limit filtering
  */
+// How long a slot-starved request polls for a free account slot before the
+// caller reports 503 (combo then spills to the next member). Waitable only
+// when the wait can land on a useful account (see allBusy below).
+const PROVIDER_BUSY_POLL_MS = 250;
+const DEFAULT_PROVIDER_BUSY_WAIT_MS = (() => {
+  const n = Number.parseInt(process.env.CONNECTION_QUEUE_WAIT_MS, 10);
+  return Number.isSafeInteger(n) && n > 0 ? n : 30_000;
+})();
+
+/**
+ * Get provider credentials with per-account concurrency accounting.
+ * Thin wrapper: retries the selection while every account of the provider is
+ * at its concurrent-request cap and the wait can be useful (pinned
+ * conversation account, or the provider has a single account).
+ */
 export async function getProviderCredentials(provider, excludeConnectionIds = null, model = null, options = {}) {
+  const result = await selectProviderCredentialsCore(provider, excludeConnectionIds, model, options);
+  if (!result?.allBusy || !result.waitable) return result;
+  const requested = Number.parseInt(options?.affinityQueueMs, 10);
+  const waitMs = Number.isSafeInteger(requested) && requested > 0 ? requested : DEFAULT_PROVIDER_BUSY_WAIT_MS;
+  const deadline = Date.now() + waitMs;
+  while (!options?.affinitySignal?.aborted && Date.now() < deadline) {
+    try {
+      await abortableDelay(PROVIDER_BUSY_POLL_MS, options?.affinitySignal);
+    } catch {
+      return result; // request aborted while waiting
+    }
+    const retry = await selectProviderCredentialsCore(provider, excludeConnectionIds, model, options);
+    if (!retry?.allBusy) return retry;
+  }
+  return result;
+}
+
+async function selectProviderCredentialsCore(provider, excludeConnectionIds = null, model = null, options = {}) {
   // Normalize to Set for consistent handling
   const excludeSet = excludeConnectionIds instanceof Set
     ? excludeConnectionIds
     : (excludeConnectionIds ? new Set([excludeConnectionIds]) : new Set());
   const preferredConnectionId = options?.preferredConnectionId || null;
   const requestedModel = options?.requestedModel || model;
+  // Chat opts in: per-account slot accounting + conversation affinity pinning.
+  const trackConcurrency = options?.trackConcurrency === true;
+  const affinityKey = trackConcurrency ? (options?.sessionAffinityKey || null) : null;
   // Acquire mutex to prevent race conditions
   const currentMutex = selectionMutex;
   let resolveMutex;
@@ -133,6 +172,27 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       return null;
     }
 
+    // Per-account concurrency: a candidate is usable only while its account
+    // holds a free slot (see connectionConcurrency.js). Session affinity pins
+    // a conversation to its previous account so the upstream prompt cache
+    // stays warm; a saturated pinned account spills to the next candidate
+    // instead of queueing on the provider (cache-killer, slow).
+    let candidates = availableConnections;
+    let pinnedConnection = null;
+    if (trackConcurrency) {
+      pinnedConnection = availableConnections.find(c => c.id === getSessionAffinity(affinityKey)) || null;
+      candidates = availableConnections.filter(c => getInflightCount(c.id) < connectionMaxConcurrent(c));
+      if (candidates.length === 0) {
+        log.warn("AUTH", `${provider} | all ${availableConnections.length} accounts busy (per-account concurrent limit)`);
+        return {
+          allBusy: true,
+          // Only worth waiting when a retry can land on a useful account:
+          // the pinned conversation's account, or the provider's only account.
+          waitable: !!pinnedConnection || availableConnections.length === 1,
+        };
+      }
+    }
+
     const settings = await getSettings();
     // Per-provider strategy overrides global setting
     const providerOverride = (settings.providerStrategies || {})[providerId] || {};
@@ -141,18 +201,22 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     let connection;
     // Pin to preferred connection if specified and available
     if (preferredConnectionId) {
-      connection = availableConnections.find((c) => c.id === preferredConnectionId);
+      connection = candidates.find((c) => c.id === preferredConnectionId);
       if (connection) {
         log.info("AUTH", `${provider} | pinned to ${connection.id?.slice(0, 8)} (${connection.name || connection.email || "unnamed"})`);
       }
     }
     if (connection) {
       // skip strategy
+    } else if (affinityKey && pinnedConnection) {
+      // Continuity: this conversation already lives on this account.
+      connection = pinnedConnection;
+      log.info("AUTH", `${provider} | session affinity → pinned ${connection.id?.slice(0, 8)} (${connection.name || connection.email || "unnamed"})`);
     } else if (strategy === "round-robin") {
       const stickyLimit = providerOverride.stickyRoundRobinLimit || settings.stickyRoundRobinLimit || 3;
 
       // Sort by lastUsed (most recent first) to find current candidate
-      const byRecency = [...availableConnections].sort((a, b) => {
+      const byRecency = [...candidates].sort((a, b) => {
         if (!a.lastUsedAt && !b.lastUsedAt) return (a.priority || 999) - (b.priority || 999);
         if (!a.lastUsedAt) return 1;
         if (!b.lastUsedAt) return -1;
@@ -172,7 +236,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
         });
       } else {
         // Pick the least recently used (excluding current if possible)
-        const sortedByOldest = [...availableConnections].sort((a, b) => {
+        const sortedByOldest = [...candidates].sort((a, b) => {
           if (!a.lastUsedAt && !b.lastUsedAt) return (a.priority || 999) - (b.priority || 999);
           if (!a.lastUsedAt) return -1;
           if (!b.lastUsedAt) return 1;
@@ -189,7 +253,20 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       }
     } else {
       // Default: fill-first (already sorted by priority in getProviderConnections)
-      connection = availableConnections[0];
+      connection = candidates[0];
+    }
+
+    let slotAcquired = false;
+    if (trackConcurrency && connection) {
+      if (!tryAcquireConnectionSlot(connection.id, connectionMaxConcurrent(connection))) {
+        // Raced: slot freed the filter, then filled again before this acquire
+        // (releases happen outside the selection mutex). Report busy instead
+        // of exceeding the account cap.
+        log.warn("AUTH", `${provider} | ${connection.id?.slice(0, 8)} busy at acquire → all busy`);
+        return { allBusy: true, waitable: true };
+      }
+      slotAcquired = true;
+      if (affinityKey) setSessionAffinity(affinityKey, connection.id);
     }
 
     const resolvedProxy = await resolveConnectionProxyConfig(connection.providerSpecificData || {}, providerId);
@@ -217,6 +294,9 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
         strictProxy: resolvedProxy.strictProxy === true,
       },
       connectionId: connection.id,
+      // Concurrency slot held by the caller until the response finishes
+      // (see withSlotRelease in connectionConcurrency.js).
+      _slotAcquired: slotAcquired,
       // Include current status for optimization check
       testStatus: connection.testStatus,
       lastError: connection.lastError,

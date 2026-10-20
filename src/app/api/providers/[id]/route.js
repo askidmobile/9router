@@ -92,7 +92,8 @@ export async function PUT(request, { params }) {
       testStatus,
       lastError,
       lastErrorAt,
-      providerSpecificData
+      providerSpecificData,
+      maxConcurrentRequests,
     } = body;
 
     const existing = await getProviderConnectionById(id);
@@ -115,6 +116,11 @@ export async function PUT(request, { params }) {
     if (priority !== undefined) updateData.priority = priority;
     if (globalPriority !== undefined) updateData.globalPriority = globalPriority;
     if (defaultModel !== undefined) updateData.defaultModel = defaultModel;
+    if (maxConcurrentRequests !== undefined) {
+      const cap = Number.parseInt(maxConcurrentRequests, 10);
+      // 0 or invalid resets to the provider default; positive integer overrides it.
+      updateData.maxConcurrentRequests = Number.isSafeInteger(cap) && cap > 0 ? cap : null;
+    }
     if (isActive !== undefined) updateData.isActive = isActive;
     if (apiKey && existing.authType === "apikey") updateData.apiKey = apiKey;
     if (testStatus !== undefined) updateData.testStatus = testStatus;

@@ -8,6 +8,8 @@ const OPTIONAL_FIELDS = [
   "scope", "projectId", "apiKey", "testStatus",
   "lastTested", "lastError", "lastErrorAt", "rateLimitedUntil", "expiresIn", "errorCode",
   "consecutiveUseCount", "idToken", "lastRefreshAt",
+  // Parallel-request cap (per-account subscription limit). 0/undefined = default.
+  "maxConcurrentRequests",
 ];
 
 const MODEL_LOCK_PREFIX = "modelLock_";
