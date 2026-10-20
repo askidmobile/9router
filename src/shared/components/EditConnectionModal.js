@@ -13,6 +13,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
   const [formData, setFormData] = useState({
     name: "",
     priority: 1,
+    maxConcurrentRequests: "",
     apiKey: "",
   });
   const [azureData, setAzureData] = useState({
@@ -37,6 +38,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
       setFormData({
         name: connection.name || "",
         priority: connection.priority || 1,
+        maxConcurrentRequests: connection.maxConcurrentRequests ?? "",
         apiKey: "",
       });
       // Load Azure-specific data if present
@@ -149,6 +151,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
       const updates = {
         name: formData.name,
         priority: formData.priority,
+        maxConcurrentRequests: formData.maxConcurrentRequests,
       };
       if (!isOAuth && formData.apiKey) {
         updates.apiKey = formData.apiKey;
@@ -240,6 +243,16 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
           type="number"
           value={formData.priority}
           onChange={(e) => setFormData({ ...formData, priority: Number.parseInt(e.target.value, 10) || 1 })}
+        />
+        <Input
+          label="Max concurrent requests"
+          type="number"
+          min="0"
+          max="50"
+          value={formData.maxConcurrentRequests}
+          placeholder="2 (default)"
+          hint="Per-account parallel request cap (default: 2). Leave blank for the default."
+          onChange={(e) => setFormData({ ...formData, maxConcurrentRequests: e.target.value.trim() || "" })}
         />
 
         {!isOAuth && (
@@ -405,6 +418,7 @@ EditConnectionModal.propTypes = {
     name: PropTypes.string,
     email: PropTypes.string,
     priority: PropTypes.number,
+    maxConcurrentRequests: PropTypes.number,
     authType: PropTypes.string,
     provider: PropTypes.string,
     providerSpecificData: PropTypes.object,
