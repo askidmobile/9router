@@ -1,14 +1,6 @@
-// Per-account concurrent-request slots (in-process). Many providers reject
-// or queue when an account exceeds its parallelism allowance (Ollama
-// NUM_PARALLEL=2 by default, several paid tiers 2-5). The router now enforces
-// that limit before dispatching and spills overflow to the next account,
-// instead of letting the provider queue the request (queueing kills prompt
-// cache and adds seconds of latency).
-//
-// Limit resolution: connection.maxConcurrentRequests (per-account, optional)
-// -> global default of 2. Missing or invalid value -> 2.
-// In-flight counters live in memory; a slot is acquired at account selection
-// and released when the upstream response finishes or fails.
+// Per-account chat slots in one process. Provider subscription limits may
+// differ; 2 is the router's configurable default, not an Ollama Cloud allowance.
+// A slot is acquired during selection and held until the response finishes.
 
 const DEFAULT_MAX_CONCURRENT = Number(process.env.CONNECTION_DEFAULT_MAX_CONCURRENT) || 2;
 

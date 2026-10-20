@@ -10,7 +10,7 @@ export default {
     textIcon: "OL",
     website: "https://ollama.com",
     notice: {
-      text: "Free tier: light usage, 1 cloud model at a time (limits reset every 5h & 7d). Pro $20/mo · Max $100/mo.",
+      text: "Cloud concurrency: Free 1 · Pro 3 · Max/Team 10. New plans use monthly credits; legacy plans retain session/weekly limits.",
       apiKeyUrl: "https://ollama.com/settings/keys",
     },
   },
@@ -21,6 +21,11 @@ export default {
     baseUrl: "https://ollama.com/api/chat",
     validateUrl: "https://ollama.com/api/tags",
     format: "ollama",
+    usage: {
+      url: "https://ollama.com/api/balance",
+      cacheTtlMs: 60_000,
+      maxCacheEntries: 500,
+    },
   },
   models: [
     { id: "gpt-oss:120b", name: "GPT OSS 120B" },

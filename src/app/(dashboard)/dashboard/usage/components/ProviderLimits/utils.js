@@ -739,8 +739,7 @@ export function parseQuotaData(provider, data) {
         break;
 
       case "ollama":
-        // Session (5h) / Weekly (7d) / Monthly usage % from ollama.com/api/usage.
-        // remainingPercentage only — no absolute remaining (UI treats remaining as %).
+        // Official balance API: monthly USD credits or legacy session/weekly percentages.
         if (data.quotas) {
           Object.entries(data.quotas).forEach(([name, quota]) => {
             normalizedQuotas.push({

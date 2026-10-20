@@ -2,8 +2,10 @@
  * Misc usage handlers (iFlow, Ollama, GLM re-export, Vercel AI Gateway, Qoder)
  */
 
+import { createHash } from "node:crypto";
+import { MAX_RATE_LIMIT_COOLDOWN_MS } from "../../config/errorConfig.js";
 import { proxyAwareFetch } from "../../utils/proxyFetch.js";
-import { U, creditBalance, toFiniteNumber, fetchWithTimeout } from "./shared.js";
+import { U, creditBalance, toFiniteNumber, fetchWithTimeout, parseResetTime } from "./shared.js";
 
 // Vercel AI Gateway credits endpoint
 // Returns { balance: "95.50", total_used: "4.50" } (USD as decimal strings).
@@ -21,198 +23,78 @@ export async function getIflowUsage(accessToken) {
   }
 }
 
-const OLLAMA_LIMIT_WINDOWS = {
-  session: "Session (5h)",
-  weekly: "Weekly (7d)",
-  monthly: "Monthly",
-};
+// The balance endpoint is limited per user across keys/devices; coalesce reads
+// and follow the documented once-per-minute polling recommendation per key.
+const ollamaUsageCache = new Map();
 
-function addUtcMonths(date, months) {
-  const total = date.getUTCMonth() + months;
-  const year = date.getUTCFullYear() + Math.floor(total / 12);
-  const month = ((total % 12) + 12) % 12;
-  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
-  return new Date(Date.UTC(
-    year, month, Math.min(date.getUTCDate(), lastDay),
-    date.getUTCHours(), date.getUTCMinutes(), date.getUTCSeconds(),
-  ));
-}
-
-// Free plan: "usage resets monthly from the date you signed up" (ollama.com/pricing).
-function nextMonthlyResetFromSignup(createdAt, now = new Date()) {
-  const anchor = new Date(createdAt);
-  if (Number.isNaN(anchor.getTime())) return null;
-  const elapsedMonths = (now.getUTCFullYear() - anchor.getUTCFullYear()) * 12
-    + (now.getUTCMonth() - anchor.getUTCMonth());
-  for (let i = Math.max(0, elapsedMonths); i <= elapsedMonths + 1; i++) {
-    const candidate = addUtcMonths(anchor, i);
-    if (candidate > now) return candidate.toISOString();
-  }
-  return null;
-}
-
-/**
- * Ollama Cloud Usage
- * GET https://ollama.com/api/usage — `limits.<window>.usage` is a 0..1 ratio
- *   (1.0 = limit reached). Paid plans report session (5h) + weekly (7d); the
- *   free plan reports a single monthly window. No reset timestamp exposed;
- *   the free monthly reset is derived from the account's signup date.
- * POST https://ollama.com/api/me — plan label + CreatedAt (fail-open).
- * Auth: Authorization: Bearer <apiKey>
- * Optional exact reset dates come from the settings page with a saved session cookie.
- */
-const OLLAMA_SETTINGS_URL = "https://ollama.com/settings";
-const OLLAMA_SESSION_COOKIE = "__Secure-session";
-
-function resolveOllamaUsageCookie(providerSpecificData) {
-  const env = process.env.OLLAMA_USAGE_COOKIE?.trim()
-    || process.env.OLLAMA_CLOUD_USAGE_COOKIE?.trim() || "";
-  if (env) return env.replace(new RegExp(`^${OLLAMA_SESSION_COOKIE}=`), "").trim();
-  const raw = providerSpecificData?.ollamaUsageCookie
-    || providerSpecificData?.usageCookie || "";
-  return String(raw).trim().replace(new RegExp(`^${OLLAMA_SESSION_COOKIE}=`), "").trim();
-}
-
-function parseOllamaSettingsHtml(html) {
-  const parts = html.split(/\bdata-usage-track\b/);
-  if (parts.length < 2) return null;
-  const extractPct = (seg) => {
-    const header = seg.match(/^[^>]*/)?.[0] ?? "";
-    const aria = header.match(/(\d+(?:\.\d+)?)%\s*used/);
-    if (aria) {
-      const pct = Number(aria[1]);
-      if (Number.isFinite(pct) && pct >= 0 && pct <= 100) return pct;
-    }
-    const style = header.match(/style="([^"]*)"/)?.[1] ?? "";
-    const w = Number(style.match(/(?:^|;)\s*width\s*:\s*([0-9.]+)%/)?.[1]);
-    return Number.isFinite(w) && w >= 0 && w <= 100 ? w : null;
-  };
-  const extractTime = (seg) => seg.match(/class="[^"]*local-time[^"]*"[^>]*data-time="([^"]*)"/)?.[1] || null;
-  const sessionPercent = extractPct(parts[1]);
-  const weeklyPercent = parts[2] ? extractPct(parts[2]) : null;
-  if (sessionPercent === null && weeklyPercent === null) return null;
-  return {
-    session: sessionPercent !== null ? { percent: sessionPercent, resetAt: extractTime(parts[1]) } : null,
-    weekly: weeklyPercent !== null ? { percent: weeklyPercent, resetAt: extractTime(parts[2]) } : null,
-    planTier: html.match(/class="[^"]*capitalize[^"]*"[^>]*>([^<]*)</)?.[1]?.trim() || null,
-  };
-}
-
-async function fetchOllamaSettingsUsage(cookie, proxyOptions) {
-  const response = await proxyAwareFetch(OLLAMA_SETTINGS_URL, {
-    redirect: "manual",
-    headers: {
-      Accept: "text/html",
-      Cookie: `${OLLAMA_SESSION_COOKIE}=${cookie}`,
-      "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Gecko/20100101 Firefox/152.0",
-    },
-  }, proxyOptions);
-  if (response.status >= 300 && response.status < 400) {
-    return { error: "Ollama Cloud cookie expired — copy a fresh __Secure-session cookie from ollama.com/settings." };
-  }
-  if (!response.ok) {
-    return { error: `Ollama Cloud settings error (${response.status}).` };
-  }
-  const parsed = parseOllamaSettingsHtml(await response.text());
-  if (!parsed) return { error: "Ollama Cloud settings page had no usage tracks." };
-  return { parsed };
-}
-
-export async function getOllamaUsage(apiKey, providerSpecificData, proxyOptions = null) {
-  if (!apiKey) {
+export async function getOllamaUsage(apiKey, proxyOptions = null) {
+  if (typeof apiKey !== "string" || !apiKey.trim()) {
     return { message: "Ollama Cloud API key not available." };
   }
-
-  try {
-    const response = await proxyAwareFetch("https://ollama.com/api/usage", {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        Accept: "application/json",
-      },
-    }, proxyOptions);
-
-    if (response.status === 401 || response.status === 403) {
-      return { message: "Ollama Cloud API key invalid or expired." };
-    }
-
-    if (!response.ok) {
-      return { message: `Ollama Cloud usage API error (${response.status}).` };
-    }
-
-    let data;
+  const token = apiKey.trim();
+  const cacheKey = createHash("sha256").update(token).digest("hex");
+  const cached = ollamaUsageCache.get(cacheKey);
+  if (cached?.promise) return cached.promise;
+  if (cached?.expiresAt > Date.now()) return cached.result;
+  const config = U("ollama");
+  const task = (async () => {
+    let ttlMs = 0;
+    let result;
     try {
-      data = await response.json();
-    } catch {
-      return { message: "Ollama Cloud usage response was not JSON." };
-    }
-
-    // Best-effort plan label from /api/me
-    const me = await proxyAwareFetch("https://ollama.com/api/me", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        Accept: "application/json",
-        "Content-Length": "0",
-      },
-    }, proxyOptions).then((r) => (r.ok ? r.json() : null)).catch(() => null);
-
-    const planRaw = typeof me?.Plan === "string" ? me.Plan : "";
-    const plan = planRaw
-      ? planRaw.charAt(0).toUpperCase() + planRaw.slice(1).toLowerCase()
-      : "Ollama Cloud";
-
-    const limits = data?.limits && typeof data.limits === "object" ? data.limits : {};
-
-    // Ollama `usage` is a 0..1 ratio (1.0 = limit reached). Convert to a 0..100
-    // bar. Do NOT set absolute `remaining` — QuotaTable reads remainingPercentage.
-    // The API exposes no reset timestamp: both windows are ROLLING (usage frees
-    // up as requests age out), so any "resets at" date would be fabricated.
-    function ratioQuota(usageRatio, resetAt = null) {
-      const ratio = Math.max(0, Math.min(1, Number(usageRatio) || 0));
-      const usedPct = Math.round(ratio * 100);
-      return { used: usedPct, total: 100, remainingPercentage: 100 - usedPct, resetAt, unlimited: false };
-    }
-
-    const monthlyResetAt = planRaw.toLowerCase() === "free" && me?.CreatedAt
-      ? nextMonthlyResetFromSignup(me.CreatedAt)
-      : null;
-
-    const quotas = {};
-    for (const [key, label] of Object.entries(OLLAMA_LIMIT_WINDOWS)) {
-      const raw = limits[key]?.usage;
-      if (raw === undefined || raw === null) continue;
-      const ratio = Number(raw);
-      if (Number.isNaN(ratio)) continue;
-      quotas[label] = ratioQuota(ratio, key === "monthly" ? monthlyResetAt : null);
-    }
-
-    if (Object.keys(quotas).length === 0) {
-      return {
-        plan,
-        message: "Ollama Cloud did not report subscription limits. Usage statistics do not represent remaining quota.",
-        quotas: {},
-      };
-    }
-
-    // Optional precision layer: scrape the settings page with the browser
-    // session cookie for exact reset dates. Fail-open — ratios above remain.
-    const cookie = resolveOllamaUsageCookie(providerSpecificData);
-    if (cookie) {
-      const scraped = await fetchOllamaSettingsUsage(cookie, proxyOptions).catch(() => ({ error: "Ollama settings fetch failed" }));
-      if (scraped.parsed) {
-        for (const [name, win] of Object.entries(scraped.parsed)) {
-          if (name === "planTier") continue;
-          if (!win || !win.resetAt) continue;
-          const key = name === "session" ? "Session (5h)" : "Weekly (7d)";
-          if (quotas[key]) quotas[key].resetAt = win.resetAt;
+      const response = await fetchWithTimeout(config.url, {
+        headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+      }, undefined, proxyOptions);
+      if (!response.ok) await response.body?.cancel();
+      if (response.status === 429) {
+        const retry = response.headers.get("retry-after");
+        const seconds = retry?.trim() ? Number(retry) : NaN;
+        const deadline = Number.isFinite(seconds) ? Date.now() + seconds * 1000 : Date.parse(retry || "");
+        ttlMs = Math.min(MAX_RATE_LIMIT_COOLDOWN_MS, Math.max(config.cacheTtlMs, Number.isFinite(deadline) ? deadline - Date.now() : 0));
+        result = { message: "Ollama Cloud balance API rate limited. Try again after the retry time.", retryAfter: new Date(Date.now() + ttlMs).toISOString() };
+      } else if (response.status === 401 || response.status === 403) {
+        result = { message: "Ollama Cloud API key invalid or expired." };
+      } else if (!response.ok) {
+        result = { message: `Ollama Cloud balance API error (${response.status}).` };
+      } else {
+        const data = await response.json();
+        const included = data?.included;
+        const quotas = {};
+        const balance = toFiniteNumber(included?.balance_usd, null);
+        const allowance = toFiniteNumber(included?.allowance_usd, null);
+        if (balance !== null && allowance !== null && allowance >= 0) {
+          quotas["Monthly credits (USD)"] = {
+            used: Math.max(0, allowance - balance), total: allowance, unit: "USD",
+            remainingPercentage: allowance > 0 ? Math.max(0, Math.min(100, balance / allowance * 100)) : 0,
+            resetAt: parseResetTime(included?.period?.until), unlimited: false,
+            detail: `Remaining: ${balance.toFixed(2)} USD`,
+          };
         }
+        for (const [name, label] of [["session", "Session (5h)"], ["weekly", "Weekly (7d)"]]) {
+          const remaining = toFiniteNumber(included?.[name]?.remaining_percent, null);
+          if (remaining === null) continue;
+          const percent = Math.max(0, Math.min(100, remaining));
+          quotas[label] = { used: 100 - percent, total: 100, remainingPercentage: percent,
+            resetAt: parseResetTime(included[name].resets_at), unlimited: false };
+        }
+        const purchased = toFiniteNumber(data?.purchased?.balance_usd, null);
+        if (purchased !== null) quotas["Purchased credits (USD)"] = creditBalance(purchased, "USD");
+        result = Object.keys(quotas).length
+          ? { plan: "Ollama Cloud", quotas }
+          : { message: "Ollama Cloud did not report balance or subscription limits.", quotas: {} };
+        if (Object.keys(quotas).length) ttlMs = config.cacheTtlMs;
       }
+    } catch {
+      result = { message: "Unable to fetch Ollama Cloud balance. Try refreshing later." };
     }
-
-    return { plan, quotas, ...(cookie ? {} : { cookieHint: "Set OLLAMA_USAGE_COOKIE (or connection ollamaUsageCookie) for exact reset dates" }) };
-  } catch (error) {
-    return { message: `Ollama Cloud error: ${error.message}` };
+    if (ttlMs > 0) ollamaUsageCache.set(cacheKey, { result, expiresAt: Date.now() + ttlMs });
+    else ollamaUsageCache.delete(cacheKey);
+    return result;
+  })();
+  if (!ollamaUsageCache.has(cacheKey) && ollamaUsageCache.size >= config.maxCacheEntries) {
+    ollamaUsageCache.delete(ollamaUsageCache.keys().next().value);
   }
+  ollamaUsageCache.set(cacheKey, { promise: task });
+  return task;
 }
 
 export { getGlmUsage } from "./glm.js";

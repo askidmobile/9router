@@ -1,278 +1,124 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
-  proxyAwareFetch: vi.fn(),
-}));
-
+vi.mock("../../open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: vi.fn() }));
 import { proxyAwareFetch } from "../../open-sse/utils/proxyFetch.js";
 import { getUsageForProvider } from "../../open-sse/services/usage.js";
-import {
-  USAGE_SUPPORTED_PROVIDERS,
-  USAGE_APIKEY_PROVIDERS,
-} from "../../src/shared/constants/providers.js";
+import { USAGE_SUPPORTED_PROVIDERS, USAGE_APIKEY_PROVIDERS } from "../../src/shared/constants/providers.js";
 import { parseQuotaData } from "../../src/app/(dashboard)/dashboard/usage/components/ProviderLimits/utils.js";
 
-const USAGE_URL = "https://ollama.com/api/usage";
-const ME_URL = "https://ollama.com/api/me";
-
-function jsonResponse(body, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
-}
-
-const SAMPLE_USAGE = {
-  activity: {
-    cost: "0.00000",
-    period: {
-      type: "last_4_weeks",
-      starting_at: "2026-07-01T00:00:00Z",
-      ending_at: "2026-07-29T00:00:00Z",
-    },
-    models: [],
-  },
-  limits: {
-    session: { usage: 0, models: [] },
-    weekly: {
-      usage: 1,
-      models: [
-        { name: "glm-5.2", request_count: 5967 },
-        { name: "kimi-k2.5", request_count: 2 },
-      ],
-    },
-  },
+const URL = "https://ollama.com/api/balance";
+const BALANCE = {
+  included: { balance_usd: 72.5, allowance_usd: 100, period: { from: "2026-09-15T09:30:00Z", until: "2026-10-15T09:30:00Z" } },
+  purchased: { balance_usd: 25 },
 };
-
-const SAMPLE_FREE_USAGE = {
-  activity: {
-    cost: "0.00000",
-    period: {
-      type: "last_4_weeks",
-      starting_at: "2026-08-24T00:00:00Z",
-      ending_at: "2026-09-18T15:03:00Z",
-    },
-    models: [],
-  },
-  limits: {
-    monthly: {
-      usage: 0.021,
-      models: [
-        { name: "gpt-oss:120b", request_count: 6 },
-        { name: "gemma4:31b", request_count: 6 },
-      ],
-    },
-  },
+const LEGACY = {
+  included: {
+    session: { remaining_percent: 75, resets_at: "2026-10-01T07:00:00Z" },
+    weekly: { remaining_percent: 40, resets_at: "2026-10-05T00:00:00Z" },
+  }, purchased: { balance_usd: 0 },
 };
+let key;
+let sequence = 0;
+const read = (overrides = {}, options = {}) => getUsageForProvider({ provider: "ollama", apiKey: key, ...overrides }, null, options);
 
-const SAMPLE_ME = {
-  Plan: "max",
-};
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-10-01T00:00:00Z"));
+  key = `fixture-${++sequence}`;
+});
+afterEach(() => vi.useRealTimers());
 
-describe("ollama registry usage flags", () => {
-  it("is listed for apikey quota dashboard", () => {
+describe("Ollama official balance API", () => {
+  it("supports API-key quota tracking", () => {
     expect(USAGE_SUPPORTED_PROVIDERS).toContain("ollama");
     expect(USAGE_APIKEY_PROVIDERS).toContain("ollama");
   });
-});
 
-describe("getUsageForProvider(ollama)", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  it("reads monthly credits and purchased balance using only the API key", async () => {
+    proxyAwareFetch.mockResolvedValueOnce(Response.json(BALANCE));
+    const result = await read({ providerSpecificData: { ollamaUsageCookie: "obsolete-cookie" } });
+    expect(proxyAwareFetch).toHaveBeenCalledOnce();
+    expect(proxyAwareFetch).toHaveBeenCalledWith(URL, expect.objectContaining({
+      headers: { Authorization: `Bearer ${key}`, Accept: "application/json" },
+      signal: expect.any(AbortSignal),
+    }), null);
+    expect(result.cookieHint).toBeUndefined();
+    expect(result.quotas["Monthly credits (USD)"]).toMatchObject({
+      used: 27.5, total: 100, remainingPercentage: 72.5, resetAt: new Date(BALANCE.included.period.until).toISOString(), unit: "USD",
+    });
+    expect(result.quotas["Purchased credits (USD)"]).toMatchObject({ total: 25, used: 0, isCreditBalance: true, currency: "USD" });
+    const rows = parseQuotaData("ollama", result);
+    expect(rows.find(r => r.name === "Purchased credits (USD)")).toMatchObject({ total: 25, isCreditBalance: true, currency: "USD" });
+    expect(rows.find(r => r.name === "Monthly credits (USD)")).toMatchObject({ unit: "USD", remainingPercentage: 72.5 });
   });
 
-  it("GETs /api/usage with Bearer apiKey and POSTs /api/me for plan", async () => {
-    proxyAwareFetch
-      .mockResolvedValueOnce(jsonResponse(SAMPLE_USAGE))
-      .mockResolvedValueOnce(jsonResponse(SAMPLE_ME));
+  it("maps legacy remaining percentages without a cookie or guessed reset dates", async () => {
+    proxyAwareFetch.mockResolvedValueOnce(Response.json(LEGACY));
+    const result = await read();
+    expect(result.quotas["Session (5h)"]).toEqual({ used: 25, total: 100, remainingPercentage: 75, resetAt: new Date(LEGACY.included.session.resets_at).toISOString(), unlimited: false });
+    expect(result.quotas["Weekly (7d)"]).toMatchObject({ used: 60, remainingPercentage: 40, resetAt: new Date(LEGACY.included.weekly.resets_at).toISOString() });
+    expect(result.quotas["Session (5h)"].remaining).toBeUndefined();
+    expect(result.quotas["Purchased credits (USD)"].total).toBe(0);
+    expect(proxyAwareFetch).toHaveBeenCalledOnce();
+  });
 
-    const usage = await getUsageForProvider({
-      provider: "ollama",
-      apiKey: "k",
-      providerSpecificData: {},
-    });
+  it("preserves zero balances and clamps exhausted credits to zero percent", async () => {
+    proxyAwareFetch.mockResolvedValueOnce(Response.json({ included: { balance_usd: 0, allowance_usd: 60 }, purchased: { balance_usd: 0 } }));
+    const result = await read();
+    expect(result.quotas["Monthly credits (USD)"]).toMatchObject({ used: 60, remainingPercentage: 0 });
+    expect(result.quotas["Purchased credits (USD)"].total).toBe(0);
+  });
 
-    expect(usage.message).toBeUndefined();
-    expect(usage.plan).toBe("Max");
-    expect(usage.quotas["Session (5h)"]).toMatchObject({
-      used: 0,
-      total: 100,
-      remainingPercentage: 100,
-      unlimited: false,
-    });
-    expect(usage.quotas["Weekly (7d)"]).toMatchObject({
-      used: 100,
-      total: 100,
-      remainingPercentage: 0,
-      unlimited: false,
-    });
-    // Must not set absolute remaining — UI treats remaining as %
-    expect(usage.quotas["Session (5h)"].remaining).toBeUndefined();
-    expect(usage.quotas["Weekly (7d)"].remaining).toBeUndefined();
-
+  it("coalesces parallel refreshes and caches reads for one minute, including force refresh", async () => {
+    proxyAwareFetch.mockResolvedValue(Response.json(BALANCE));
+    const [a,b] = await Promise.all([read(), read()]);
+    expect(a).toEqual(b);
+    await read({}, { force: true });
+    expect(proxyAwareFetch).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(60_001);
+    proxyAwareFetch.mockResolvedValueOnce(Response.json(BALANCE));
+    await read();
     expect(proxyAwareFetch).toHaveBeenCalledTimes(2);
-
-    const [usageUrl, usageOpts] = proxyAwareFetch.mock.calls[0];
-    expect(usageUrl).toBe(USAGE_URL);
-    expect(usageOpts.headers.Authorization).toBe("Bearer k");
-    expect(usageOpts.headers.Accept).toBe("application/json");
-
-    const [meUrl, meOpts] = proxyAwareFetch.mock.calls[1];
-    expect(meUrl).toBe(ME_URL);
-    expect(meOpts.method).toBe("POST");
-    expect(meOpts.headers.Authorization).toBe("Bearer k");
-    expect(meOpts.headers["Content-Length"]).toBe("0");
   });
 
-  it("maps the free plan's monthly window", async () => {
-    proxyAwareFetch
-      .mockResolvedValueOnce(jsonResponse(SAMPLE_FREE_USAGE))
-      .mockResolvedValueOnce(jsonResponse({ Plan: "free" }));
-
-    const usage = await getUsageForProvider({
-      provider: "ollama",
-      apiKey: "k",
-      providerSpecificData: {},
-    });
-
-    expect(usage.message).toBeUndefined();
-    expect(usage.plan).toBe("Free");
-    expect(Object.keys(usage.quotas)).toEqual(["Monthly"]);
-    expect(usage.quotas["Monthly"]).toMatchObject({
-      used: 2,
-      total: 100,
-      remainingPercentage: 98,
-      unlimited: false,
-    });
-    expect(usage.quotas["Monthly"].remaining).toBeUndefined();
-    expect(usage.quotas["Monthly"].resetAt).toBeNull();
+  it("does not share cached balances between credentials", async () => {
+    proxyAwareFetch.mockResolvedValueOnce(Response.json(BALANCE)).mockResolvedValueOnce(Response.json(LEGACY));
+    expect((await read()).quotas["Monthly credits (USD)"]).toBeDefined();
+    expect((await read({ apiKey: key + '-other' })).quotas["Session (5h)"]).toBeDefined();
+    expect(proxyAwareFetch).toHaveBeenCalledTimes(2);
   });
 
-  describe("free plan monthly reset from signup date", () => {
-    afterEach(() => {
-      vi.useRealTimers();
-    });
-
-    async function monthlyResetAt(createdAt, now) {
-      vi.useFakeTimers();
-      vi.setSystemTime(new Date(now));
-      proxyAwareFetch
-        .mockResolvedValueOnce(jsonResponse(SAMPLE_FREE_USAGE))
-        .mockResolvedValueOnce(jsonResponse({ Plan: "free", CreatedAt: createdAt }));
-
-      const usage = await getUsageForProvider({
-        provider: "ollama",
-        apiKey: "k",
-        providerSpecificData: {},
-      });
-      return usage.quotas["Monthly"].resetAt;
-    }
-
-    it("uses the signup day of the next month", async () => {
-      expect(await monthlyResetAt("2025-09-06T22:15:39.871687Z", "2026-09-18T15:03:00Z"))
-        .toBe("2026-10-06T22:15:39.000Z");
-    });
-
-    it("stays in the current month when the signup day is still ahead", async () => {
-      expect(await monthlyResetAt("2026-09-18T09:50:49.514335Z", "2026-09-18T15:33:33Z"))
-        .toBe("2026-10-18T09:50:49.000Z");
-      expect(await monthlyResetAt("2025-09-25T10:00:00Z", "2026-09-18T15:33:33Z"))
-        .toBe("2026-09-25T10:00:00.000Z");
-    });
-
-    it("clamps the signup day to shorter months", async () => {
-      expect(await monthlyResetAt("2026-01-31T12:00:00Z", "2026-02-10T00:00:00Z"))
-        .toBe("2026-02-28T12:00:00.000Z");
-    });
-
-    it("skips the reset when the plan is not free", async () => {
-      vi.useFakeTimers();
-      vi.setSystemTime(new Date("2026-09-18T15:03:00Z"));
-      proxyAwareFetch
-        .mockResolvedValueOnce(jsonResponse(SAMPLE_FREE_USAGE))
-        .mockResolvedValueOnce(jsonResponse({ Plan: "pro", CreatedAt: "2025-09-06T22:15:39Z" }));
-
-      const usage = await getUsageForProvider({
-        provider: "ollama",
-        apiKey: "k",
-        providerSpecificData: {},
-      });
-      expect(usage.quotas["Monthly"].resetAt).toBeNull();
-    });
+  it("honors Retry-After without fabricating chat quotas", async () => {
+    proxyAwareFetch.mockResolvedValueOnce(new Response("too many requests", { status: 429, headers: { "Retry-After": "120" } }));
+    const result = await read();
+    expect(result.message).toContain("balance API rate limited");
+    expect(result.quotas).toBeUndefined();
+    expect(result.retryAfter).toBe("2026-10-01T00:02:00.000Z");
+    await vi.advanceTimersByTimeAsync(61_000);
+    await read();
+    expect(proxyAwareFetch).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(60_000);
+    proxyAwareFetch.mockResolvedValueOnce(Response.json(LEGACY));
+    expect((await read()).quotas["Session (5h)"]).toBeDefined();
   });
 
-  it("reports no limits when no known window is present", async () => {
-    proxyAwareFetch
-      .mockResolvedValueOnce(jsonResponse({ activity: {}, limits: {} }))
-      .mockResolvedValueOnce(jsonResponse({ Plan: "free" }));
-
-    const usage = await getUsageForProvider({
-      provider: "ollama",
-      apiKey: "k",
-      providerSpecificData: {},
-    });
-
-    expect(usage.message).toMatch(/did not report subscription limits/i);
-    expect(usage.quotas).toEqual({});
+  it.each([401, 403, 500])("reports HTTP %s safely", async status => {
+    proxyAwareFetch.mockResolvedValueOnce(new Response("private upstream data", { status }));
+    const result = await read();
+    expect(result.message).toMatch(status === 500 ? /balance API error/ : /invalid or expired/);
+    expect(result.message).not.toContain("private upstream data");
   });
 
-  it("surfaces invalid key message on 401", async () => {
-    proxyAwareFetch.mockResolvedValueOnce(
-      jsonResponse({ error: "unauthorized" }, 401),
-    );
-
-    const usage = await getUsageForProvider({
-      provider: "ollama",
-      apiKey: "bad",
-    });
-
-    expect(usage.message).toMatch(/invalid/i);
-    expect(proxyAwareFetch).toHaveBeenCalledTimes(1);
+  it("does not invent limits from an unrelated or malformed response", async () => {
+    proxyAwareFetch.mockResolvedValueOnce(Response.json({ activity: {}, limits: {} }));
+    expect((await read()).quotas).toEqual({});
+    proxyAwareFetch.mockResolvedValueOnce(new Response("not JSON"));
+    expect((await read()).message).toContain("Unable to fetch");
   });
 
-  it("returns message when apiKey missing", async () => {
-    const usage = await getUsageForProvider({
-      provider: "ollama",
-      providerSpecificData: {},
-    });
-
-    expect(usage.message).toMatch(/api key/i);
+  it("does not fetch without credentials", async () => {
+    expect((await read({ apiKey: null })).message).toMatch(/API key/);
     expect(proxyAwareFetch).not.toHaveBeenCalled();
-  });
-});
-
-describe("parseQuotaData(ollama)", () => {
-  it("forwards remainingPercentage for dashboard bars", () => {
-    const rows = parseQuotaData("ollama", {
-      plan: "Max",
-      quotas: {
-        "Session (5h)": {
-          used: 0,
-          total: 100,
-          remainingPercentage: 100,
-          resetAt: null,
-        },
-        "Weekly (7d)": {
-          used: 100,
-          total: 100,
-          remainingPercentage: 0,
-          resetAt: null,
-        },
-      },
-    });
-
-    expect(rows).toHaveLength(2);
-    expect(rows[0]).toMatchObject({
-      name: "Session (5h)",
-      used: 0,
-      total: 100,
-      remainingPercentage: 100,
-    });
-    expect(rows[1]).toMatchObject({
-      name: "Weekly (7d)",
-      used: 100,
-      total: 100,
-      remainingPercentage: 0,
-    });
   });
 });

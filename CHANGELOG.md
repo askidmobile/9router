@@ -1,5 +1,7 @@
 # Askid fork (2026-10-20)
 
+- **Ollama quotas**: use the official API-key authenticated `/api/balance` for monthly included/purchased USD credits and legacy session/weekly remaining percentages and reset dates. Remove the settings-cookie prompt and HTML scraping; coalesce reads with a one-minute cache and respect balance-endpoint Retry-After. Document current plan concurrency separately from the router default.
+
 - **Routing**: pin chat conversations by dialogue prefix and enforce per-account parallel request limits (default 2), editable in Edit Connection. Spill saturated accounts to the next available account and release slots on stream completion, error or cancellation. Local capacity exhaustion does not freeze Combo providers.
 
 # v0.5.104 (2026-10-15)
