@@ -136,7 +136,7 @@ export default function QuotaTable({
   const hasHideAction = typeof onHideQuota === "function";
 
   return (
-    <div className="space-y-2">
+    <div className="@container space-y-2">
       <div className="flex items-center justify-between gap-2">
         <div className="text-[10px] text-text-muted">
           {sortedQuotas.length} quota{sortedQuotas.length > 1 ? "s" : ""}
@@ -200,18 +200,18 @@ export default function QuotaTable({
           return (
             <div
               key={`${quota.name}-${quota.index}`}
-              className={`flex items-center gap-2 border-b border-black/5 dark:border-white/5 hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors ${cellPad}`}
+              className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1.5 @min-[30rem]:flex @min-[30rem]:gap-2 border-b border-black/5 dark:border-white/5 hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors ${cellPad}`}
             >
               {/* Name */}
-              <div className="flex w-36 min-w-0 items-center gap-1.5">
+              <div className="flex min-w-0 items-center gap-1.5 @min-[30rem]:w-36">
                 <span className="text-[10px] shrink-0">{colors.emoji}</span>
-                <span className={`${nameText} font-medium text-text-primary truncate`}>
+                <span className={`${nameText} font-medium text-text-primary break-words`}>
                   {quota.name}
                 </span>
               </div>
 
               {/* Progress + used/total */}
-              <div className={`min-w-0 flex-1 ${compact ? "space-y-1" : "space-y-1.5"}`}>
+              <div className={`col-span-2 row-start-2 min-w-0 flex-1 ${compact ? "space-y-1" : "space-y-1.5"}`}>
                 {!isUnlimited && !isAmount && (
                 <div className={`${compact ? "h-1" : "h-1.5"} rounded-full overflow-hidden border ${colors.bgLight} ${
                   quota.remaining === 0 ? "border-black/10 dark:border-white/10" : "border-transparent"
@@ -223,9 +223,9 @@ export default function QuotaTable({
                 </div>
                 )}
 
-                <div className={`flex items-center justify-between gap-1 min-w-0 ${compact ? "text-[10px]" : "text-xs"}`}>
+                <div className={`flex flex-wrap items-center justify-between gap-x-2 gap-y-1 min-w-0 ${compact ? "text-[10px]" : "text-xs"}`}>
                   <span
-                    className="text-text-muted truncate"
+                    className="min-w-0 text-text-muted [overflow-wrap:anywhere]"
                     title={
                       isUnlimited
                         ? `${quota.used.toLocaleString()} ${quota.unit || ""} used · Unlimited`
@@ -244,16 +244,16 @@ export default function QuotaTable({
                     {isUnlimited ? "Unlimited" : isAmount ? "" : `${quota.remaining}%`}
                   </span>
                 </div>
-                {quota.detail && <div className="truncate text-[10px] text-text-muted" title={quota.detail}>{quota.detail}</div>}
-                {quota.observedAt && <div className="text-[10px] text-text-muted" title={new Date(quota.observedAt).toLocaleString()}>Last response: {new Date(quota.observedAt).toLocaleTimeString()}</div>}
+                {quota.detail && <div className="text-[10px] text-text-muted [overflow-wrap:anywhere]" title={quota.detail}>{quota.detail}</div>}
+                {quota.observedAt && <div className="text-[10px] text-text-muted [overflow-wrap:anywhere]" title={new Date(quota.observedAt).toLocaleString()}>Last response: {new Date(quota.observedAt).toLocaleTimeString()}</div>}
               </div>
 
               {/* Reset time */}
-              <div className="min-w-0 shrink">
+              <div className="col-span-2 row-start-3 min-w-0 shrink empty:hidden">
                 {countdown !== "-" || resetDisplay ? (
                   compact ? (
                     <div
-                      className={`${resetPrimary} text-text-primary font-medium truncate`}
+                      className={`${resetPrimary} text-text-primary font-medium break-words`}
                       title={resetSecondaryText || ""}
                     >
                       {countdown !== "-" ? countdownLabel : renderResetCell(resetPrimary)}
@@ -261,12 +261,12 @@ export default function QuotaTable({
                   ) : (
                     <div className="min-w-0 space-y-0.5">
                       {countdown !== "-" && (
-                        <div className={`${resetPrimary} text-text-primary font-medium truncate`}>
+                        <div className={`${resetPrimary} text-text-primary font-medium break-words`}>
                           {countdownLabel}
                         </div>
                       )}
                       {resetDisplay && (
-                        <div className={`${resetSecondary} text-text-muted truncate`}>
+                        <div className={`${resetSecondary} text-text-muted break-words`}>
                           {renderResetCell(resetSecondary)}
                         </div>
                       )}
@@ -282,7 +282,7 @@ export default function QuotaTable({
                 <button
                   type="button"
                   onClick={() => onHideQuota(quota)}
-                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-black/5 hover:text-text-primary dark:hover:bg-white/5"
+                  className="col-start-2 row-start-1 inline-flex h-6 w-6 shrink-0 items-center justify-center self-start rounded-md text-text-muted @min-[30rem]:self-center transition-colors hover:bg-black/5 hover:text-text-primary dark:hover:bg-white/5"
                   title="Hide this quota row"
                   aria-label={`Hide quota ${quota.name}`}
                 >
