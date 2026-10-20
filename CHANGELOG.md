@@ -1,3 +1,7 @@
+# Askid fork (2026-10-20)
+
+- **Routing**: pin chat conversations by dialogue prefix and enforce per-account parallel request limits (default 2), editable in Edit Connection. Spill saturated accounts to the next available account and release slots on stream completion, error or cancellation. Local capacity exhaustion does not freeze Combo providers.
+
 # v0.5.104 (2026-10-15)
 
 ## Features

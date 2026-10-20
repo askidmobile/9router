@@ -69,7 +69,7 @@ export function releaseConnectionSlot(connectionId) {
  * @param {string} connectionId
  * @returns {Response}
  */
-export function withSlotRelease(response, connectionId) {
+export function withSlotRelease(response, connectionId, signal) {
   if (!response || !connectionId || !response.body) {
     releaseConnectionSlot(connectionId);
     return response;
@@ -78,15 +78,16 @@ export function withSlotRelease(response, connectionId) {
   const release = () => {
     if (!done) {
       done = true;
+      signal?.removeEventListener("abort", release);
       releaseConnectionSlot(connectionId);
     }
   };
 
-  const { readable, writable } = new TransformStream({
-    flush() { release(); },
-    cancel() { release(); },
-  });
-  response.body.pipeTo(writable).catch(() => {}); // upstream done -> flush fires
+  if (signal?.aborted) release();
+  else signal?.addEventListener("abort", release, { once: true });
+  const { readable, writable } = new TransformStream({ flush: release });
+  // pipeTo settles on EOF, upstream error and downstream cancellation.
+  response.body.pipeTo(writable).then(release, release);
   return new Response(readable, {
     status: response.status,
     statusText: response.statusText,

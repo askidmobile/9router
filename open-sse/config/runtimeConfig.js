@@ -97,3 +97,6 @@ export function resolveRetryEntry(entry) {
 export const SKIP_PATTERNS = [
   "Please write a 5-10 word title for the following conversation:"
 ];
+
+// Internal admission failure; must not open an upstream provider circuit.
+export const LOCAL_CAPACITY_HEADER = "x-9router-local-capacity";

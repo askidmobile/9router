@@ -180,7 +180,8 @@ async function selectProviderCredentialsCore(provider, excludeConnectionIds = nu
     let candidates = availableConnections;
     let pinnedConnection = null;
     if (trackConcurrency) {
-      pinnedConnection = availableConnections.find(c => c.id === getSessionAffinity(affinityKey)) || null;
+      const affinityConnectionId = getSessionAffinity(affinityKey);
+      pinnedConnection = availableConnections.find(c => c.id === affinityConnectionId) || null;
       candidates = availableConnections.filter(c => getInflightCount(c.id) < connectionMaxConcurrent(c));
       if (candidates.length === 0) {
         log.warn("AUTH", `${provider} | all ${availableConnections.length} accounts busy (per-account concurrent limit)`);
@@ -208,7 +209,7 @@ async function selectProviderCredentialsCore(provider, excludeConnectionIds = nu
     }
     if (connection) {
       // skip strategy
-    } else if (affinityKey && pinnedConnection) {
+    } else if (affinityKey && pinnedConnection && candidates.some(c => c.id === pinnedConnection.id)) {
       // Continuity: this conversation already lives on this account.
       connection = pinnedConnection;
       log.info("AUTH", `${provider} | session affinity → pinned ${connection.id?.slice(0, 8)} (${connection.name || connection.email || "unnamed"})`);
@@ -269,7 +270,13 @@ async function selectProviderCredentialsCore(provider, excludeConnectionIds = nu
       if (affinityKey) setSessionAffinity(affinityKey, connection.id);
     }
 
-    const resolvedProxy = await resolveConnectionProxyConfig(connection.providerSpecificData || {}, providerId);
+    let resolvedProxy;
+    try {
+      resolvedProxy = await resolveConnectionProxyConfig(connection.providerSpecificData || {}, providerId);
+    } catch (error) {
+      if (slotAcquired) releaseConnectionSlot(connection.id);
+      throw error;
+    }
 
     return {
       authType: connection.authType,

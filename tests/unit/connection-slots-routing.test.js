@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   settings: { fallbackStrategy: "fill-first", providerStrategies: {} },
 }));
 
+vi.mock("@/lib/db/driver.js", () => ({ getAdapter: () => { throw new Error("Unexpected real database access"); } }));
 vi.mock("open-sse/index.js", () => ({}));
 vi.mock("../../open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: mocks.transport }));
 vi.mock("../../open-sse/utils/debugLog.js", () => ({ dbg: vi.fn(), isDebugEnabled: () => false }));
@@ -92,6 +93,8 @@ function callsFor(id) {
 }
 
 beforeEach(() => {
+  _resetConcurrency();
+  clearSessionAffinity();
   vi.resetAllMocks();
   mocks.settings = { fallbackStrategy: "fill-first", providerStrategies: {} };
   mocks.connections = [a("acct-a-111", 1, 2), a("acct-b-222", 2, 2)];
@@ -115,8 +118,8 @@ describe("chat path — per-account concurrency + session affinity", () => {
       return new Response(completion, { status: 200, headers: { "content-type": "application/json" } });
     });
     const p1 = handleChat(request(MODEL));
-    const p2 = handleChat(request(MODEL, { messages: [{ role: "user", content: "second independent task about vector databases" }] }));
-    const p3 = handleChat(request(MODEL, { messages: [{ role: "user", content: "a third unrelated conversation about guitar tuning" }] }));
+    const p2 = handleChat(request(MODEL));
+    const p3 = handleChat(request(MODEL));
     const responses = await Promise.all([p1, p2, p3]);
     for (const r of responses) expect(r.status).toBe(200);
     await Promise.all(responses.map((r) => r.text()));
@@ -124,7 +127,7 @@ describe("chat path — per-account concurrency + session affinity", () => {
     expect(getInflightCount("acct-b-222")).toBe(0);
     expect(callsFor("acct-a-111")).toBe(2);
     expect(callsFor("acct-b-222")).toBe(1);
-  }, 30000);
+  });
 
   it("affinity keeps one conversation on the same account across turns", async () => {
     const turn1 = await handleChat(request(MODEL));
@@ -155,7 +158,7 @@ describe("chat path — per-account concurrency + session affinity", () => {
     await turn3.text();
     expect(callsFor("acct-a-111")).toBe(3);
     expect(callsFor("acct-b-222")).toBe(0);
-  }, 30000);
+  });
 
   it("busy pinned account spills to a free alternative, and the conversation pins to the spill target", async () => {
     mocks.connections = [a("acct-a-111", 1, 1), a("acct-b-222", 2, 2)];
@@ -180,5 +183,5 @@ describe("chat path — per-account concurrency + session affinity", () => {
     await followUp.text();
     expect(callsFor("acct-b-222")).toBe(2);
     expect(callsFor("acct-a-111")).toBe(1);
-  }, 30000);
+  });
 });

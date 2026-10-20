@@ -52,7 +52,7 @@ function firstUserText(body) {
 function systemText(body) {
   if (typeof body?.system === "string") return body.system;
   if (Array.isArray(body?.system)) {
-    return body.system.map(textOf).join("\n");
+    return textOf(body.system);
   }
   if (Array.isArray(body?.messages)) {
     const m = body.messages.find(m => m?.role === "system");
@@ -96,12 +96,16 @@ export function getSessionAffinity(key) {
 
 export function setSessionAffinity(key, connectionId) {
   if (!key || !connectionId) return;
-  if (store.size >= MAX_ENTRIES) {
-    const entries = Array.from(store.values()).sort((a, b) => a.lastUsedAt - b.lastUsedAt);
-    for (const ev of entries) {
-      store.delete(ev.key);
-      if (store.size < MAX_ENTRIES) break;
+  if (!store.has(key) && store.size >= MAX_ENTRIES) {
+    let oldestKey;
+    let oldestTime = Infinity;
+    for (const [entryKey, entry] of store) {
+      if (entry.lastUsedAt < oldestTime) {
+        oldestKey = entryKey;
+        oldestTime = entry.lastUsedAt;
+      }
     }
+    store.delete(oldestKey);
   }
   store.set(key, { connectionId, lastUsedAt: Date.now() });
 }

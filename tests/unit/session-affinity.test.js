@@ -12,6 +12,7 @@ import {
   releaseConnectionSlot,
   getInflightCount,
   _resetConcurrency,
+  withSlotRelease,
 } from "../../src/sse/services/connectionConcurrency.js";
 
 describe("session affinity derivation", () => {
@@ -81,5 +82,40 @@ describe("per-account concurrent slots", () => {
     releaseConnectionSlot(conn);
     expect(getInflightCount(conn)).toBe(0);
     expect(tryAcquireConnectionSlot(conn, 2)).toBe(true);
+  });
+});
+
+
+describe("slot ownership across response termination", () => {
+  beforeEach(() => _resetConcurrency());
+
+  it.each(["error", "cancel", "abort"])("releases exactly once on %s", async mode => {
+    let upstream;
+    const abort = new AbortController();
+    const response = new Response(new ReadableStream({ start(out) { upstream = out; } }));
+    expect(tryAcquireConnectionSlot("stream", 2)).toBe(true);
+    const wrapped = withSlotRelease(response, "stream", abort.signal);
+    if (mode === "error") {
+      const read = wrapped.text();
+      upstream.error(new Error("upstream disconnected"));
+      await expect(read).rejects.toThrow("upstream disconnected");
+    } else if (mode === "cancel") {
+      await wrapped.body.cancel();
+    } else {
+      abort.abort();
+      await wrapped.body.cancel();
+    }
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(getInflightCount("stream")).toBe(0);
+    expect(tryAcquireConnectionSlot("stream", 2)).toBe(true);
+    abort.abort();
+    expect(getInflightCount("stream")).toBe(1);
+  });
+
+  it("evicts affinity records when the store reaches its cap", () => {
+    clearSessionAffinity();
+    for (let i = 0; i < 5001; i++) setSessionAffinity(String(i), "account");
+    expect(getSessionAffinity("0")).toBeNull();
+    expect(getSessionAffinity("5000")).toBe("account");
   });
 });

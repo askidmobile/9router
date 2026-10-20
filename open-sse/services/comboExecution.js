@@ -1,4 +1,4 @@
-import { HTTP_STATUS } from "../config/runtimeConfig.js";
+import { HTTP_STATUS, LOCAL_CAPACITY_HEADER } from "../config/runtimeConfig.js";
 import { COMBO_HEALTH_CONFIG } from "../config/comboHealth.js";
 import { GEMINI_FLEX_TIMEOUT_MS } from "../config/gemini.js";
 import { getComboHealth, freezeComboModel, clearComboModel } from "./comboHealth.js";
@@ -276,7 +276,9 @@ export async function runComboModelExecution({
       const text = await wait(response.text());
       let payload;
       try { payload = JSON.parse(text); } catch { /* Plain HTTP errors remain HTTP errors. */ }
-      await fail(response.status, `Upstream HTTP ${response.status}`, comboRetryAfter(response, payload));
+      if (response.headers.get(LOCAL_CAPACITY_HEADER) !== "1") {
+        await fail(response.status, `Upstream HTTP ${response.status}`, comboRetryAfter(response, payload));
+      }
       cleanup();
       return new Response(text, { status: response.status, statusText: response.statusText, headers: response.headers });
     }

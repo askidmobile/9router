@@ -27,6 +27,7 @@ import { updateProviderCredentials, checkAndRefreshToken } from "../services/tok
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
 import { stripModelContextMarker } from "open-sse/utils/modelMarkers.js";
 import { resolveGeminiServiceTier, splitGeminiModelId } from "open-sse/utils/geminiModels.js";
+import { LOCAL_CAPACITY_HEADER } from "open-sse/config/runtimeConfig.js";
 import { GEMINI_FLEX_SUFFIX } from "open-sse/config/gemini.js";
 import { runComboModelExecution } from "open-sse/services/comboExecution.js";
 import { getKeyAccessContext, enforceKeyAccess, filterAdapterModels } from "../services/keyAccess.js";
@@ -310,7 +311,10 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       // In a combo, don't starve fallback to the next member on a busy provider.
       affinityQueueMs: execution.combo ? 5_000 : undefined,
     });
-    if (request?.signal?.aborted) return errorResponse(499, "Request aborted");
+    if (request?.signal?.aborted) {
+      if (credentials?._slotAcquired) releaseConnectionSlot(credentials.connectionId);
+      return errorResponse(499, "Request aborted");
+    }
 
     // Every account of this provider is at its concurrent-request cap.
     if (credentials?.allBusy) {
@@ -321,7 +325,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         `[${provider}/${model}] All accounts at their concurrent-request limit`,
         retryAfter,
         "retry after a few seconds",
-        lastHeaders
+        { ...lastHeaders, [LOCAL_CAPACITY_HEADER]: "1" }
       );
     }
 
@@ -346,7 +350,6 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     let slotRelease = credentials._slotAcquired
       ? () => releaseConnectionSlot(credentials.connectionId)
       : null;
-    let slotHeld = !!slotRelease;
     try {
     // Account selection shown in the unified "▶" line (acc:...)
     const refreshedCredentials = await checkAndRefreshToken(provider, credentials);
@@ -414,7 +417,9 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
     if (request?.signal?.aborted || result.status === 499) return errorResponse(499, "Request aborted");
     if (result.success) {
-      const released = withSlotRelease(result.response, credentials.connectionId);
+      const released = credentials._slotAcquired
+        ? withSlotRelease(result.response, credentials.connectionId, request?.signal)
+        : result.response;
       slotRelease = null;
       return released;
     }
@@ -457,7 +462,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
     return result.response;
     } finally {
-      if (slotHeld && slotRelease) slotRelease();
+      slotRelease?.();
     }
   }
 }

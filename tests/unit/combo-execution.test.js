@@ -7,6 +7,7 @@ vi.mock("../../open-sse/services/comboHealth.js", () => ({
 }));
 
 import { runComboModelExecution } from "../../open-sse/services/comboExecution.js";
+import { LOCAL_CAPACITY_HEADER } from "../../open-sse/config/runtimeConfig.js";
 import { createComboDeadlineError } from "../../open-sse/utils/abort.js";
 
 const NOW = 1_800_000_000_000;
@@ -522,4 +523,13 @@ describe("unexpected execution errors never freeze a working provider", () => {
     expect(body.error?.message || body.message || "").toContain("Cannot read properties of null");
     expect(frozen).toHaveLength(0);
   });
+});
+
+
+it("does not freeze an upstream pair on local account saturation", async () => {
+  execute.mockResolvedValue(new Response("Accounts busy", { status: 503, headers: { [LOCAL_CAPACITY_HEADER]: "1" } }));
+  const response = await run();
+  expect(response.status).toBe(503);
+  expect(await response.text()).toBe("Accounts busy");
+  expect(health.freeze).not.toHaveBeenCalled();
 });
