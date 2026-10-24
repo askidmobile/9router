@@ -20,6 +20,7 @@ import { resolveZedModels } from "open-sse/shared/zedAuth.js";
 import { NOUS_MODELS_URL, normalizeNousModels } from "open-sse/services/nous.js";
 import { ORCAROUTER_MODELS_URL } from "open-sse/config/orcarouter.js";
 import { normalizeOrcaRouterModels } from "open-sse/services/orcarouter.js";
+import { resolveRespanModels } from "open-sse/services/respan.js";
 import codexProvider from "open-sse/providers/registry/codex.js";
 
 const GEMINI_CLI_MODELS_URL = "https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels";
@@ -225,6 +226,31 @@ const PROVIDER_MODELS_CONFIG = {
       id: `orcarouter/${model.id}`,
       upstreamModelId: model.id,
     })),
+  },
+  // Respan publishes a paginated POST listing, not GET /models — a custom
+  // resolver walks the pages. Ids already carry the `vendor/model` namespace,
+  // so they are prefixed to keep Basic Chat from parsing it as the provider.
+  respan: {
+    customResolver: async (connection) => {
+      let warning;
+      try {
+        const result = await resolveRespanModels(connection);
+        if (result.models.length) {
+          return {
+            models: result.models.map((model) => ({
+              ...model,
+              id: `respan/${model.id}`,
+              upstreamModelId: model.id,
+            })),
+          };
+        }
+        warning = "Respan returned no models; falling back to static catalog.";
+      } catch (error) {
+        warning = `Failed to fetch Respan models: ${error.message}`;
+        console.log("Failed to fetch Respan models dynamically, falling back to static:", error.message);
+      }
+      return { models: [], warning };
+    },
   },
   nous: {
     ...createOpenAIModelsConfig(NOUS_MODELS_URL),

@@ -1,5 +1,6 @@
 // Respan Gateway — OpenAI-compatible router (api.respan.ai). Locks the registry
-// contract: endpoint, Bearer auth, validateUrl probe, passthrough + seed models.
+// contract: endpoint, Bearer auth, validateUrl probe, passthrough + seed models,
+// and the paginated POST catalog normalizer (caps/pricing shapes).
 import { describe, expect, it } from "vitest";
 
 import REGISTRY from "../../open-sse/providers/registry/index.js";
@@ -7,6 +8,8 @@ import { PROVIDERS, PROVIDER_MODELS } from "../../open-sse/providers/index.js";
 import { isValidModel, getDefaultModel } from "../../open-sse/config/providerModels.js";
 import { AI_PROVIDERS, getProvidersByKind } from "@/shared/constants/providers";
 import { parseModel, resolveProviderAlias } from "../../open-sse/services/model.js";
+import { normalizeRespanModel } from "../../open-sse/services/respan.js";
+import { catalogMetadata } from "@/lib/providerCatalog/metadata.js";
 
 const entry = REGISTRY.find((e) => e.id === "respan");
 
@@ -53,5 +56,33 @@ describe("Respan Gateway provider", () => {
     expect(provider.authType).toBe("apikey");
     expect(provider.notice?.apiKeyUrl).toBe("https://platform.respan.ai");
     expect(getProvidersByKind("llm").some((p) => p.id === "respan")).toBe(true);
+  });
+});
+
+describe("Respan catalog normalizer", () => {
+  const row = {
+    model_name: "anthropic/claude-sonnet-5",
+    status: "active",
+    model_type: "text",
+    max_context_window: 200000,
+    input_cost: 2.0, input_price_unit: "token",
+    output_cost: 10.0, output_price_unit: "token",
+    cache_hit_input_cost: 0.2,
+    cache_creation_input_cost: 2.5,
+    supported_params: { tools: { name: "tools" }, reasoning_effort: {} },
+    capability: { function_call: true, vision: false },
+  };
+
+  it("maps a listing row into caps and per-1M pricing", () => {
+    const meta = catalogMetadata(normalizeRespanModel(row));
+    expect(meta.id).toBe("anthropic/claude-sonnet-5");
+    expect(meta.pricing).toEqual({ input: 2, output: 10, cached: 0.2, cache_creation: 2.5 });
+    expect(meta.caps).toMatchObject({ contextWindow: 200000, tools: true, reasoning: true });
+  });
+
+  it("drops deprecated rows and negative (unsupported) cache costs", () => {
+    expect(normalizeRespanModel({ ...row, status: "deprecated" })).toBeNull();
+    const noCache = normalizeRespanModel({ ...row, cache_hit_input_cost: -1, cache_creation_input_cost: -1 });
+    expect(catalogMetadata(noCache).pricing).toEqual({ input: 2, output: 10 });
   });
 });

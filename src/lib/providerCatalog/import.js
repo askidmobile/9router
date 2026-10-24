@@ -20,6 +20,7 @@ import { getRegistryEntry, deriveModelsEndpoint, parseOpenAIStyleModels } from "
 import { getSupplementaryMetadata, mergeModelCapabilities } from "../modelSources/index.js";
 import { catalogMetadata } from "./metadata.js";
 import { normalizeOrcaRouterModels } from "open-sse/services/orcarouter.js";
+import { resolveRespanModels } from "open-sse/services/respan.js";
 
 export const VALID_TARGETS = ["pricing", "caps"];
 // A runaway catalog must not write tens of thousands of rows in one pass.
@@ -49,6 +50,13 @@ function catalogRequest(connection) {
 
 /** Fetch the provider's own listing, or null when it publishes none. */
 export async function resolveProviderCatalog(connection) {
+  // Respan publishes a paginated POST listing instead of GET /models — the
+  // service walks the pages and returns already-normalized entries.
+  if (connection.provider === "respan") {
+    const proxy = await resolveConnectionProxyConfig(connection.providerSpecificData || {}, connection.provider);
+    const { models } = await withProxyContext(proxy, () => resolveRespanModels(connection));
+    return models.length ? { models, source: "provider" } : null;
+  }
   const request = catalogRequest(connection);
   if (!request) return null;
   const proxy = await resolveConnectionProxyConfig(connection.providerSpecificData || {}, connection.provider);
