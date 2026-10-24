@@ -30,6 +30,7 @@ const ALIAS_TOKENS = [
   "mm","minimax-code","mmg","minimax-code-global",
   "nous","nous-portal","nous-research","ns",
   "typesafe",
+  "respan","rs",
 ];
 
 // Sort idToAlias by key — runtime accesses by key, order is irrelevant (content-based)

@@ -136,7 +136,9 @@
     "nous-portal": "nous",
     "nous-research": "nous",
     "ns": "nous",
-    "typesafe": "typesafe"
+    "typesafe": "typesafe",
+    "respan": "respan",
+    "rs": "respan"
   },
   "idToAlias": {
     "agnes": "agnes",
@@ -249,6 +251,7 @@
     "qoder-cn": "qdcn",
     "recraft": "recraft",
     "requesty": "req",
+    "respan": "respan",
     "runwayml": "runwayml",
     "sambanova": "samba",
     "sdwebui": "sdwebui",
@@ -387,6 +390,7 @@
     "qianfan",
     "recraft",
     "req",
+    "respan",
     "runwayml",
     "samba",
     "sdwebui",

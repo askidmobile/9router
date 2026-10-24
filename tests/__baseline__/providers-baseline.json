@@ -1,4 +1,9 @@
 {
+  "respan": {
+    "baseUrl": "https://api.respan.ai/api/chat/completions",
+    "validateUrl": "https://api.respan.ai/api/models/list/",
+    "format": "openai"
+  },
   "agnes": {
     "baseUrl": "https://apihub.agnes-ai.com/v1/chat/completions",
     "validateUrl": "https://apihub.agnes-ai.com/v1/models",
