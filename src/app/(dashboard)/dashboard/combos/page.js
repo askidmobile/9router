@@ -65,7 +65,18 @@ function normalizeCapEntry(entry) {
   return { ...EMPTY_CAP_ENTRY };
 }
 
-const STRATEGY_OPTIONS = [
+const STRATEGY_LABELS = {
+  fallback: "Fallback",
+  "round-robin": "Round Robin",
+  smart: "Smart Router",
+  fusion: "Fusion",
+};
+
+// "default" is a UI-only sentinel meaning "no per-combo override"; it is
+// translated to an empty fallbackStrategy before persisting, so the backend
+// keeps resolving entry || settings.comboStrategy || "fallback".
+const buildStrategyOptions = (globalStrategy) => [
+  { value: "default", label: `Default — global: ${STRATEGY_LABELS[globalStrategy] || STRATEGY_LABELS.fallback}` },
   { value: "fallback", label: "Fallback — try in order" },
   { value: "round-robin", label: "Round Robin — rotate" },
   { value: "smart", label: "Smart Router — System One" },
@@ -153,6 +164,7 @@ export default function CombosPage() {
     return m;
   }, [combos, getCaps]);
   const [comboStrategies, setComboStrategies] = useState({});
+  const [globalComboStrategy, setGlobalComboStrategy] = useState("fallback");
   const [capacityAdapter, setCapacityAdapter] = useState(EMPTY_CAPACITY_ADAPTER);
   const [confirmState, setConfirmState] = useState(null);
   const [presetLoading, setPresetLoading] = useState(null); // "cursor" | "claude" | null
@@ -315,6 +327,7 @@ export default function CombosPage() {
         setActiveProviders(providersData.connections || []);
       }
       setComboStrategies(settingsData.comboStrategies || {});
+      setGlobalComboStrategy(settingsData.comboStrategy || "fallback");
       const rawAdapter = settingsData.capacityAdapter || {};
       const normalized = {};
       for (const cap of CAPACITY_ADAPTER_CAPS) {
@@ -350,7 +363,7 @@ export default function CombosPage() {
     if (Number.isSafeInteger(maxOutput) && maxOutput > 0) next.maxOutput = maxOutput;
     else delete next.maxOutput;
     const extras = Object.keys(next).filter((key) => key !== "fallbackStrategy");
-    if ((!next.fallbackStrategy || next.fallbackStrategy === "fallback") && extras.length === 0) delete updated[name];
+    if (!next.fallbackStrategy && extras.length === 0) delete updated[name];
     else updated[name] = next;
     await persistComboStrategies(updated);
   };
@@ -471,15 +484,17 @@ export default function CombosPage() {
     });
   };
 
-  // Merge a per-combo strategy patch into settings.comboStrategies. Passing an empty
-  // patch (strategy back to default "fallback") drops the entry entirely.
+  // Merge a per-combo strategy patch into settings.comboStrategies. An empty
+  // strategy ("default", inherit global) with no extras drops the entry; any
+  // explicit strategy — including "fallback" — is stored as a real override
+  // of the global combo strategy.
   const handleSetComboStrategy = async (comboName, patch) => {
     try {
       const updated = { ...comboStrategies };
       const next = { ...(updated[comboName] || {}), ...patch };
-      // Prune to keep settings clean: default fallback with no extras = no entry.
+      // Prune to keep settings clean: inherited strategy with no extras = no entry.
       const extras = Object.keys(next).filter((key) => key !== "fallbackStrategy");
-      if ((!next.fallbackStrategy || next.fallbackStrategy === "fallback") && extras.length === 0) {
+      if (!next.fallbackStrategy && extras.length === 0) {
         delete updated[comboName];
       } else {
         updated[comboName] = next;
@@ -497,13 +512,15 @@ export default function CombosPage() {
     try {
       const updated = { ...comboStrategies };
       for (const combo of selectedCombos) {
-        if (!strategy || strategy === "fallback") {
+        const next = {
+          ...(updated[combo.name] || {}),
+          fallbackStrategy: strategy === "default" ? "" : strategy,
+        };
+        const extras = Object.keys(next).filter((key) => key !== "fallbackStrategy");
+        if (!next.fallbackStrategy && extras.length === 0) {
           delete updated[combo.name];
         } else {
-          updated[combo.name] = {
-            ...(updated[combo.name] || {}),
-            fallbackStrategy: strategy,
-          };
+          updated[combo.name] = next;
         }
       }
       await persistComboStrategies(updated);
@@ -642,7 +659,7 @@ export default function CombosPage() {
                 <>
                   <div className="w-full min-w-[160px] sm:w-[200px]">
                     <Select
-                      options={STRATEGY_OPTIONS}
+                      options={buildStrategyOptions(globalComboStrategy)}
                       value=""
                       placeholder="Set strategy…"
                       disabled={bulkBusy}
@@ -713,6 +730,7 @@ export default function CombosPage() {
               onDelete={() => handleDelete(combo.id)}
               strategy={comboStrategies[combo.name] || {}}
               onSetStrategy={(patch) => handleSetComboStrategy(combo.name, patch)}
+              globalStrategy={globalComboStrategy}
               selected={selectedIds.includes(combo.id)}
               onToggleSelect={() => toggleSelect(combo.id)}
             />
@@ -800,11 +818,11 @@ function getRouterModelStatus(routerModel, activeProviders) {
   return { ready: false, label: "Not configured", providerId };
 }
 
-function ComboCard({ combo, getCaps, capsOverrides = {}, allCombos = [], aliasCandidates = null, modelCaps = null, availability = [], comboCircuits = [], comboProviders = new Map(), now = 0, activeProviders = [], isMemberOff = null, copied, onCopy, onEdit, onDelete, strategy = {}, onSetStrategy, selected = false, onToggleSelect }) {
+function ComboCard({ combo, getCaps, capsOverrides = {}, allCombos = [], aliasCandidates = null, modelCaps = null, availability = [], comboCircuits = [], comboProviders = new Map(), now = 0, activeProviders = [], isMemberOff = null, copied, onCopy, onEdit, onDelete, strategy = {}, onSetStrategy, globalStrategy = "fallback", selected = false, onToggleSelect }) {
   const [showJudgeSelect, setShowJudgeSelect] = useState(false);
   const [showRouterSelect, setShowRouterSelect] = useState(false);
   const [showPolicyModal, setShowPolicyModal] = useState(false);
-  const current = strategy.fallbackStrategy || "fallback";
+  const current = strategy.fallbackStrategy || "default";
   const judge = strategy.judgeModel || "";
   const routerModel = strategy.routerModel || "";
   const isFusion = current === "fusion";
@@ -1049,9 +1067,9 @@ function ComboCard({ combo, getCaps, capsOverrides = {}, allCombos = [], aliasCa
           {/* Strategy selector — always visible */}
           <div className="w-full sm:w-[200px]">
             <Select
-              options={STRATEGY_OPTIONS}
+              options={buildStrategyOptions(globalStrategy)}
               value={current}
-              onChange={(e) => onSetStrategy({ fallbackStrategy: e.target.value })}
+              onChange={(e) => onSetStrategy({ fallbackStrategy: e.target.value === "default" ? "" : e.target.value })}
               selectClassName="py-1.5 text-xs"
             />
           </div>

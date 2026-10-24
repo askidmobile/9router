@@ -84,7 +84,9 @@ export default function ComboDetailPage() {
       setName(c.name);
       setProviders(c.models || []);
       const s = settingsRes.ok ? await settingsRes.json() : {};
-      setRoundRobin(s.comboStrategies?.[c.name]?.fallbackStrategy === "round-robin");
+      // Show the effective rotation state: per-combo override, else global.
+      const explicitStrategy = s.comboStrategies?.[c.name]?.fallbackStrategy;
+      setRoundRobin((explicitStrategy || s.comboStrategy || "fallback") === "round-robin");
       const allLogs = logsRes.ok ? await logsRes.json() : [];
       setLogs(allLogs.filter((l) => typeof l === "string" && l.includes(c.name)).slice(0, 50));
     } catch { /* noop */ }
@@ -153,9 +155,18 @@ export default function ComboDetailPage() {
     setRoundRobin(enabled);
     const settingsRes = await fetch("/api/settings", { cache: "no-store" });
     const s = settingsRes.ok ? await settingsRes.json() : {};
+    const global = s.comboStrategy || "fallback";
+    const desired = enabled ? "round-robin" : "fallback";
     const updated = { ...(s.comboStrategies || {}) };
-    if (enabled) updated[combo.name] = { fallbackStrategy: "round-robin" };
-    else delete updated[combo.name];
+    const existing = updated[combo.name] || {};
+    if (desired === global) {
+      // Matches the global strategy: drop the override and inherit it.
+      const extras = Object.keys(existing).filter((key) => key !== "fallbackStrategy");
+      if (extras.length === 0) delete updated[combo.name];
+      else updated[combo.name] = { ...existing, fallbackStrategy: "" };
+    } else {
+      updated[combo.name] = { ...existing, fallbackStrategy: desired };
+    }
     await fetch("/api/settings", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
