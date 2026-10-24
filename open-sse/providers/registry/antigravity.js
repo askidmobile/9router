@@ -22,7 +22,7 @@ export default {
     baseUrls: [ANTIGRAVITY_IDE_BASE_URL],
     format: "antigravity",
     headers: {
-      "User-Agent": ANTIGRAVITY_APP_USER_AGENT,
+      "User-Agent": ANTIGRAVITY_IDE_USER_AGENT,
     },
     retry: {
       "429": {

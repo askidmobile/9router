@@ -5,9 +5,14 @@ import { applyThinking } from "../../open-sse/translator/concerns/thinkingUnifie
 import { getCapabilitiesForModel } from "../../open-sse/providers/capabilities.js";
 
 describe("ChatGPT reasoning across provider routes", () => {
-  it.each(["glm/glm-5.3", "glm/glm-5.3-flash", "cmc/zai-org/GLM-5.3"])("exposes real GLM effort levels for %s", async id => {
+  it.each(["glm/glm-5.3", "cmc/zai-org/GLM-5.3"])("exposes real GLM effort levels for %s", async id => {
     const [model] = await withChatGPTReasoning([{ id }]);
     expect(model.reasoningLevels).toEqual(["low", "high", "max"]);
+    expect(model.defaultReasoningLevel).toBe("high");
+  });
+  it("keeps the glm-lane GLM-5.3-Flash binary (upstream v0.5.109 contract)", async () => {
+    const [model] = await withChatGPTReasoning([{ id: "glm/glm-5.3-flash" }]);
+    expect(model.reasoningLevels).toEqual(["high"]);
     expect(model.defaultReasoningLevel).toBe("high");
   });
   it("uses the intersection of nested Combo members and resolves aliases", async () => {

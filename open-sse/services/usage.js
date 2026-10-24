@@ -16,6 +16,7 @@ import { getGrokCliUsage } from "./usage/grok-cli.js";
 import { getKimiUsage } from "./usage/kimi.js";
 import { getDeepseekUsage } from "./usage/deepseek.js";
 import { getCloudflareUsage } from "./usage/cloudflare.js";
+import { getCommandCodeUsage } from "./usage/commandcode.js";
 import { getOpenCodeGoUsage } from "./usage/opencode-go.js";
 import { getOpenCodeZenUsage } from "./usage/opencode-zen.js";
 import { getGroqUsage } from "./usage/groq.js";
@@ -32,7 +33,6 @@ import {
   getOllamaUsage,
   getVercelAiGatewayUsage,
   getQoderUsage,
-  getCommandCodeUsage,
   getOpenRouterUsage,
 } from "./usage/misc.js";
 

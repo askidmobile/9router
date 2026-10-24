@@ -208,18 +208,16 @@ describe("Combo health through the public chat route", () => {
     expect(JSON.parse(mocks.transport.mock.calls[0][1].body).max_tokens).toBe(24);
   });
 
-  it("summarizes a multi-member failure instead of returning one opaque provider body", async () => {
+  it("returns the first request-scoped failure verbatim (upstream #5057 semantics)", async () => {
+    // 413/400 — request-scoped: комбо пробует всех членов и возвращает первый
+    // такой ответ как есть (статус и тело сохранены), без сводки.
     mocks.transport.mockImplementation(async (url) => url.includes("commandcode")
       ? new Response("Request Entity Too Large\n\nFUNCTION_PAYLOAD_TOO_LARGE\nfra1::abc-1791703234172", { status: 413 })
       : new Response("Invalid request", { status: 400 }));
     const response = await handleChat(request());
     expect(response.status).toBe(413);
-    const body = await response.json();
-    expect(body.error.message).toContain("All 2 Combo members failed");
-    expect(body.error.message).toContain("413 request body exceeds this provider's limit");
-    expect(body.error.message).toContain(`cmc/${MODEL}`);
-    expect(body.error.message).toContain("openai/gpt-4o-mini");
-    expect(body.error.message).not.toContain("FUNCTION_PAYLOAD_TOO_LARGE");
+    const body = await response.text();
+    expect(body).toContain("Request Entity Too Large");
   });
 
   it.each([400, 413, 422])("does not lock or freeze the provider for caller HTTP %s", async (status) => {

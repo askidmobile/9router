@@ -15,7 +15,7 @@ import {
   KIRO_AGENTIC_SYSTEM_PROMPT,
   resolveDefaultProfileArn,
   buildKiroAdditionalModelRequestFieldsForModel,
-  toKiroWireModelId,
+  usesKiroNativeGptEffort
 } from "../../config/kiroConstants.js";
 import { parseDataUri } from "../concerns/image.js";
 import { DEFAULT_IMAGE_MIME } from "../schema/index.js";
@@ -313,11 +313,11 @@ export function openaiToKiroRequest(model, body, stream, credentials) {
   const topP = body.top_p;
 
   const modelIntent = resolveKiroModelIntent(model);
-  const { upstream: rawUpstream, agentic } = modelIntent;
-  const upstreamModel = toKiroWireModelId(rawUpstream);
+  const { upstream: upstreamModel, agentic } = modelIntent;
   const thinkingBody = applyKiroThinkingOverride(body, modelIntent.thinkingOverride);
   const thinkingBudget = resolveKiroThinkingBudget(thinkingBody, credentials?.rawHeaders, modelIntent.model);
   const additionalModelRequestFields = buildKiroAdditionalModelRequestFieldsForModel(thinkingBody, upstreamModel);
+  const usesNativeGptEffort = usesKiroNativeGptEffort(thinkingBody, upstreamModel);
 
   const { specs: toolSpecs, nameMap } = normalizeKiroToolSpecs(tools);
   const { history, currentMessage } = convertMessages(messages, upstreamModel);
@@ -346,11 +346,7 @@ export function openaiToKiroRequest(model, body, stream, credentials) {
   // the CodeWhisperer surface rejects a top-level `systemPrompt` with
   // 400 REQUEST_BODY_INVALID, so the value below is only a replay cache key.
   const systemPromptParts = [];
-  // Inject the legacy <thinking_mode> tag ONLY for models without a native
-  // effort path (pre-4 Claude, non-Claude/non-GPT-5.6). Models that send
-  // additionalModelRequestFields must not also get the tag — Kiro rejects
-  // the duplicated thinking directive with REQUEST_BODY_INVALID.
-  if (thinkingBudget !== null && !additionalModelRequestFields) {
+  if (thinkingBudget !== null && !usesNativeGptEffort) {
     systemPromptParts.push(buildThinkingSystemPrefix(thinkingBudget));
   }
   if (agentic) {
@@ -358,8 +354,6 @@ export function openaiToKiroRequest(model, body, stream, credentials) {
   }
   const systemPrompt = systemPromptParts.filter(Boolean).join("\n\n");
   const currentTimeContext = `[Context: Current time is ${timestamp}]`;
-  // Carry instructions once in the first user turn; top-level systemPrompt
-  // is rejected by the current Kiro runtime surfaces.
   const contentPrefix = [systemPrompt, currentTimeContext].filter(Boolean).join("\n\n");
 
   const sessionIdentity = resolveSessionIdentity({ headers: credentials?.rawHeaders, body, connectionId: credentials?.connectionId, scope: "kiro" });

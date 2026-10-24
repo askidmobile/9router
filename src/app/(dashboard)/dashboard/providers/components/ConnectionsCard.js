@@ -5,6 +5,7 @@ import { getStatusVariant as getConnectionStatusVariant } from "@/shared/utils/c
 import PropTypes from "prop-types";
 import { Card, Badge, Button, Modal, Select, Toggle, EditConnectionModal, ConfirmModal } from "@/shared/components";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
+import WebLoginButton from "./WebLoginButton";
 
 // ── CooldownTimer ──────────────────────────────────────────────
 function CooldownTimer({ until }) {
@@ -296,7 +297,7 @@ AddApiKeyModal.propTypes = {
 
 // ── ConnectionsCard ────────────────────────────────────────────
 // Self-contained card: fetches, displays and manages all connections for a provider.
-export default function ConnectionsCard({ providerId, isOAuth }) {
+export default function ConnectionsCard({ providerId, isOAuth, loginProviderId = null }) {
   const [connections, setConnections] = useState([]);
   // Active key count of the credentialFallback provider (ollama-search → ollama):
   // the search provider reuses that chat key at request time.
@@ -451,7 +452,12 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
                 </p>
               ) : null}
             </div>
-            <Button size="sm" icon="add" onClick={() => setShowAddModal(true)}>Add Connection</Button>
+            <div className="flex flex-wrap gap-2">
+              {loginProviderId && (
+                <WebLoginButton providerId={loginProviderId} onConnected={fetch_} />
+              )}
+              <Button size="sm" icon="add" onClick={() => setShowAddModal(true)}>Add Connection</Button>
+            </div>
           </div>
         ) : (
           <>
@@ -473,8 +479,11 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
                 />
               ))}
             </div>
-            <div className="mt-4 flex justify-stretch sm:justify-start">
+            <div className="mt-4 flex justify-stretch gap-2 sm:justify-start">
               <Button size="sm" icon="add" onClick={() => setShowAddModal(true)}>Add</Button>
+              {loginProviderId && (
+                <WebLoginButton providerId={loginProviderId} onConnected={fetch_} />
+              )}
             </div>
           </>
         )}
@@ -511,4 +520,5 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
 ConnectionsCard.propTypes = {
   providerId: PropTypes.string.isRequired,
   isOAuth: PropTypes.bool,
+  loginProviderId: PropTypes.string,
 };

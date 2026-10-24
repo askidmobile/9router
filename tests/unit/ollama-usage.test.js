@@ -121,4 +121,6 @@ describe("Ollama official balance API", () => {
     expect((await read({ apiKey: null })).message).toMatch(/API key/);
     expect(proxyAwareFetch).not.toHaveBeenCalled();
   });
+
+
 });

@@ -41,7 +41,7 @@ export default {
       429: 2,
     },
     // Enforced in BaseExecutor.execute: the serialized body, not the client body.
-    quirks: { maxRequestBodyBytes: MAX_REQUEST_BODY_BYTES },
+    quirks: { maxRequestBodyBytes: MAX_REQUEST_BODY_BYTES, reasoningAliasFields: true },
   },
   // Responses clients keep their own wire format: the compatibility layer is
   // stateless (store is accepted and ignored), so no translation is needed.

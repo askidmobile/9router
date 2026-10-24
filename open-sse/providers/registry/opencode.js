@@ -13,7 +13,7 @@ export default {
   category: "free",
   noAuth: true,
   transport: {
-    baseUrl: "https://opencode.ai/inference",
+    baseUrl: "https://opencode.ai",
     headers: {
       "x-opencode-client": "cli",
       "User-Agent": "opencode/latest/2.0.29/cli",
@@ -29,6 +29,11 @@ export default {
     },
     quirks: {
       forceAutoToolChoiceModels: ["muse-spark-1.3-contributor-free"],
+      // The free lane's MiMo route (OpenRouter-backed) streams thinking as
+      // `reasoning` + `reasoning_details[]`, not reasoning_content. stream.js lifts
+      // the alias into reasoning_content for OpenAI-shaped clients; every other
+      // model on the lane already emits reasoning_content, so the lift is a no-op.
+      reasoningAliasFields: true,
     },
   },
   models: [

@@ -27,7 +27,7 @@ import {
   KIRO_AGENTIC_SYSTEM_PROMPT,
   resolveDefaultProfileArn,
   buildKiroAdditionalModelRequestFieldsForModel,
-  toKiroWireModelId,
+  usesKiroNativeGptEffort,
 } from "../../config/kiroConstants.js";
 import { DEFAULT_IMAGE_MIME } from "../schema/index.js";
 import { ROLE, CLAUDE_BLOCK } from "../schema/index.js";
@@ -236,11 +236,11 @@ export function claudeToKiroRequest(model, body, stream, credentials) {
   const topP = body.top_p;
 
   const modelIntent = resolveKiroModelIntent(model);
-  const { upstream: rawUpstream, agentic } = modelIntent;
-  const upstreamModel = toKiroWireModelId(rawUpstream);
+  const { upstream: upstreamModel, agentic } = modelIntent;
   const thinkingBody = applyKiroThinkingOverride(body, modelIntent.thinkingOverride);
   const thinkingBudget = resolveKiroThinkingBudget(thinkingBody, credentials?.rawHeaders, modelIntent.model);
   const additionalModelRequestFields = buildKiroAdditionalModelRequestFieldsForModel(thinkingBody, upstreamModel);
+  const usesNativeGptEffort = usesKiroNativeGptEffort(thinkingBody, upstreamModel);
 
   const { specs: toolSpecs, nameMap } = normalizeKiroToolSpecs(tools);
   const { history, currentMessage } = convertClaudeMessagesToKiro(messages, upstreamModel);
@@ -259,7 +259,7 @@ export function claudeToKiroRequest(model, body, stream, credentials) {
   // 400 REQUEST_BODY_INVALID, so the value below is only a replay cache key.
   const timestamp = new Date().toISOString();
   const systemPromptParts = [];
-  if (thinkingBudget !== null && !additionalModelRequestFields) {
+  if (thinkingBudget !== null && !usesNativeGptEffort) {
     systemPromptParts.push(buildThinkingSystemPrefix(thinkingBudget));
   }
   if (agentic) systemPromptParts.push(KIRO_AGENTIC_SYSTEM_PROMPT);
@@ -267,8 +267,6 @@ export function claudeToKiroRequest(model, body, stream, credentials) {
   if (systemInstruction) systemPromptParts.push(systemInstruction);
   const systemPrompt = systemPromptParts.filter(Boolean).join("\n\n");
   const currentTimeContext = `[Context: Current time is ${timestamp}]`;
-  // Carry instructions once in the first user turn; top-level systemPrompt
-  // is rejected by the current Kiro runtime surfaces.
   const contentPrefix = [systemPrompt, currentTimeContext].filter(Boolean).join("\n\n");
 
   const sessionIdentity = resolveSessionIdentity({

@@ -58,6 +58,11 @@ const USAGE_EXTRACTORS = {
       cached = n(raw.prompt_eval_cached_count);
     return { promptTokens: input, completionTokens: output, totalTokens: input + output, cachedTokens: cached };
   },
+  commandcode(raw) {
+    const input = n(raw.inputTokens), output = n(raw.outputTokens);
+    const total = typeof raw.totalTokens === "number" ? raw.totalTokens : input + output;
+    return { promptTokens: input, completionTokens: output, totalTokens: total };
+  },
 };
 
 // Convert provider-native usage object → OpenAI usage. Returns null if no extractor/raw.

@@ -704,13 +704,13 @@ describe("Kiro terminal integrity recovery", () => {
     expect(body).not.toContain("must stay private");
   });
 
+  // A 401/403 falls through to the next Kiro surface (16cb40fd / 35b950be), so every
+  // retry surface must fail for the error to be surfaced; one mocked 401 left the
+  // remaining surfaces with an undefined response and the test timed out.
   it("surfaces retry HTTP failures as SSE after heartbeat commits headers", async () => {
-    // BaseExecutor walks the baseUrls failover chain after the 401
-    // (runtime.kiro.dev → codewhisperer → q); default every remaining hop
-    // to the same 401 so the upstream error still surfaces.
     fetchMock
       .mockResolvedValueOnce(response([]))
-      .mockResolvedValue(new Response("unauthorized", {
+      .mockImplementation(async () => new Response("unauthorized", {
         status: 401,
         statusText: "Unauthorized"
       }));
@@ -726,7 +726,7 @@ describe("Kiro terminal integrity recovery", () => {
   it("bounds the retry HTTP error body", async () => {
     fetchMock
       .mockResolvedValueOnce(response([]))
-      .mockResolvedValue(new Response(`error-start-${"x".repeat(10_000)}-error-tail`, {
+      .mockImplementation(async () => new Response(`error-start-${"x".repeat(10_000)}-error-tail`, {
         status: 401,
         statusText: "Unauthorized"
       }));

@@ -27,7 +27,7 @@ describe("Antigravity usage headers", () => {
     expect(proxyAwareFetch).toHaveBeenCalledTimes(3);
     for (const [url, options] of proxyAwareFetch.mock.calls) {
       expect(options.headers["User-Agent"]).toBe(url.includes(":retrieveUserQuotaSummary")
-        ? "antigravity/ide/2.22.0 darwin/arm64" : "antigravity/hub/2.23.1 darwin/arm64");
+        ? "antigravity/hub/2.24.0 darwin/arm64" : "antigravity/hub/2.23.1 darwin/arm64");
       expect(options.headers).not.toHaveProperty("x-request-source");
     }
   });

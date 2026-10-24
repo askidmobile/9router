@@ -321,6 +321,9 @@ async function getDispatcher(proxyUrl, insecure = false) {
 
 async function fetchWithTlsFallback(url, options, proxyUrl, allowInsecure = true) {
   try {
+    // Protocol adapters may need Node's HTTP/1 transport on the direct path.
+    // Keep proxy/no-proxy resolution and strict-proxy enforcement here.
+    if (!proxyUrl && options.directFetch) return await options.directFetch(url, options);
     const dispatcher = proxyUrl ? await getDispatcher(proxyUrl) : await getDirectAgent();
     return await fetchWithDispatcher(url, options, dispatcher);
   } catch (err) {

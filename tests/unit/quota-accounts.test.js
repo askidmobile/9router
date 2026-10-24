@@ -97,10 +97,19 @@ describe("account quotas through dispatch and dashboard normalization", () => {
   });
 
   it("shows Command Code credits separately from exhausted windows", async () => {
-    proxyAwareFetch.mockResolvedValueOnce(json({ credits: { monthlyCredits: 10, purchasedCredits: 2, freeCredits: 1 }, windowLimits: { weekly: { used: 35, cap: 35 } } }));
+    proxyAwareFetch.mockImplementation(async (url) => {
+      const u = String(url);
+      if (u.includes("/alpha/whoami")) return json({ user: {}, org: { id: "org_1", name: "personal" } });
+      if (u.includes("/alpha/billing/credits")) return json({ credits: { monthlyCredits: 10, purchasedCredits: 2, freeCredits: 1 }, windowLimits: { weekly: { used: 35, cap: 35, resetAt: Date.now() + 86_400_000 } } });
+      if (u.includes("/alpha/billing/subscriptions")) return json({ data: { planId: "individual-go", currentPeriodStart: "2026-09-01T00:00:00.000Z", currentPeriodEnd: "2026-10-01T00:00:00.000Z" } });
+      return json({ error: "unexpected " + u }, 404);
+    });
     const usage = await getUsageForProvider({ provider: "commandcode", apiKey: "fixture" });
     const rows = parseQuotaData("commandcode", usage);
-    expect(rows.find(r => r.name === "Credit balance")).toMatchObject({ total: 13, isCreditBalance: true });
+    // Upstream naming: "Credits" (monthly 10 + purchased 2 + free 1 = 13), plan Go
+    const credits = rows.find(r => r.name === "Credits");
+    // individual-go cap=10, remaining 13 → used clamped to 0
+    expect(credits).toMatchObject({ used: 0, total: 10 });
     expect(getRemainingPercentage(rows.find(r => r.name === "Weekly"))).toBe(0);
   });
 });

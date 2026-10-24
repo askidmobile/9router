@@ -47,6 +47,74 @@ export function resolveDefaultProfileArn(authMethod) {
 export const KIRO_THINKING_BUDGET_DEFAULT = 16000;
 
 /**
+ * Anthropic date-suffixed snapshot id, e.g. `claude-sonnet-4-5-20250929`.
+ * Kiro's data plane only accepts the dotted alias (`claude-sonnet-4.5`).
+ */
+const ANTHROPIC_SNAPSHOT_SUFFIX = /-\d{8}$/;
+
+/**
+ * Fold an Anthropic model id onto the Kiro upstream alias.
+ *
+ * Anthropic and Kiro disagree on id spelling: Anthropic ships
+ * `claude-sonnet-4-5-20250929` / `claude-opus-4-5`, while Kiro's
+ * `GenerateAssistantResponse` only accepts `claude-sonnet-4.5` and answers
+ * anything else with `400 INVALID_MODEL_ID`.
+ *
+ * Clients that speak the Anthropic Messages API (Claude Code, cc-switch, …)
+ * send the Anthropic spelling, so the raw id has to be folded onto the Kiro
+ * alias before the request leaves this process. Matching is keyword-based
+ * rather than an exact-id table: snapshot suffixes and future minor revisions
+ * would otherwise fall through and 400 upstream.
+ *
+ * Unknown ids are returned untouched so operators can still pass through
+ * models Kiro adds ahead of this list.
+ *
+ * @param {string} model
+ * @returns {string}
+ */
+export function normalizeKiroUpstreamModelId(model) {
+  if (typeof model !== "string" || model === "") return model;
+
+  const id = model.toLowerCase().replace(ANTHROPIC_SNAPSHOT_SUFFIX, "");
+
+  if (id.includes("sonnet")) {
+    if (id.includes("5.5") || id.includes("5-5")) return "claude-sonnet-5.5";
+    if (id.includes("4.6") || id.includes("4-6")) return "claude-sonnet-4.6";
+    if (id.includes("sonnet-5") || id.includes("sonnet.5")) return "claude-sonnet-5";
+    if (id.includes("4.5") || id.includes("4-5")) return "claude-sonnet-4.5";
+    if (id.includes("sonnet-4") || id.includes("sonnet.4")) return "claude-sonnet-4";
+    return "claude-sonnet-4.5";
+  }
+  if (id.includes("fable")) return "claude-fable-5";
+  if (id.includes("opus")) {
+    if (id.includes("5.5") || id.includes("5-5")) return "claude-opus-5.5";
+    if (id.includes("opus-5") || id.includes("opus.5") || id.includes("opus 5")) return "claude-opus-5";
+    if (id.includes("4.8") || id.includes("4-8")) return "claude-opus-4.8";
+    if (id.includes("4.7") || id.includes("4-7")) return "claude-opus-4.7";
+    if (id.includes("4.5") || id.includes("4-5")) return "claude-opus-4.5";
+    return "claude-opus-4.6";
+  }
+  if (id.includes("haiku")) {
+    return id.includes("5.5") || id.includes("5-5") ? "claude-haiku-5.5" : "claude-haiku-4.5";
+  }
+  if (id === "auto") return "auto";
+  if (id.includes("deepseek")) return "deepseek-3.2";
+  if (id.includes("glm")) return "glm-5";
+  if (id.includes("minimax")) {
+    return id.includes("2.5") || id.includes("2-5") ? "minimax-m2.5" : "minimax-m2.1";
+  }
+  if (id.includes("qwen")) return "qwen3-coder-next";
+  if (id.includes("kimi")) return "kimi-k3";
+  if (id.includes("gpt")) {
+    if (id.includes("terra")) return "gpt-5.6-terra";
+    if (id.includes("luna")) return "gpt-5.6-luna";
+    if (id.includes("sol") || id.includes("5.6") || id.includes("5-6")) return "gpt-5.6-sol";
+    return model;
+  }
+  return model;
+}
+
+/**
  * Resolve a Kiro model after consuming the generic model(level) suffix.
  * The suffix is a 9router request override, not part of Kiro's upstream model id.
  */
@@ -146,14 +214,6 @@ REMEMBER: When in doubt, write LESS per operation. Multiple small operations > o
  */
 export function resolveKiroThinkingBudget(body, headers, model) {
   const cfg = extractThinking(body);
-  // Kiro no longer accepts the legacy <thinking_mode> system tag for any
-  // model, and only models with a native effort path (resolveKiroEffortPath)
-  // support thinking via additionalModelRequestFields. When the model has no
-  // native path, thinking cannot be delivered — return null so a plain
-  // request ships (no tag, no fields) instead of a 400 REQUEST_BODY_INVALID.
-  if (model && resolveKiroEffortPath(model) === null) {
-    return null;
-  }
   if (cfg) {
     if (cfg.mode === "none") return null;
     if (cfg.mode === "level" && cfg.level === "disabled") return null;
@@ -196,9 +256,9 @@ function kiroModelLacksXhigh(model) {
 
 export function extractKiroEffortLevel(body, model) {
   const effort =
+    body?.output_config?.effort ??
     body?.reasoning_effort ??
-    (typeof body?.reasoning === "object" ? body.reasoning?.effort : null) ??
-    body?.output_config?.effort;
+    (typeof body?.reasoning === "object" ? body.reasoning?.effort : null);
   if (typeof effort !== "string") return null;
   const normalized = effort.toLowerCase();
   if (normalized === "none" || normalized === "off" || normalized === "disabled") return null;
@@ -210,9 +270,9 @@ export function extractKiroEffortLevel(body, model) {
 
 function extractKiroGptEffortLevel(body) {
   const effort =
+    body?.output_config?.effort ??
     body?.reasoning_effort ??
-    (typeof body?.reasoning === "object" ? body.reasoning?.effort : null) ??
-    body?.output_config?.effort;
+    (typeof body?.reasoning === "object" ? body.reasoning?.effort : null);
   if (typeof effort !== "string") return null;
   const normalized = effort.toLowerCase();
   if (normalized === "max") return "xhigh";
@@ -337,29 +397,6 @@ export function stripThinkingSuffix(model) {
 }
 
 /**
- * Normalize a 9router-registry model id to the wire format the Kiro API
- * accepts. The Kiro / CodeWhisperer backend uses dashes everywhere except
- * for dotted version numbers (claude-sonnet-4.5 is fine, claude-sonnet.5 is
- * not). This function only touches letter-dot-digit runs — the only
- * transformations that matter for Kiro — and leaves digit-dot-digit
- * version separators and non-Claude ids untouched.
- *
- *   toKiroWireModelId("claude-sonnet-4.5")    // "claude-sonnet-4.5"
- *   toKiroWireModelId("claude-sonnet.5")      // "claude-sonnet-5"
- *   toKiroWireModelId("claude-opus-4.8")      // "claude-opus-4.8"
- *   toKiroWireModelId("deepseek-3.2")         // "deepseek-3.2" (non-Claude)
- *
- * @param {string} modelId 9router-registry model id (post-resolveKiroModel)
- * @returns {string} Kiro wire-format model id
- */
-export function toKiroWireModelId(modelId) {
-  if (typeof modelId !== "string") return modelId;
-  if (!modelId.startsWith("claude")) return modelId;
-  // sonnet.5 → sonnet-5, opus.4 → opus-4 — but 4.5 stays 4.5
-  return modelId.replace(/([a-z])\.(\d)/g, "$1-$2");
-}
-
-/**
  * Resolve a 9router model id to the real upstream Kiro model id, plus flags
  * describing which behaviours the suffixes implied.
  *
@@ -387,7 +424,7 @@ export function resolveKiroModel(model) {
     thinking = true;
     upstream = stripThinkingSuffix(upstream);
   }
-  return { upstream, agentic, thinking };
+  return { upstream: normalizeKiroUpstreamModelId(upstream), agentic, thinking };
 }
 
 /**

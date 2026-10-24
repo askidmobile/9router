@@ -57,7 +57,7 @@ describe("Antigravity Gemini 4 Argon", () => {
       const result = await new AntigravityExecutor().execute({ model: upstream, body, stream, credentials });
       const [url, options] = fetch.mock.calls.at(-1);
       const wire = JSON.parse(options.body);
-      expect(options.headers["User-Agent"]).toBe("antigravity/hub/2.23.1 darwin/arm64");
+      expect(options.headers["User-Agent"]).toBe("antigravity/hub/2.24.0 darwin/arm64");
       expect(url).toContain(stream ? ":streamGenerateContent?alt=sse" : ":generateContent");
       expect(wire.model).toBe(id);
       expect(wire.project).toBe("test-project");

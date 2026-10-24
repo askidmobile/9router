@@ -112,27 +112,32 @@ describe("Command Code usage parsing", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("fetches and parses Command Code 5-hour and weekly limits", async () => {
-    proxyAwareFetch.mockResolvedValueOnce(
-      jsonResponse({
+    // Upstream 4a76b8de: whoami + credits + subscriptions (план из подписки)
+    proxyAwareFetch.mockImplementation(async (url) => {
+      const u = String(url);
+      if (u.includes("/alpha/whoami")) return jsonResponse({ user: { name: "U" }, org: { id: "org_1", name: "personal" } });
+      if (u.includes("/alpha/billing/credits")) return jsonResponse({
+        credits: { monthlyCredits: 12.5, purchasedCredits: 1, freeCredits: 0.5 },
         windowLimits: {
           limited: true,
-          fiveHour: { used: 5, cap: 14, resetAt: 0 },
-          weekly: { used: 35, cap: 35, resetAt: 1786821078664 },
+          fiveHour: { used: 5, cap: 14, resetAt: Date.now() + 3_600_000 },
+          weekly: { used: 35, cap: 35, resetAt: Date.now() + 86_400_000 },
         },
-      })
-    );
+      });
+      if (u.includes("/alpha/billing/subscriptions")) return jsonResponse({ data: { planId: "individual-goat", currentPeriodStart: "2026-09-01T00:00:00.000Z", currentPeriodEnd: "2026-10-01T00:00:00.000Z" } });
+      return jsonResponse({ error: "unexpected " + u }, 404);
+    });
 
     const usage = await getUsageForProvider({
       provider: "commandcode",
       apiKey: "user_xxx",
     });
 
-    expect(usage.plan).toBe("Command Code");
-    expect(usage.quotas["Session (5h)"].used).toBe(5);
-    expect(usage.quotas["Weekly"].used).toBe(35);
-    expect(usage.quotas["Weekly"].remainingPercentage).toBe(0);
+    expect(usage.plan).toBe("GOAT");
+    expect(usage.quotas["Session (5h)"]).toMatchObject({ used: 5, total: 14 });
+    expect(usage.quotas.Weekly).toMatchObject({ used: 35, total: 35, percentage: 100 });
 
     const parsed = parseQuotaData("commandcode", usage);
-    expect(parsed.length).toBe(2);
+    expect(parsed.length).toBe(3);  // Credits + Session (5h) + Weekly
   });
 });

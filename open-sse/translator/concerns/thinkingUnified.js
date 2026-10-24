@@ -19,6 +19,7 @@ const FORMAT_TO_NATIVE = {
   vertex: "gemini-budget",
   antigravity: "gemini-budget",
   kiro: "kiro",
+  commandcode: "commandcode",
 };
 
 // Strip a trailing thinking suffix "model(value)" → "model" (no-op when absent).
@@ -49,12 +50,17 @@ export function parseSuffix(model) {
 export function extractThinking(body) {
   if (!body || typeof body !== "object") return null;
 
-  // OpenAI reasoning_effort is the explicit cross-provider control and wins
-  // when clients also send derived/native thinking fields. Check effort first
-  // (zai sends both thinking object and reasoning.effort).
-  const effort = body.reasoning_effort
-    ?? (typeof body.reasoning === "object" ? body.reasoning?.effort : null)
-    ?? body.output_config?.effort;
+  // Claude output_config.effort (explicit) — priority over adaptive thinking
+  const oc = body.output_config?.effort;
+  if (typeof oc === "string" && oc) {
+    const e = oc.toLowerCase();
+    if (e === "none" || e === "off") return { mode: "none" };
+    if (e === "auto") return { mode: "auto" };
+    return { mode: "level", level: e };
+  }
+
+  // OpenAI chat / Responses shape — check effort first (zai sends both thinking object and reasoning.effort)
+  const effort = body.reasoning_effort ?? (typeof body.reasoning === "object" ? body.reasoning?.effort : null);
   if (typeof effort === "string" && effort) {
     const e = effort.toLowerCase();
     if (e === "none" || e === "off") return { mode: "none" };
@@ -96,15 +102,6 @@ export function extractThinking(body) {
   return null;
 }
 
-// Apply a server-side provider default only when the client sent no reasoning
-// control. Passthrough is the default; explicit client intent always wins.
-export function applyProviderThinking(body, mode) {
-  if (!body || typeof body !== "object" || !mode || mode === "auto" || mode === "passthrough" || extractThinking(body)) return body;
-  if (mode === "on") return { ...body, thinking: { type: "enabled", budget_tokens: 10000 } };
-  if (mode === "off") return { ...body, thinking: { type: "disabled" } };
-  return { ...body, reasoning_effort: mode };
-}
-
 // Capture thinking intent from a body before format translation strips it.
 // Besides the effort, records whether an OpenAI-shaped client wants the thinking
 // text itself: Claude returns it only with thinking.display "summarized", a field
@@ -130,19 +127,32 @@ function openAIThinkingDisplay(body) {
 
 const NATIVE_ONLY_FORMATS = new Set(["gemini-level", "gemini-budget", "claude-budget", "claude-adaptive", "kiro"]);
 
-function resolveFormat(targetFormat, model, provider, capsOverride = null) {
+// Apply a server-side provider default only when the client sent no reasoning
+// control. Passthrough is the default; explicit client intent always wins.
+export function applyProviderThinking(body, mode) {
+  if (!body || typeof body !== "object" || !mode || mode === "auto" || mode === "passthrough" || extractThinking(body)) return body;
+  if (mode === "on") return { ...body, thinking: { type: "enabled", budget_tokens: 10000 } };
+  if (mode === "off") return { ...body, thinking: { type: "disabled" } };
+  return { ...body, reasoning_effort: mode };
+}
+
+function resolveFormat(targetFormat, model, provider) {
+  if (targetFormat === "commandcode") return "commandcode";
+  // A multi-endpoint provider can declare, per transports[] entry, the thinking shape that
+  // endpoint accepts. It wins over the model's thinkingFormat, which describes the Chat wire:
+  // strict /responses upstreams (Meta, OpenCode Go) reject Chat-shaped reasoning_effort /
+  // thinking:{type} and need reasoning:{effort,summary} instead.
+  const transportFmt = provider
+    ? PROVIDERS[provider]?.transports?.find((t) => t.format === targetFormat)?.thinkingFormat
+    : null;
+  if (transportFmt) return transportFmt;
   // OpenAI-compatible nodes reject provider-native thinking fields.
   if (typeof provider === "string" && provider.startsWith("openai-compatible-")) return "openai";
   const providerFmt = provider ? PROVIDERS[provider]?.thinkingFormat : null;
   if (providerFmt) return providerFmt;
-  const caps = { ...getCapabilitiesForModel(provider, model), ...(capsOverride || {}) };
+  const caps = getCapabilitiesForModel(provider, model);
   const isOpenAIWire = targetFormat === "openai" || targetFormat === "openai-responses";
   if (caps.thinkingFormat && !(isOpenAIWire && NATIVE_ONLY_FORMATS.has(caps.thinkingFormat))) {
-    // Muse (Meta) strict Responses API rejects top-level reasoning_effort and
-    // requires nested reasoning: { effort, summary }. Other upstreams keep Chat-shaped effort.
-    if (provider === "muse" && targetFormat === "openai-responses") {
-      return "openai-responses";
-    }
     return caps.thinkingFormat;
   }
   return FORMAT_TO_NATIVE[targetFormat] || "openai";
@@ -175,24 +185,6 @@ function normalizeOpenAILevel(level, supportedLevels) {
   if (supportedLevels?.includes(level)) return level;
   if (level === "ultra" && supportedLevels?.includes("max")) return "max";
   return "xhigh";
-}
-
-// Clamp a level to the allowed set: nearest by effort rank, ties round UP
-// (more thinking beats less). Order from no-thinking to maximum.
-const LEVEL_RANK = ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
-function clampLevel(level, supportedLevels) {
-  if (!Array.isArray(supportedLevels) || supportedLevels.length === 0) return level;
-  if (supportedLevels.includes(level)) return level;
-  const want = LEVEL_RANK.indexOf(level);
-  if (want < 0) return level;
-  let best = null;
-  for (const candidate of supportedLevels) {
-    const d = Math.abs(LEVEL_RANK.indexOf(candidate) - want);
-    if (best === null || d < best.d || (d === best.d && LEVEL_RANK.indexOf(candidate) > LEVEL_RANK.indexOf(best.level))) {
-      best = { level: candidate, d };
-    }
-  }
-  return best ? best.level : level;
 }
 
 function toGeminiThinkingLevel(cfg) {
@@ -271,6 +263,10 @@ function stripAll(body) {
   delete body.output_config;
   if (body.generationConfig) delete body.generationConfig.thinkingConfig;
   if (body.request?.generationConfig) delete body.request.generationConfig.thinkingConfig;
+  if (body.params && typeof body.params === "object") {
+    delete body.params.reasoning_effort;
+    delete body.params.thinking;
+  }
 }
 
 // Apply unified thinking config to body in the resolved provider-native format.
@@ -324,7 +320,10 @@ function applyFormat(fmt, body, cfg, caps, supportedLevels, display) {
       break;
     }
     case "gemini-level": {
-      const level = clampLevel(none ? "minimal" : toGeminiThinkingLevel(eff), supportedLevels);
+      let level = none ? "minimal" : toGeminiThinkingLevel(eff);
+      // Models without a "minimal" tier (Gemini 4) reject it with 400 — clamp to the lowest supported level.
+      const lowest = supportedLevels?.find((l) => l !== "none");
+      if (supportedLevels?.length && lowest && !supportedLevels.includes(level)) level = lowest;
       setGeminiThinking(body, { thinkingLevel: level, includeThoughts: level !== "minimal" });
       ensureGeminiOutputFloor(body, geminiLevelOutputFloor(level), caps);
       break;
@@ -364,11 +363,16 @@ function applyFormat(fmt, body, cfg, caps, supportedLevels, display) {
     case "deepseek": {
       if (none && canDisable) { body.thinking = { type: "disabled" }; break; }
       body.thinking = { type: "enabled" };
-      // DeepSeek: low/medium→high, xhigh/max→max. Some backends (mimo v2.5-pro/v2.6
-      // on opencode-go, probed live) 400 on "max" — clamp to high when the declared
-      // levels exclude it.
+      // DeepSeek's own API collapses low/medium→high and xhigh/max→max, so the wire
+      // stays on {high,max} for it. The declared levels win where they disagree:
+      // zen's free deepseek-v4.1-flash publishes low|high|max and its upstream takes
+      // the level verbatim, so collapsing "low" would make that level unreachable.
+      // Some backends (mimo v2.5-pro/v2.6 on opencode-go, probed live) 400 on "max"
+      // — clamp to high when the declared levels exclude it.
       const level = toLevel(eff);
-      const want = level === "xhigh" || level === "max" ? "max" : "high";
+      const want = level === "xhigh" || level === "max" ? "max"
+        : (level === "low" || level === "minimal") && supportedLevels?.includes("low") ? "low"
+        : "high";
       body.reasoning_effort = want === "max" && supportedLevels && !supportedLevels.includes("max") ? "high" : want;
       break;
     }
@@ -411,16 +415,25 @@ function applyFormat(fmt, body, cfg, caps, supportedLevels, display) {
       // TokenRouter's reasoning_effort enum is low/medium/high/xhigh/max — it rejects
       // "none"/"auto" with a 400 and supports "max" natively (no clamp like openai).
       // "none" → omit the field so the upstream default applies; pass levels through.
-      // Free-tier models restrict the enum further (e.g. qwen3.8-max-free:
-      // low/medium/xhigh) — clamp to the per-model allowed set.
       if (none || eff.mode === "auto") break;
       const level = toLevel(eff);
-      if (level) body.reasoning_effort = clampLevel(level, supportedLevels);
+      if (level) body.reasoning_effort = level;
       break;
     }
     case "kiro":
       // Kiro thinking handled via system-tag injection in openai-to-kiro.js; no body field here.
       break;
+    case "commandcode": {
+      // Native CLI sends reasoning_effort inside params of the /alpha/generate envelope.
+      if (!body.params || typeof body.params !== "object") body.params = {};
+      if (none && canDisable) {
+        delete body.params.reasoning_effort;
+        break;
+      }
+      const level = toLevel(eff);
+      if (level) body.params.reasoning_effort = level;
+      break;
+    }
     default:
       break;
   }

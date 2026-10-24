@@ -14,6 +14,7 @@ describe("kimchi registry entry", () => {
   it("is a freeTier provider auto-listed via byCategory", () => {
     expect(kimchiEntry.id).toBe("kimchi");
     expect(kimchiEntry.category).toBe("freeTier");
+    expect(kimchiEntry.authModes).toEqual(["oauth", "apikey"]);
   });
 
   it("points at the OpenAI-compatible gateway with an authenticated UA", () => {
