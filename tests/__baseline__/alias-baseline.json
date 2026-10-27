@@ -138,7 +138,9 @@
     "ns": "nous",
     "typesafe": "typesafe",
     "respan": "respan",
-    "rs": "respan"
+    "rs": "respan",
+    "runcrate": "runcrate",
+    "rc": "runcrate"
   },
   "idToAlias": {
     "agnes": "agnes",
@@ -252,6 +254,7 @@
     "recraft": "recraft",
     "requesty": "req",
     "respan": "respan",
+    "runcrate": "runcrate",
     "runwayml": "runwayml",
     "sambanova": "samba",
     "sdwebui": "sdwebui",
@@ -373,6 +376,8 @@
     "ocz",
     "ollama",
     "ollama-local",
+    "ollama-local-tts-models",
+    "ollama-local-tts-voices",
     "openai",
     "openai-tts-models",
     "openai-tts-voices",
@@ -391,6 +396,7 @@
     "recraft",
     "req",
     "respan",
+    "runcrate",
     "runwayml",
     "samba",
     "sdwebui",

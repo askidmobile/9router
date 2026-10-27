@@ -31,6 +31,7 @@ const ALIAS_TOKENS = [
   "nous","nous-portal","nous-research","ns",
   "typesafe",
   "respan","rs",
+  "runcrate","rc",
 ];
 
 // Sort idToAlias by key — runtime accesses by key, order is irrelevant (content-based)
