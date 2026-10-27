@@ -401,6 +401,7 @@ export async function POST(request) {
         case "nanobanana":
         case "chutes":
         case "respan":
+        case "runcrate":
         case "xiaomi-mimo":
         case "xiaomi-tokenplan":
         case "orcarouter":

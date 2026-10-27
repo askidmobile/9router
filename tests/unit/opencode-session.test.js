@@ -67,6 +67,47 @@ describe("OpenCode Free Session ID Format", () => {
     }
   });
 
+  // Upstream decodes the prefix as ~(time * 0x1000 + counter) and answers
+  // 403 FreeTierError unless the counter is small; hash-filled prefixes failed.
+  it("encodes a small counter in session prefixes so the free-tier gate accepts them", () => {
+    const counterOf = (id) => Number(~BigInt(`0x${id.slice(4, 16)}`) & 0xfffn);
+    for (const translate of [translateSessionId]) {
+      for (const raw of ["claude:550e8400-e29b-41d4-a716-446655440000", "session-from-codex", "", "x".repeat(300)]) {
+        const translated = translate(raw, "claude");
+        expect(translated).toMatch(OPENCODE_SESSION_RE);
+        expect(counterOf(translated)).toBe(1);
+        expect(translate(raw, "claude")).toBe(translated);
+      }
+    }
+    for (let i = 0; i < 100; i++) {
+      expect(counterOf(generateSessionId(1_700_000_000_000))).toBeLessThanOrEqual(16);
+    }
+  });
+
+  // Upstream also decodes the prefix timestamp and refuses a session minted in
+  // the future or before the free-tier window (live probes 2026-10-26: a
+  // Date.now() session passed 10/10, digest-derived ones 1/10).
+  it("mints translated sessions at the current time instead of from a digest", () => {
+    // The 48-bit prefix carries 36 bits of milliseconds plus a 12-bit counter,
+    // so the decoded time is the mint time modulo 2^36.
+    const TIME_MASK = (1n << 36n) - 1n;
+    const timeOf = (id) => Number((~BigInt(`0x${id.slice(4, 16)}`) & ((1n << 48n) - 1n)) >> 12n);
+    const before = Date.now();
+    const translated = translateSessionId(`fresh-${before}`, "claude");
+    const after = Date.now();
+
+    expect(timeOf(translated)).toBeGreaterThanOrEqual(Number(BigInt(before) & TIME_MASK));
+    expect(timeOf(translated)).toBeLessThanOrEqual(Number(BigInt(after) & TIME_MASK));
+  });
+
+  it("reuses the memoized session for one conversation", () => {
+    const raw = "claude:memoized-conversation";
+    const first = translateSessionId(raw, "claude");
+    expect(translateSessionId(raw, "claude")).toBe(first);
+    // A different conversation still gets its own session.
+    expect(translateSessionId(`${raw}-other`, "claude")).not.toBe(first);
+  });
+
   it("preserves already-valid OpenCode sessions without re-hashing", () => {
     const valid = "ses_f534dfae8ffeCy4Ee4tLWNygDc";
     expect(translateSessionId(valid)).toBe(valid);

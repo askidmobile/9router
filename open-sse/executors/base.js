@@ -126,7 +126,7 @@ export class BaseExecutor {
     return { status: response.status, message: message ? prefix + message : `HTTP ${response.status}` };
   }
 
-  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, requestPolicy, providerOverrides = null }) {
+  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, requestPolicy, providerOverrides = null, directFetch = null }) {
     throwIfAborted(signal);
     const fallbackCount = this.getFallbackCount();
     let lastError = null;
@@ -230,6 +230,9 @@ export class BaseExecutor {
           // The dispatcher has its own timeout; a longer abort timer alone
           // cannot allow queued inference to wait beyond that limit.
           ...dispatcherTimeouts,
+          // Protocol adapters that need their own transport (opencode's TLS
+          // fingerprint) override the direct path; proxies still take priority.
+          ...(directFetch ? { directFetch } : {}),
         }, proxyOptions);
         clearTimeout(connectTimer);
         throwIfAborted(signal);

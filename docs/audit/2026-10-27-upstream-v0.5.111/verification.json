@@ -1,0 +1,62 @@
+{
+  "before": {
+    "passedAssertions": 5220,
+    "failedAssertions": 3,
+    "pendingAssertions": 96,
+    "files": 495,
+    "failures": [
+      {
+        "file": "unit/combo-credit-fallback.test.js",
+        "test": "combo credit fallback routes a 400 response correctly: Bad request"
+      },
+      {
+        "file": "unit/headroom-responses-format.test.js",
+        "test": "compressWithHeadroom openai-responses format (#1998) skips Responses tool/reasoning history instead of collapsing it into a message (#2132)"
+      },
+      {
+        "file": "unit/security-audit.test.js",
+        "test": "AUDIT-002: API key masking byApiKey object keys should use masked key, not raw key"
+      }
+    ]
+  },
+  "after": {
+    "passedAssertions": 5307,
+    "failedAssertions": 3,
+    "pendingAssertions": 96,
+    "files": 507,
+    "failures": [
+      {
+        "file": "unit/combo-credit-fallback.test.js",
+        "test": "combo credit fallback routes a 400 response correctly: Bad request"
+      },
+      {
+        "file": "unit/headroom-responses-format.test.js",
+        "test": "compressWithHeadroom openai-responses format (#1998) skips Responses tool/reasoning history instead of collapsing it into a message (#2132)"
+      },
+      {
+        "file": "unit/security-audit.test.js",
+        "test": "AUDIT-002: API key masking byApiKey object keys should use masked key, not raw key"
+      }
+    ]
+  },
+  "newFailures": [],
+  "build": {
+    "passed": true,
+    "node": "22.17.1",
+    "next": "16.4.3"
+  },
+  "lint": {
+    "errors": 2,
+    "baselineErrors": 2,
+    "file": "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/TtsExampleCard.js",
+    "rule": "react-hooks/set-state-in-effect"
+  },
+  "targetedRecheck": {
+    "tests": 58,
+    "failed": 0,
+    "files": [
+      "chatgpt-bridge.test.js",
+      "request-details-tab.test.js"
+    ]
+  }
+}

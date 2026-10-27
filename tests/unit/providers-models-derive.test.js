@@ -186,6 +186,7 @@ describe("fetchViaDerivedEndpoint", () => {
     });
     const staticModels = getStaticProviderModels("commandcode");
     expect(staticModels[0]?.id).toBe("deepseek/deepseek-v4-pro");
-    expect(staticModels.length).toBe(22);
+    expect(staticModels.length).toBe(23);
+    expect(staticModels.some((model) => model.id === "moonshotai/Kimi-K3.1-Pro")).toBe(true);
   });
 });
