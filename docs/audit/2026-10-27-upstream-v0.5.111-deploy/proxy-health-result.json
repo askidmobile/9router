@@ -1,0 +1,115 @@
+{
+  "passed": true,
+  "configurationPreserved": true,
+  "managedPoolsWithHealthChanges": 10,
+  "automaticallyRecoveredPools": 1,
+  "changes": [
+    {
+      "changedColumns": [
+        "data",
+        "updatedAt"
+      ],
+      "changedDataFields": [
+        "exitIp",
+        "lastTestedAt",
+        "latencyMs"
+      ]
+    },
+    {
+      "changedColumns": [
+        "data",
+        "updatedAt"
+      ],
+      "changedDataFields": [
+        "lastTestedAt",
+        "latencyMs"
+      ]
+    },
+    {
+      "changedColumns": [
+        "data",
+        "isActive",
+        "testStatus",
+        "updatedAt"
+      ],
+      "changedDataFields": [
+        "autoDisabled",
+        "exitIp",
+        "lastError",
+        "lastTestedAt",
+        "latencyMs"
+      ]
+    },
+    {
+      "changedColumns": [
+        "data",
+        "updatedAt"
+      ],
+      "changedDataFields": [
+        "lastTestedAt"
+      ]
+    },
+    {
+      "changedColumns": [
+        "data",
+        "updatedAt"
+      ],
+      "changedDataFields": [
+        "lastTestedAt",
+        "latencyMs"
+      ]
+    },
+    {
+      "changedColumns": [
+        "data",
+        "updatedAt"
+      ],
+      "changedDataFields": [
+        "lastTestedAt",
+        "latencyMs"
+      ]
+    },
+    {
+      "changedColumns": [
+        "data",
+        "updatedAt"
+      ],
+      "changedDataFields": [
+        "lastTestedAt",
+        "latencyMs"
+      ]
+    },
+    {
+      "changedColumns": [
+        "data",
+        "updatedAt"
+      ],
+      "changedDataFields": [
+        "exitIp",
+        "lastTestedAt",
+        "latencyMs"
+      ]
+    },
+    {
+      "changedColumns": [
+        "data",
+        "updatedAt"
+      ],
+      "changedDataFields": [
+        "lastTestedAt",
+        "latencyMs"
+      ]
+    },
+    {
+      "changedColumns": [
+        "data",
+        "updatedAt"
+      ],
+      "changedDataFields": [
+        "lastTestedAt",
+        "latencyMs"
+      ]
+    }
+  ],
+  "owner": "src/lib/network/freeProxies.js (unchanged by this update)"
+}

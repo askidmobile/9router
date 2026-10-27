@@ -1,0 +1,39 @@
+{
+  "passed": true,
+  "existingModelsUnchanged": true,
+  "capabilityNameAliasSelectionPinsUnchanged": true,
+  "configuredProvidersUnchanged": true,
+  "changes": [
+    {
+      "scope": "pricing",
+      "provider": "cheaper",
+      "changedModels": 82,
+      "newModels": 4
+    },
+    {
+      "scope": "customModels",
+      "addedModel": "gpt-6-sol-pro",
+      "provider": "cheaper",
+      "catalogOnly": true
+    },
+    {
+      "scope": "customModels",
+      "addedModel": "gpt-6.1-sol-pro",
+      "provider": "cheaper",
+      "catalogOnly": true
+    },
+    {
+      "scope": "customModels",
+      "addedModel": "gpt-6.1-terra-fast",
+      "provider": "cheaper",
+      "catalogOnly": true
+    },
+    {
+      "scope": "customModels",
+      "addedModel": "gpt-6.1-terra",
+      "provider": "cheaper",
+      "catalogOnly": true
+    }
+  ],
+  "owner": "src/lib/providerCatalog/sync.js (unchanged by this update)"
+}

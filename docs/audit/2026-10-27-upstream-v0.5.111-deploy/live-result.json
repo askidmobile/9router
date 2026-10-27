@@ -1,0 +1,1 @@
+{"passed":false,"model":"oc/deepseek-v4.1-flash-free","checks":[{"stream":false,"status":429,"usable":false,"seconds":1.11,"contentType":"application/json"}]}

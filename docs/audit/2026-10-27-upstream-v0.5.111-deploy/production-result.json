@@ -1,0 +1,274 @@
+{
+  "passed": true,
+  "revision": "566d69529f18acdfb9391a4cf58710ea23c6a1aa",
+  "image": "sha256:ae8af78e1e46f692d6b8dbf5e549ee321bd4e030ad957217c7e82fe88074ea7c",
+  "management": {
+    "passed": true,
+    "checks": [
+      {
+        "path": "/api/health",
+        "ok": true
+      },
+      {
+        "path": "/api/settings",
+        "ok": true
+      },
+      {
+        "path": "/api/providers",
+        "ok": true
+      },
+      {
+        "path": "/api/combos",
+        "ok": true
+      },
+      {
+        "path": "/api/keys",
+        "ok": true
+      },
+      {
+        "path": "/api/models",
+        "ok": true
+      },
+      {
+        "path": "/api/models/caps?summary=1",
+        "ok": true
+      },
+      {
+        "path": "/api/usage/stats?period=today",
+        "ok": true
+      },
+      {
+        "path": "/dashboard/models",
+        "ok": true
+      },
+      {
+        "path": "dashboard JS/CSS",
+        "assets": 17,
+        "ok": true
+      },
+      {
+        "path": "/dashboard/combos",
+        "ok": true
+      },
+      {
+        "path": "/providers/nous.png",
+        "ok": true
+      }
+    ]
+  },
+  "public": {
+    "passed": true,
+    "checks": [
+      {
+        "path": "/api/health",
+        "ok": true
+      },
+      {
+        "path": "/api/settings",
+        "ok": true
+      },
+      {
+        "path": "/api/providers",
+        "ok": true
+      },
+      {
+        "path": "/api/combos",
+        "ok": true
+      },
+      {
+        "path": "/api/keys",
+        "ok": true
+      },
+      {
+        "path": "/api/models",
+        "ok": true
+      },
+      {
+        "path": "/api/models/caps?summary=1",
+        "ok": true
+      },
+      {
+        "path": "/api/usage/stats?period=today",
+        "ok": true
+      },
+      {
+        "path": "/dashboard/models",
+        "ok": true
+      },
+      {
+        "path": "dashboard JS/CSS",
+        "assets": 17,
+        "ok": true
+      },
+      {
+        "path": "/dashboard/combos",
+        "ok": true
+      },
+      {
+        "path": "/providers/nous.png",
+        "ok": true
+      }
+    ]
+  },
+  "configPreserved": true,
+  "sqlite": "ok",
+  "restartCount": 0,
+  "fatalLogMarkers": [],
+  "connections": 50,
+  "keys": 15,
+  "combos": 12,
+  "proxyHealth": {
+    "passed": true,
+    "configurationPreserved": true,
+    "managedPoolsWithHealthChanges": 10,
+    "automaticallyRecoveredPools": 1,
+    "changes": [
+      {
+        "changedColumns": [
+          "data",
+          "updatedAt"
+        ],
+        "changedDataFields": [
+          "exitIp",
+          "lastTestedAt",
+          "latencyMs"
+        ]
+      },
+      {
+        "changedColumns": [
+          "data",
+          "updatedAt"
+        ],
+        "changedDataFields": [
+          "lastTestedAt",
+          "latencyMs"
+        ]
+      },
+      {
+        "changedColumns": [
+          "data",
+          "isActive",
+          "testStatus",
+          "updatedAt"
+        ],
+        "changedDataFields": [
+          "autoDisabled",
+          "exitIp",
+          "lastError",
+          "lastTestedAt",
+          "latencyMs"
+        ]
+      },
+      {
+        "changedColumns": [
+          "data",
+          "updatedAt"
+        ],
+        "changedDataFields": [
+          "lastTestedAt"
+        ]
+      },
+      {
+        "changedColumns": [
+          "data",
+          "updatedAt"
+        ],
+        "changedDataFields": [
+          "lastTestedAt",
+          "latencyMs"
+        ]
+      },
+      {
+        "changedColumns": [
+          "data",
+          "updatedAt"
+        ],
+        "changedDataFields": [
+          "lastTestedAt",
+          "latencyMs"
+        ]
+      },
+      {
+        "changedColumns": [
+          "data",
+          "updatedAt"
+        ],
+        "changedDataFields": [
+          "lastTestedAt",
+          "latencyMs"
+        ]
+      },
+      {
+        "changedColumns": [
+          "data",
+          "updatedAt"
+        ],
+        "changedDataFields": [
+          "exitIp",
+          "lastTestedAt",
+          "latencyMs"
+        ]
+      },
+      {
+        "changedColumns": [
+          "data",
+          "updatedAt"
+        ],
+        "changedDataFields": [
+          "lastTestedAt",
+          "latencyMs"
+        ]
+      },
+      {
+        "changedColumns": [
+          "data",
+          "updatedAt"
+        ],
+        "changedDataFields": [
+          "lastTestedAt",
+          "latencyMs"
+        ]
+      }
+    ],
+    "owner": "src/lib/network/freeProxies.js (unchanged by this update)"
+  },
+  "catalogRefresh": {
+    "passed": true,
+    "existingModelsUnchanged": true,
+    "capabilityNameAliasSelectionPinsUnchanged": true,
+    "configuredProvidersUnchanged": true,
+    "changes": [
+      {
+        "scope": "pricing",
+        "provider": "cheaper",
+        "changedModels": 82,
+        "newModels": 4
+      },
+      {
+        "scope": "customModels",
+        "addedModel": "gpt-6-sol-pro",
+        "provider": "cheaper",
+        "catalogOnly": true
+      },
+      {
+        "scope": "customModels",
+        "addedModel": "gpt-6.1-sol-pro",
+        "provider": "cheaper",
+        "catalogOnly": true
+      },
+      {
+        "scope": "customModels",
+        "addedModel": "gpt-6.1-terra-fast",
+        "provider": "cheaper",
+        "catalogOnly": true
+      },
+      {
+        "scope": "customModels",
+        "addedModel": "gpt-6.1-terra",
+        "provider": "cheaper",
+        "catalogOnly": true
+      }
+    ],
+    "owner": "src/lib/providerCatalog/sync.js (unchanged by this update)"
+  }
+}

@@ -20,10 +20,10 @@
     ]
   },
   "after": {
-    "passedAssertions": 5307,
+    "passedAssertions": 5308,
     "failedAssertions": 3,
     "pendingAssertions": 96,
-    "files": 507,
+    "files": 508,
     "failures": [
       {
         "file": "unit/combo-credit-fallback.test.js",
@@ -58,5 +58,24 @@
       "chatgpt-bridge.test.js",
       "request-details-tab.test.js"
     ]
-  }
+  },
+  "providerBaseline": {
+    "passed": true,
+    "providers": 107,
+    "intentionalAddedProvider": "runcrate"
+  },
+  "aliasBaseline": {
+    "passed": true,
+    "tokens": 141,
+    "added": [
+      "runcrate",
+      "rc"
+    ],
+    "newModelKeys": [
+      "ollama-local-tts-models",
+      "ollama-local-tts-voices",
+      "runcrate"
+    ]
+  },
+  "oauthUrlsUnchanged": true
 }

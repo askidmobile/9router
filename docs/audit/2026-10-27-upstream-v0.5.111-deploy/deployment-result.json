@@ -1,0 +1,15 @@
+{
+  "deployed": true,
+  "revision": "566d69529f18acdfb9391a4cf58710ea23c6a1aa",
+  "image": "sha256:ae8af78e1e46f692d6b8dbf5e549ee321bd4e030ad957217c7e82fe88074ea7c",
+  "paidSettingsUnchanged": true,
+  "protectedConnections": 50,
+  "healthRestoredSeconds": 5.45,
+  "drain": {
+    "active": 0,
+    "pending": 0
+  },
+  "rollbackContainer": "9router-before-upstream-v0.5.111-20261027-566d6952",
+  "sqliteBackup": "ok",
+  "backup": "/root/9router-releases/upstream-v0.5.111-20261027-566d6952/backup"
+}
