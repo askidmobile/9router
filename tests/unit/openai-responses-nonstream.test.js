@@ -13,6 +13,18 @@ const { filterUsageForFormat } = await import("../../open-sse/utils/usageTrackin
 const { openAICompletionToResponses } = await import("../../open-sse/translator/response/openai-responses-json.js");
 
 describe("native provider JSON for a Responses client", () => {
+  it.each([FORMATS.OPENAI, FORMATS.CLAUDE, FORMATS.GEMINI, FORMATS.OLLAMA])("respects the JSON output contract across the %s pivot", format => {
+    const raw = JSON.stringify([{ type: "text", text: "## Проверка\n\nВсе тензоры учтены." }]);
+    const native = format === FORMATS.CLAUDE ? { content: [{ type: "text", text: raw }], stop_reason: "end_turn" }
+      : format === FORMATS.GEMINI ? { candidates: [{ content: { parts: [{ text: raw }] }, finishReason: "STOP" }] }
+        : format === FORMATS.OLLAMA ? { message: { content: raw }, done_reason: "stop" }
+          : { choices: [{ message: { content: raw }, finish_reason: "stop" }] };
+    for (const preserveJson of [false, true]) {
+      const result = translateNonStreamingResponse(native, format, FORMATS.OPENAI_RESPONSES, null, null, preserveJson);
+      expect(result.output[0].content[0].text).toBe(preserveJson ? raw : JSON.parse(raw)[0].text);
+    }
+  });
+
   it.each([FORMATS.GEMINI, FORMATS.ANTIGRAVITY, FORMATS.GEMINI_CLI, FORMATS.VERTEX])("completes both translation stages for %s", format => {
     const native = { candidates: [{ content: { parts: [{ text: "Context summary" }] }, finishReason: "STOP" }], usageMetadata: { promptTokenCount: 100, candidatesTokenCount: 20, totalTokenCount: 120 } };
     const out = translateNonStreamingResponse(format === FORMATS.ANTIGRAVITY ? { response: native } : native, format, FORMATS.OPENAI_RESPONSES);
@@ -166,6 +178,25 @@ describe("forced-SSE JSON path for a Responses-API client behind a chat upstream
     expect(fc).toBeTruthy();
     expect(fc.name).toBe("shell");
     expect(fc.arguments).toBe("{\"cmd\":\"pwd\"}");
+  });
+
+  it.each([
+    null,
+    { text: { format: { type: "json_schema", name: "content", schema: { type: "array" } } } },
+    { response_format: { type: "json_object" } },
+  ])("normalizes content arrays after forced SSE while respecting %j", async format => {
+    const raw = JSON.stringify([{ text: "Проверено на реальных файлах.", type: "text" }]);
+    const frames = [
+      `data: ${JSON.stringify({ choices: [{ delta: { content: raw }, finish_reason: null }] })}`,
+      `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }], usage: { prompt_tokens: 20, completion_tokens: 10 } })}`,
+      "data: [DONE]",
+    ];
+    const ctx = sseCtx(FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI, frames);
+    ctx.body = { ...ctx.body, ...format };
+    const result = await handleForcedSSEToJson(ctx);
+    expect(result.success).toBe(true);
+    const response = await result.response.json();
+    expect(response.output[0].content[0].text).toBe(format ? raw : JSON.parse(raw)[0].text);
   });
 
   it("returns a custom_tool_call for a marked tool", async () => {

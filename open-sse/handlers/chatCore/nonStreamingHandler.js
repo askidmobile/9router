@@ -18,22 +18,23 @@ import { throwIfAborted } from "../../utils/abort.js";
 import { isFailedComboCompletion } from "../../utils/comboUpstream.js";
 import { restoreToolNames } from "../../utils/opencodeFingerprint.js";
 import { prepareResponseMetadata } from "../../utils/responseMetadata.js";
+import { isJsonOutputRequested } from "../../translator/concerns/textToolCalls.js";
 
 /**
  * Translate non-streaming response body from provider format → OpenAI format.
  */
-export function translateNonStreamingResponse(responseBody, targetFormat, sourceFormat, customToolNames = null, toolNamespaces = null) {
+export function translateNonStreamingResponse(responseBody, targetFormat, sourceFormat, customToolNames = null, toolNamespaces = null, preserveJsonOutput = false) {
   if (targetFormat === sourceFormat) return responseBody;
   // Complete both stages for non-Chat providers too. Returning the intermediate
   // Chat object loses Responses output/status (notably for Codex compaction).
   if (sourceFormat === FORMATS.OPENAI_RESPONSES && targetFormat !== FORMATS.OPENAI) {
     const intermediate = translateNonStreamingResponse(responseBody, targetFormat, FORMATS.OPENAI, customToolNames);
-    return intermediate?.choices ? openAICompletionToResponses(intermediate, customToolNames, toolNamespaces) : intermediate;
+    return intermediate?.choices ? openAICompletionToResponses(intermediate, customToolNames, toolNamespaces, preserveJsonOutput) : intermediate;
   }
   // Provider responded in OpenAI Chat Completions shape but the client speaks
   // Responses API — convert so tool_calls/text surface as Responses `output`.
   if (targetFormat === FORMATS.OPENAI && sourceFormat === FORMATS.OPENAI_RESPONSES) {
-    return openAICompletionToResponses(responseBody, customToolNames, toolNamespaces);
+    return openAICompletionToResponses(responseBody, customToolNames, toolNamespaces, preserveJsonOutput);
   }
   if (targetFormat === FORMATS.OPENAI && sourceFormat === FORMATS.CLAUDE) {
     return openAICompletionToClaudeMessage(responseBody);
@@ -254,7 +255,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
 
   responseMetadata.observe(responseBody);
   const translatedResponse = responseMetadata.apply(needsTranslation(targetFormat, sourceFormat)
-    ? translateNonStreamingResponse(responseBody, targetFormat, sourceFormat, customToolNames, toolNamespaces)
+    ? translateNonStreamingResponse(responseBody, targetFormat, sourceFormat, customToolNames, toolNamespaces, isJsonOutputRequested(body))
     : responseBody);
   const isClaudeMessageResponse = sourceFormat === FORMATS.CLAUDE && translatedResponse?.type === "message";
   // Responses-format translation produces a `object:"response"` body with no

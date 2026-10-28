@@ -61,8 +61,8 @@ function finishChunk() {
   };
 }
 
-function runStream(parts) {
-  const state = initState(FORMATS.OPENAI_RESPONSES);
+function runStream(parts, overrides = {}) {
+  const state = { ...initState(FORMATS.OPENAI_RESPONSES), ...overrides };
   const events = [];
   for (const part of parts) {
     events.push(...openaiToOpenAIResponsesResponse(typeof part === "string" ? textChunk(part) : part, state));
@@ -139,6 +139,26 @@ describe("textual tool-call parser", () => {
 });
 
 describe("serialized content and DSML artifacts", () => {
+  it("unwraps serialized text blocks without requiring a DSML suffix", () => {
+    expect(parseTextToolCalls(SERIALIZED_CONTENT)).toEqual({ text: CONTENT_TEXT, calls: [] });
+    for (let split = 1; split < SERIALIZED_CONTENT.length; split++) {
+      const events = runStream([SERIALIZED_CONTENT.slice(0, split), SERIALIZED_CONTENT.slice(split), finishChunk()]);
+      expect(streamedText(events), `split ${split}`).toBe(CONTENT_TEXT);
+      expect(completedOutput(events)).toEqual(doneItems(events));
+    }
+    const response = openAICompletionToResponses({ choices: [{ message: { content: SERIALIZED_CONTENT }, finish_reason: "stop" }] });
+    expect(response.output[0].content[0].text).toBe(CONTENT_TEXT);
+  });
+
+  it("retains a serialized text array when JSON output was explicitly requested", () => {
+    for (const suffix of ["", dsmlTail()]) {
+      expect(parseTextToolCalls(SERIALIZED_CONTENT + suffix, true)).toEqual({ text: SERIALIZED_CONTENT, calls: [] });
+      const events = runStream([...(SERIALIZED_CONTENT + suffix), finishChunk()], { preserveJsonOutput: true });
+      expect(streamedText(events)).toBe(SERIALIZED_CONTENT);
+      const response = openAICompletionToResponses({ choices: [{ message: { content: SERIALIZED_CONTENT + suffix }, finish_reason: "stop" }] }, null, null, true);
+      expect(response.output[0].content[0].text).toBe(SERIALIZED_CONTENT);
+    }
+  });
   it.each(["｜DSML｜", "｜｜DSML｜｜", "|DSML|", "||DSML||"])("cleans %s tails and unwraps only text blocks", mark => {
     for (const escape of ["", "\\"]) {
       expect(parseTextToolCalls(SERIALIZED_CONTENT + dsmlTail(mark, escape))).toEqual({ text: CONTENT_TEXT, calls: [] });
@@ -150,15 +170,18 @@ describe("serialized content and DSML artifacts", () => {
 
   it("decodes multiple text blocks in either key order without reparsing their text as calls", () => {
     const text = JSON.stringify([{ type: "text", text: CONTENT_TEXT }, { type: "output_text", text: APINEX_SAMPLE }]);
-    expect(parseTextToolCalls(text + dsmlTail())).toEqual({ text: CONTENT_TEXT + APINEX_SAMPLE, calls: [] });
-    const events = runStream([...(text + dsmlTail()).match(/[\s\S]/g), finishChunk()]);
-    expect(streamedText(events)).toBe(CONTENT_TEXT + APINEX_SAMPLE);
-    expect(doneItems(events).map(item => item.type)).toEqual(["message"]);
+    for (const suffix of ["", dsmlTail()]) {
+      expect(parseTextToolCalls(text + suffix)).toEqual({ text: CONTENT_TEXT + APINEX_SAMPLE, calls: [] });
+      const events = runStream([...(text + suffix).match(/[\s\S]/g), finishChunk()]);
+      expect(streamedText(events)).toBe(CONTENT_TEXT + APINEX_SAMPLE);
+      expect(doneItems(events).map(item => item.type)).toEqual(["message"]);
+    }
   });
 
   it.each([
-    SERIALIZED_CONTENT,
-    JSON.stringify([{ type: "text", text: APINEX_SAMPLE }]),
+    JSON.stringify([{ text: "keep", type: "record" }]),
+    JSON.stringify([{ type: "text", text: "keep", id: 1 }]),
+    '[{"amount":12.5,"currency":"USD"}]',
     `JSON example:\n\`\`\`json\n${SERIALIZED_CONTENT}\n\`\`\``,
     `DSML example:\n\`\`\`xml\n${dsmlTail()}\n\`\`\``,
     `<｜DSML｜ calls><｜DSML｜ invoke name="shell"><｜DSML｜ parameter name="command">pwd${dsmlTail()}`,
@@ -321,7 +344,7 @@ describe("non-streaming chat → Responses recovery", () => {
 });
 
 describe("SSE pipeline recovery", () => {
-  async function transform(chunks) {
+  async function transform(chunks, body = null) {
     const input = chunks.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`).join("") + "data: [DONE]\n\n";
     const stream = new ReadableStream({
       start(controller) {
@@ -330,7 +353,7 @@ describe("SSE pipeline recovery", () => {
       },
     });
     const output = stream.pipeThrough(createSSETransformStreamWithLogger(
-      FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, "deepseek", null, null, "free/minimax-m3.1",
+      FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, "deepseek", null, null, "free/minimax-m3.1", null, body,
     ));
     const reader = output.getReader();
     const decoder = new TextDecoder();
@@ -368,5 +391,20 @@ describe("SSE pipeline recovery", () => {
     expect(completed).toHaveLength(1);
     expect(completed[0].response.output[0].content[0].text).toBe(CONTENT_TEXT);
     expect(output).not.toContain("DSML");
+  });
+
+  it.each([
+    [null, CONTENT_TEXT],
+    [{ text: { format: { type: "text" } } }, CONTENT_TEXT],
+    [{ text: { format: { type: "json_object" } } }, SERIALIZED_CONTENT],
+    [{ text: { format: { type: "json_schema", name: "content", schema: { type: "array" } } } }, SERIALIZED_CONTENT],
+    [{ response_format: { type: "json_object" } }, SERIALIZED_CONTENT],
+    [{ response_format: { type: "json_schema", json_schema: { name: "content", schema: { type: "array" } } } }, SERIALIZED_CONTENT],
+  ])("honors the requested output format throughout the SSE pipeline: %j", async (body, expected) => {
+    const output = await transform([...SERIALIZED_CONTENT].map(textChunk).concat(finishChunk()), body);
+    const events = output.split("\n").filter(line => line.startsWith("data: {")).map(line => JSON.parse(line.slice(6)));
+    expect(events.filter(event => event.type === "response.output_text.delta").map(event => event.delta).join("")).toBe(expected);
+    expect(events.find(event => event.type === "response.output_text.done").text).toBe(expected);
+    expect(events.find(event => event.type === "response.completed").response.output[0].content[0].text).toBe(expected);
   });
 });

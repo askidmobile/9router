@@ -11,6 +11,7 @@ import { throwIfAborted } from "../../utils/abort.js";
 import { prepareResponseMetadata } from "../../utils/responseMetadata.js";
 import { ROLE, RESPONSES_ITEM } from "../../translator/schema/index.js";
 import { extractReasoningText } from "../../translator/concerns/reasoning.js";
+import { isJsonOutputRequested } from "../../translator/concerns/textToolCalls.js";
 
 // Responses-API providers (e.g. codex) may emit SSE without content-type + use Responses output shape
 const isResponsesProvider = (p) => PROVIDERS[p]?.format === FORMATS.OPENAI_RESPONSES;
@@ -317,7 +318,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
     // already imports parseSSEToOpenAIResponse from this module.
     responseMetadata.observe(parsed);
     const finalBody = sourceFormat === FORMATS.OPENAI_RESPONSES
-      ? openAICompletionToResponses(parsed, customToolNames, toolNamespaces)
+      ? openAICompletionToResponses(parsed, customToolNames, toolNamespaces, isJsonOutputRequested(body))
       : sourceFormat === FORMATS.CLAUDE
         ? openAICompletionToClaudeMessage(parsed)
         : parsed;

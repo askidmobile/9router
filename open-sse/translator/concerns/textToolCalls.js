@@ -109,7 +109,7 @@ export function findDsmlTagStart(text) {
   return text.search(DSML_TAG_START);
 }
 
-// Hold a possible serialized content array until its protocol suffix is known.
+// Hold a possible serialized content array until JSON parsing can validate it.
 export function isSerializedTextContentPrefix(text) {
   if (/^\s*\[\s*$/.test(text)) return true;
   const start = /^\s*\[\s*\{\s*/.exec(text);
@@ -118,13 +118,18 @@ export function isSerializedTextContentPrefix(text) {
   return ['"text"', '"type"'].some(name => name.startsWith(key) || key.startsWith(name));
 }
 
-// Only an orphan closer stack proves a protocol artifact; ordinary JSON stays intact.
-export function stripToolProtocolArtifacts(text) {
+export function isJsonOutputRequested(body) {
+  return [body?.text?.format?.type, body?.response_format?.type]
+    .some(type => type === "json_schema" || type === "json_object");
+}
+
+// Typed text blocks are transport content unless the caller explicitly requested JSON.
+export function stripToolProtocolArtifacts(text, preserveJsonOutput = false) {
   if (typeof text !== "string" || !text) return text || "";
   const tail = DSML_CLOSING_STACK.exec(text);
-  if (!tail || DSML_OPEN.test(text.slice(0, tail.index))) return text;
-  const cleaned = text.slice(0, tail.index).trimEnd().replace(TRAILING_EMPTY_BULLET, "").trimEnd();
-  if (cleaned.trimStart().startsWith("[")) {
+  if (tail && DSML_OPEN.test(text.slice(0, tail.index))) return text;
+  const cleaned = tail ? text.slice(0, tail.index).trimEnd().replace(TRAILING_EMPTY_BULLET, "").trimEnd() : text;
+  if (!preserveJsonOutput && cleaned.trimStart().startsWith("[")) {
     try {
       const blocks = JSON.parse(cleaned);
       if (Array.isArray(blocks) && blocks.length > 0 && blocks.every(block =>
@@ -174,10 +179,10 @@ function parseBlock(block) {
  * @param {string} text
  * @returns {{ text: string, calls: Array<{name: string, arguments: string}> }}
  */
-export function parseTextToolCalls(text) {
+export function parseTextToolCalls(text, preserveJsonOutput = false) {
   if (typeof text !== "string" || !text) return { text: text || "", calls: [] };
   const serializedContent = isSerializedTextContentPrefix(text);
-  text = stripToolProtocolArtifacts(text);
+  text = stripToolProtocolArtifacts(text, preserveJsonOutput);
   if (serializedContent) return { text, calls: [] };
   const start = BLOCK_START.exec(text);
   if (!start) return { text, calls: [] };

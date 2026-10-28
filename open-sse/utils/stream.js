@@ -9,6 +9,7 @@ import { restoreToolNames } from "./opencodeFingerprint.js";
 import { getOpenAIResponsesEventName, isOpenAIResponsesTerminalEvent, formatIncompleteOpenAIResponsesStreamFailure } from "./responsesStreamHelpers.js";
 import { dbg, isDebugEnabled } from "./debugLog.js";
 import { createResponseMetadata } from "./responseMetadata.js";
+import { isJsonOutputRequested } from "../translator/concerns/textToolCalls.js";
 
 import { SSE_DONE, SSE_HEADERS, SSE_HEADERS_NO_BUFFER } from "./sseConstants.js";
 
@@ -78,7 +79,7 @@ export function createSSEStream(options = {}) {
   const decoder = new TextDecoder("utf-8", { fatal: false });
 
   const state = mode === STREAM_MODE.TRANSLATE
-    ? { ...initState(sourceFormat), provider, toolNameMap, customToolNames: new Set(customToolNames || []), toolNamespaces: new Map(toolNamespaces || []), model, sessionId: credentials?._clientSessionId || null }
+    ? { ...initState(sourceFormat), provider, toolNameMap, customToolNames: new Set(customToolNames || []), toolNamespaces: new Map(toolNamespaces || []), model, sessionId: credentials?._clientSessionId || null, preserveJsonOutput: isJsonOutputRequested(body) }
     : null;
 
   let totalContentLength = 0;

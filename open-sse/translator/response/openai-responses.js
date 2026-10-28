@@ -419,7 +419,7 @@ function processAssistantText(state, emit, idx, block) {
     block.buffer = block.buffer.slice(end.index + end[0].length);
     block.inBlock = false;
 
-    const parsed = parseTextToolCalls(raw);
+    const parsed = parseTextToolCalls(raw, state.preserveJsonOutput);
     if (parsed.calls.length > 0) {
       for (const i in state.msgItemAdded) closeMessage(state, emit, i);
       emitRecoveredToolCalls(state, emit, parsed.calls);
@@ -435,11 +435,11 @@ function flushAssistantText(state, emit) {
   if (!state.textBlocks) return;
   for (const block of Object.values(state.textBlocks)) {
     if (!block.buffer) continue;
-    const raw = stripToolProtocolArtifacts(block.buffer);
+    const raw = stripToolProtocolArtifacts(block.buffer, state.preserveJsonOutput);
     block.buffer = "";
     if (block.inBlock) {
       block.inBlock = false;
-      const parsed = parseTextToolCalls(raw);
+      const parsed = parseTextToolCalls(raw, state.preserveJsonOutput);
       if (parsed.calls.length > 0) {
         for (const i in state.msgItemAdded) closeMessage(state, emit, i);
         emitRecoveredToolCalls(state, emit, parsed.calls);

@@ -30,7 +30,7 @@ export function finishReasonFromIncompleteReason(reason) {
 }
 
 /** Convert a completed Chat Completions JSON body into Responses API JSON. */
-export function openAICompletionToResponses(responseBody, customToolNames = null, toolNamespaces = null) {
+export function openAICompletionToResponses(responseBody, customToolNames = null, toolNamespaces = null, preserveJsonOutput = false) {
   const choice = responseBody?.choices?.[0];
   if (!choice) return responseBody;
 
@@ -55,7 +55,7 @@ export function openAICompletionToResponses(responseBody, customToolNames = null
   // instead of emitting structured tool_calls. Recover it so Responses clients
   // (Codex) execute the call instead of rendering the markup as an answer.
   const rawText = extractTextContent(message.content);
-  const parsedText = parseTextToolCalls(rawText);
+  const parsedText = parseTextToolCalls(rawText, preserveJsonOutput);
   const structuredCalls = message.tool_calls || [];
   const text = parsedText.text;
   if (text) {
