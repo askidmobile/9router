@@ -43,6 +43,12 @@ const DSML_TAIL_SAMPLE = `Возможный остаток разрыва те�
 </｜｜DSML｜｜ invoke>
 </｜｜DSML｜｜ calls>`;
 
+const CONTENT_TEXT = "Проверяю Q4_K/Q6_K: все warp'ы должны участвовать в сумме.\nПуть: C:\\test\\kernel.cu";
+const SERIALIZED_CONTENT = JSON.stringify([{ text: CONTENT_TEXT, type: "text" }]);
+const dsmlTail = (mark = "｜DSML｜", escape = "") =>
+  ["parameter", "invoke", "calls"].map(kind => `${escape}</${mark} ${kind}>${escape}`).join("\n");
+const APINEX_DSML_SAMPLE = SERIALIZED_CONTENT + dsmlTail();
+
 function textChunk(text) {
   return { id: "chatcmpl-1", choices: [{ index: 0, delta: { content: text } }] };
 }
@@ -117,7 +123,7 @@ describe("textual tool-call parser", () => {
   });
 
   it("removes an already-consumed DSML closer stack and its empty bullet", () => {
-    expect(stripToolProtocolArtifacts(DSML_TAIL_SAMPLE, true)).toBe(
+    expect(stripToolProtocolArtifacts(DSML_TAIL_SAMPLE)).toBe(
       "Возможный остаток разрыва теперь надо отделить от HTTP/SSE."
     );
     expect(parseTextToolCalls(DSML_TAIL_SAMPLE)).toEqual({
@@ -126,8 +132,81 @@ describe("textual tool-call parser", () => {
     });
   });
 
-  it("removes an empty bullet when the provider consumed all DSML markup", () => {
-    expect(stripToolProtocolArtifacts("Проверяю сборку.\n \t-\n", true)).toBe("Проверяю сборку.");
+  it("preserves a trailing Markdown bullet without protocol evidence", () => {
+    const text = "Проверяю сборку.\n \t-\n";
+    expect(stripToolProtocolArtifacts(text)).toBe(text);
+  });
+});
+
+describe("serialized content and DSML artifacts", () => {
+  it.each(["｜DSML｜", "｜｜DSML｜｜", "|DSML|", "||DSML||"])("cleans %s tails and unwraps only text blocks", mark => {
+    for (const escape of ["", "\\"]) {
+      expect(parseTextToolCalls(SERIALIZED_CONTENT + dsmlTail(mark, escape))).toEqual({ text: CONTENT_TEXT, calls: [] });
+      const raw = CONTENT_TEXT + "\n \t-\n" + dsmlTail(mark, escape);
+      const events = runStream([...(raw.match(/[\s\S]/g) || []), finishChunk()]);
+      expect(streamedText(events)).toBe(CONTENT_TEXT);
+    }
+  });
+
+  it("decodes multiple text blocks in either key order without reparsing their text as calls", () => {
+    const text = JSON.stringify([{ type: "text", text: CONTENT_TEXT }, { type: "output_text", text: APINEX_SAMPLE }]);
+    expect(parseTextToolCalls(text + dsmlTail())).toEqual({ text: CONTENT_TEXT + APINEX_SAMPLE, calls: [] });
+    const events = runStream([...(text + dsmlTail()).match(/[\s\S]/g), finishChunk()]);
+    expect(streamedText(events)).toBe(CONTENT_TEXT + APINEX_SAMPLE);
+    expect(doneItems(events).map(item => item.type)).toEqual(["message"]);
+  });
+
+  it.each([
+    SERIALIZED_CONTENT,
+    JSON.stringify([{ type: "text", text: APINEX_SAMPLE }]),
+    `JSON example:\n\`\`\`json\n${SERIALIZED_CONTENT}\n\`\`\``,
+    `DSML example:\n\`\`\`xml\n${dsmlTail()}\n\`\`\``,
+    `<｜DSML｜ calls><｜DSML｜ invoke name="shell"><｜DSML｜ parameter name="command">pwd${dsmlTail()}`,
+  ])("preserves ordinary JSON, code examples and complete DSML envelopes: %s", text => {
+    expect(parseTextToolCalls(text)).toEqual({ text, calls: [] });
+    const events = runStream([...(text.match(/[\s\S]{1,2}/g) || []), finishChunk()]);
+    expect(streamedText(events)).toBe(text);
+    expect(completedOutput(events)).toEqual(doneItems(events));
+  });
+
+  it("preserves blocks with non-text payloads instead of discarding their fields", () => {
+    const json = JSON.stringify([{ type: "image_url", image_url: { url: "https://example.test/image.png" } }]);
+    expect(parseTextToolCalls(json + dsmlTail())).toEqual({ text: json, calls: [] });
+  });
+
+  it("removes the artifact at every possible two-chunk boundary", () => {
+    for (let split = 1; split < APINEX_DSML_SAMPLE.length; split++) {
+      const events = runStream([APINEX_DSML_SAMPLE.slice(0, split), APINEX_DSML_SAMPLE.slice(split), finishChunk()]);
+      expect(streamedText(events), `split ${split}`).toBe(CONTENT_TEXT);
+      expect(completedOutput(events)).toEqual(doneItems(events));
+    }
+  });
+
+  it.each([1, 2, 3, 9])("cleans escaped tags split into %i-character chunks", size => {
+    const text = SERIALIZED_CONTENT + dsmlTail("｜DSML｜", "\\");
+    const events = runStream([...(text.match(new RegExp(`[\\s\\S]{1,${size}}`, "g")) || []), finishChunk()]);
+    expect(streamedText(events)).toBe(CONTENT_TEXT);
+    expect(doneItems(events)).toHaveLength(1);
+    expect(completedOutput(events)).toEqual(doneItems(events));
+  });
+
+  it("retains incomplete JSON and protocol tails verbatim", () => {
+    const text = APINEX_DSML_SAMPLE.slice(0, -4);
+    const finish = finishChunk();
+    finish.choices[0].finish_reason = "length";
+    const events = runStream([...(text.match(/[\s\S]/g) || []), finish]);
+    expect(streamedText(events)).toBe(text);
+    expect(events.find(event => event.event === "response.incomplete")?.data.response.status).toBe("incomplete");
+  });
+
+  it("normalizes non-streaming output while preserving structured call arguments", () => {
+    const args = JSON.stringify({ content: APINEX_DSML_SAMPLE });
+    const response = openAICompletionToResponses({ id: "test", choices: [{ message: {
+      content: APINEX_DSML_SAMPLE,
+      tool_calls: [{ id: "call_keep", type: "function", function: { name: "write_file", arguments: args } }],
+    }, finish_reason: "tool_calls" }] });
+    expect(response.output[0].content[0].text).toBe(CONTENT_TEXT);
+    expect(response.output[1]).toMatchObject({ name: "write_file", arguments: args });
   });
 });
 
@@ -278,5 +357,16 @@ describe("SSE pipeline recovery", () => {
     const completed = output.split("\n").filter((line) => line.startsWith("data: ") && line.includes('"type":"response.completed"'));
     expect(completed).toHaveLength(1);
     expect(completed[0]).toContain('"name":"exec_command"');
+  });
+
+  it("normalizes serialized text and DSML before emitting every Responses text event", async () => {
+    const output = await transform([...APINEX_DSML_SAMPLE].map(textChunk).concat(finishChunk()));
+    const events = output.split("\n").filter(line => line.startsWith("data: {")).map(line => JSON.parse(line.slice(6)));
+    expect(events.filter(event => event.type === "response.output_text.delta").map(event => event.delta).join("")).toBe(CONTENT_TEXT);
+    expect(events.find(event => event.type === "response.output_text.done").text).toBe(CONTENT_TEXT);
+    const completed = events.filter(event => event.type === "response.completed");
+    expect(completed).toHaveLength(1);
+    expect(completed[0].response.output[0].content[0].text).toBe(CONTENT_TEXT);
+    expect(output).not.toContain("DSML");
   });
 });

@@ -8,7 +8,7 @@ import { buildChunk } from "../concerns/chunk.js";
 import { buildUsage } from "../concerns/usage.js";
 import { fallbackToolCallId } from "../concerns/toolCall.js";
 import { reasoningDelta, extractReasoningText } from "../concerns/reasoning.js";
-import { parseTextToolCalls, stripToolProtocolArtifacts } from "../concerns/textToolCalls.js";
+import { parseTextToolCalls, stripToolProtocolArtifacts, findDsmlTagStart, isSerializedTextContentPrefix } from "../concerns/textToolCalls.js";
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, OPENAI_FINISH, MODEL_FALLBACK } from "../schema/index.js";
 import { responsesStatusFromFinishReason, finishReasonFromIncompleteReason } from "./openai-responses-json.js";
 
@@ -294,6 +294,7 @@ function assistantTextBlock(state, idx) {
 }
 
 function heldBulletStart(value) {
+  value = value.replace(/\\$/, "");
   const bullet = /(?:^|\n)[ \t]*-[ \t]*\n?$/.exec(value);
   if (!bullet) return -1;
   const whitespace = /\s+$/.exec(value.slice(0, bullet.index));
@@ -306,7 +307,7 @@ function heldPrefixLength(buffer) {
   const marker = "<tool_calls";
   const lastLt = buffer.lastIndexOf("<");
   let cut = buffer.length;
-  const trailingWhitespace = /\s+$/.exec(buffer);
+  const trailingWhitespace = /[\s\\]+$/.exec(buffer);
   if (trailingWhitespace) cut = trailingWhitespace.index;
   if (lastLt >= 0) {
     const tail = buffer.slice(lastLt).toLowerCase();
@@ -314,18 +315,19 @@ function heldPrefixLength(buffer) {
       (tail.length <= marker.length && marker.startsWith(tail)) ||
       (tail.length <= 128 && /^<\/?[^>]*$/.test(tail))
     ) {
-      cut = lastLt;
+      cut = Math.min(cut, buffer[lastLt - 1] === "\\" ? lastLt - 1 : lastLt);
     }
     const beforeTag = buffer.slice(0, lastLt);
     const bulletStart = heldBulletStart(beforeTag);
     if (bulletStart >= 0) cut = Math.min(cut, bulletStart);
   }
 
-  const dsmlClose = /<\/(?:｜｜DSML｜｜|\|DSML\|)\s*parameter\b/i.exec(buffer);
-  if (dsmlClose) {
-    const before = buffer.slice(0, dsmlClose.index);
+  const dsmlStart = findDsmlTagStart(buffer);
+  if (dsmlStart >= 0) {
+    const before = buffer.slice(0, dsmlStart);
     const bulletStart = heldBulletStart(before);
-    cut = Math.min(cut, bulletStart >= 0 ? bulletStart : dsmlClose.index);
+    const whitespace = /\s+$/.exec(before);
+    cut = Math.min(cut, bulletStart >= 0 ? bulletStart : whitespace?.index ?? dsmlStart);
   } else {
     const bulletStart = heldBulletStart(buffer);
     if (bulletStart >= 0) cut = Math.min(cut, bulletStart);
@@ -392,23 +394,21 @@ function emitRecoveredToolCalls(state, emit, calls) {
 
 function processAssistantText(state, emit, idx, block) {
   for (;;) {
-    const cleaned = stripToolProtocolArtifacts(block.buffer);
-    if (cleaned !== block.buffer) block.buffer = cleaned;
-
+    if (!state.msgItemAdded[block.key] && isSerializedTextContentPrefix(block.buffer)) return;
     if (!block.inBlock) {
       const start = /<tool_calls\b/i.exec(block.buffer);
       if (start) {
         const head = block.buffer.slice(0, start.index);
         block.buffer = block.buffer.slice(start.index);
         block.inBlock = true;
-        if (head) emitTextContent(state, emit, block.key, stripToolProtocolArtifacts(head));
+        if (head) emitTextContent(state, emit, block.key, head);
         continue;
       }
       const cut = heldPrefixLength(block.buffer);
       if (cut > 0) {
         const safe = block.buffer.slice(0, cut);
         block.buffer = block.buffer.slice(cut);
-        emitTextContent(state, emit, block.key, stripToolProtocolArtifacts(safe));
+        emitTextContent(state, emit, block.key, safe);
       }
       return;
     }
@@ -435,7 +435,7 @@ function flushAssistantText(state, emit) {
   if (!state.textBlocks) return;
   for (const block of Object.values(state.textBlocks)) {
     if (!block.buffer) continue;
-    const raw = stripToolProtocolArtifacts(block.buffer, true);
+    const raw = stripToolProtocolArtifacts(block.buffer);
     block.buffer = "";
     if (block.inBlock) {
       block.inBlock = false;
@@ -447,7 +447,7 @@ function flushAssistantText(state, emit) {
         continue;
       }
     }
-    emitTextContent(state, emit, block.key, raw);
+    if (raw) emitTextContent(state, emit, block.key, raw);
   }
 }
 

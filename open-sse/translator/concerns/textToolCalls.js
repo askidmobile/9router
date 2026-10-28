@@ -14,6 +14,8 @@
 // being executed. parseTextToolCalls extracts the call(s) and returns the
 // remaining visible assistant text.
 
+import { OPENAI_BLOCK, RESPONSES_ITEM } from "../schema/index.js";
+
 const BLOCK_START = /<tool_calls\b/i;
 const BLOCK_END = /<\/tool_calls>/i;
 const CALL_TAG = /<tool_([a-zA-Z0-9_]+)>/g;
@@ -21,8 +23,13 @@ const ANY_TAG = /<([a-zA-Z][a-zA-Z0-9_]*)>/g;
 const PARAM_EQUALS = /<parameter=([a-zA-Z0-9_]+)>([\s\S]*?)<\/parameter>/gi;
 const PARAM_NAME = /<parameter\s+name\s*=\s*["']?([a-zA-Z0-9_]+)["']?\s*>([\s\S]*?)<\/parameter>/gi;
 const CLOSE_MARKERS = ["</tool>", "</function>", "</invoke>", "</tool_call>"];
-const DSML_MARK = /(?:｜｜DSML｜｜|\|DSML\|)/;
-const DSML_CLOSING_STACK = /(?:\s*-\s*)?\s*<\/(?:｜｜DSML｜｜|\|DSML\|)\s*parameter\s*>\s*<\/(?:｜｜DSML｜｜|\|DSML\|)\s*invoke\s*>\s*<\/(?:｜｜DSML｜｜|\|DSML\|)\s*calls\s*>\s*$/gi;
+const DSML_MARK = "[|｜]{1,2}DSML[|｜]{1,2}";
+const DSML_TAG_START = new RegExp(String.raw`\\?</?${DSML_MARK}\s*(?:calls|invoke|parameter)\b`, "i");
+const DSML_OPEN = new RegExp(String.raw`<${DSML_MARK}\s*(?:calls|invoke|parameter)\b`, "i");
+const DSML_CLOSING_STACK = new RegExp(
+  ["parameter", "invoke", "calls"].map(kind => String.raw`\\?</${DSML_MARK}\s*${kind}\s*>\\?\s*`).join("") + "$",
+  "i",
+);
 const TRAILING_EMPTY_BULLET = /(?:^|\n)[ \t]*-[ \t]*\s*$/;
 
 // Tags that are structure or parameters, never call names.
@@ -98,17 +105,35 @@ function prefixedSpans(inner) {
   return spans;
 }
 
-/**
- * Remove the provider's already-consumed DSML closer stack. Some upstreams
- * turn the invocation into a structured tool call but leave these three tags,
- * plus an empty Markdown bullet, in the assistant content.
- */
-export function stripToolProtocolArtifacts(text, final = false) {
+export function findDsmlTagStart(text) {
+  return text.search(DSML_TAG_START);
+}
+
+// Hold a possible serialized content array until its protocol suffix is known.
+export function isSerializedTextContentPrefix(text) {
+  if (/^\s*\[\s*$/.test(text)) return true;
+  const start = /^\s*\[\s*\{\s*/.exec(text);
+  if (!start) return false;
+  const key = text.slice(start[0].length);
+  return ['"text"', '"type"'].some(name => name.startsWith(key) || key.startsWith(name));
+}
+
+// Only an orphan closer stack proves a protocol artifact; ordinary JSON stays intact.
+export function stripToolProtocolArtifacts(text) {
   if (typeof text !== "string" || !text) return text || "";
-  const withoutStack = DSML_MARK.test(text)
-    ? text.replace(DSML_CLOSING_STACK, "")
-    : text;
-  return final ? withoutStack.replace(TRAILING_EMPTY_BULLET, "") : withoutStack;
+  const tail = DSML_CLOSING_STACK.exec(text);
+  if (!tail || DSML_OPEN.test(text.slice(0, tail.index))) return text;
+  const cleaned = text.slice(0, tail.index).trimEnd().replace(TRAILING_EMPTY_BULLET, "").trimEnd();
+  if (cleaned.trimStart().startsWith("[")) {
+    try {
+      const blocks = JSON.parse(cleaned);
+      if (Array.isArray(blocks) && blocks.length > 0 && blocks.every(block =>
+        block && [OPENAI_BLOCK.TEXT, RESPONSES_ITEM.OUTPUT_TEXT].includes(block.type) &&
+        typeof block.text === "string" && Object.keys(block).every(key => key === "type" || key === "text")
+      )) return blocks.map(block => block.text).join("");
+    } catch { /* incomplete or ordinary JSON remains visible */ }
+  }
+  return cleaned;
 }
 
 function parseBlock(block) {
@@ -151,7 +176,9 @@ function parseBlock(block) {
  */
 export function parseTextToolCalls(text) {
   if (typeof text !== "string" || !text) return { text: text || "", calls: [] };
-  text = stripToolProtocolArtifacts(text, true);
+  const serializedContent = isSerializedTextContentPrefix(text);
+  text = stripToolProtocolArtifacts(text);
+  if (serializedContent) return { text, calls: [] };
   const start = BLOCK_START.exec(text);
   if (!start) return { text, calls: [] };
 
