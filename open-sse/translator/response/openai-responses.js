@@ -8,7 +8,7 @@ import { buildChunk } from "../concerns/chunk.js";
 import { buildUsage } from "../concerns/usage.js";
 import { fallbackToolCallId } from "../concerns/toolCall.js";
 import { reasoningDelta, extractReasoningText } from "../concerns/reasoning.js";
-import { parseTextToolCalls } from "../concerns/textToolCalls.js";
+import { parseTextToolCalls, stripToolProtocolArtifacts } from "../concerns/textToolCalls.js";
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, OPENAI_FINISH, MODEL_FALLBACK } from "../schema/index.js";
 import { responsesStatusFromFinishReason, finishReasonFromIncompleteReason } from "./openai-responses-json.js";
 
@@ -147,6 +147,7 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
   // Handle tool_calls (empty array is truthy; require a real call)
   if (delta.tool_calls && delta.tool_calls.length) {
     closeReasoning(state, emit);
+    flushAssistantText(state, emit);
     closeMessage(state, emit, idx);
     for (const tc of delta.tool_calls) {
       emitToolCall(state, emit, tc);
@@ -292,15 +293,45 @@ function assistantTextBlock(state, idx) {
   return (state.textBlocks[idx] ??= { buffer: "", inBlock: false, key: idx, seq: 0 });
 }
 
+function heldBulletStart(value) {
+  const bullet = /(?:^|\n)[ \t]*-[ \t]*\n?$/.exec(value);
+  if (!bullet) return -1;
+  const whitespace = /\s+$/.exec(value.slice(0, bullet.index));
+  return whitespace ? whitespace.index : bullet.index;
+}
+
 // Hold only a trailing fragment that could still become a block marker, so
 // ordinary prose keeps streaming without waiting for the whole answer.
 function heldPrefixLength(buffer) {
   const marker = "<tool_calls";
   const lastLt = buffer.lastIndexOf("<");
-  if (lastLt < 0) return buffer.length;
-  const tail = buffer.slice(lastLt).toLowerCase();
-  if (tail.length <= marker.length && marker.startsWith(tail)) return lastLt;
-  return buffer.length;
+  let cut = buffer.length;
+  const trailingWhitespace = /\s+$/.exec(buffer);
+  if (trailingWhitespace) cut = trailingWhitespace.index;
+  if (lastLt >= 0) {
+    const tail = buffer.slice(lastLt).toLowerCase();
+    if (
+      (tail.length <= marker.length && marker.startsWith(tail)) ||
+      (tail.length <= 128 && /^<\/?[^>]*$/.test(tail))
+    ) {
+      cut = lastLt;
+    }
+    const beforeTag = buffer.slice(0, lastLt);
+    const bulletStart = heldBulletStart(beforeTag);
+    if (bulletStart >= 0) cut = Math.min(cut, bulletStart);
+  }
+
+  const dsmlClose = /<\/(?:｜｜DSML｜｜|\|DSML\|)\s*parameter\b/i.exec(buffer);
+  if (dsmlClose) {
+    const before = buffer.slice(0, dsmlClose.index);
+    const bulletStart = heldBulletStart(before);
+    cut = Math.min(cut, bulletStart >= 0 ? bulletStart : dsmlClose.index);
+  } else {
+    const bulletStart = heldBulletStart(buffer);
+    if (bulletStart >= 0) cut = Math.min(cut, bulletStart);
+    if (!buffer.trim()) cut = 0;
+  }
+  return cut;
 }
 
 function appendAssistantText(state, emit, idx, content) {
@@ -361,20 +392,23 @@ function emitRecoveredToolCalls(state, emit, calls) {
 
 function processAssistantText(state, emit, idx, block) {
   for (;;) {
+    const cleaned = stripToolProtocolArtifacts(block.buffer);
+    if (cleaned !== block.buffer) block.buffer = cleaned;
+
     if (!block.inBlock) {
       const start = /<tool_calls\b/i.exec(block.buffer);
       if (start) {
         const head = block.buffer.slice(0, start.index);
         block.buffer = block.buffer.slice(start.index);
         block.inBlock = true;
-        if (head) emitTextContent(state, emit, block.key, head);
+        if (head) emitTextContent(state, emit, block.key, stripToolProtocolArtifacts(head));
         continue;
       }
       const cut = heldPrefixLength(block.buffer);
       if (cut > 0) {
         const safe = block.buffer.slice(0, cut);
         block.buffer = block.buffer.slice(cut);
-        emitTextContent(state, emit, block.key, safe);
+        emitTextContent(state, emit, block.key, stripToolProtocolArtifacts(safe));
       }
       return;
     }
@@ -401,7 +435,7 @@ function flushAssistantText(state, emit) {
   if (!state.textBlocks) return;
   for (const block of Object.values(state.textBlocks)) {
     if (!block.buffer) continue;
-    const raw = block.buffer;
+    const raw = stripToolProtocolArtifacts(block.buffer, true);
     block.buffer = "";
     if (block.inBlock) {
       block.inBlock = false;

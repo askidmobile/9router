@@ -57,7 +57,7 @@ export function openAICompletionToResponses(responseBody, customToolNames = null
   const rawText = extractTextContent(message.content);
   const parsedText = parseTextToolCalls(rawText);
   const structuredCalls = message.tool_calls || [];
-  const text = parsedText.calls.length > 0 ? parsedText.text : rawText;
+  const text = parsedText.text;
   if (text) {
     output.push({
       type: RESPONSES_ITEM.MESSAGE,

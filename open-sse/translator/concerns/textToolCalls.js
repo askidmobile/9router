@@ -21,6 +21,9 @@ const ANY_TAG = /<([a-zA-Z][a-zA-Z0-9_]*)>/g;
 const PARAM_EQUALS = /<parameter=([a-zA-Z0-9_]+)>([\s\S]*?)<\/parameter>/gi;
 const PARAM_NAME = /<parameter\s+name\s*=\s*["']?([a-zA-Z0-9_]+)["']?\s*>([\s\S]*?)<\/parameter>/gi;
 const CLOSE_MARKERS = ["</tool>", "</function>", "</invoke>", "</tool_call>"];
+const DSML_MARK = /(?:｜｜DSML｜｜|\|DSML\|)/;
+const DSML_CLOSING_STACK = /(?:\s*-\s*)?\s*<\/(?:｜｜DSML｜｜|\|DSML\|)\s*parameter\s*>\s*<\/(?:｜｜DSML｜｜|\|DSML\|)\s*invoke\s*>\s*<\/(?:｜｜DSML｜｜|\|DSML\|)\s*calls\s*>\s*$/gi;
+const TRAILING_EMPTY_BULLET = /(?:^|\n)[ \t]*-[ \t]*\s*$/;
 
 // Tags that are structure or parameters, never call names.
 const RESERVED_CALL_TAGS = new Set([
@@ -95,6 +98,19 @@ function prefixedSpans(inner) {
   return spans;
 }
 
+/**
+ * Remove the provider's already-consumed DSML closer stack. Some upstreams
+ * turn the invocation into a structured tool call but leave these three tags,
+ * plus an empty Markdown bullet, in the assistant content.
+ */
+export function stripToolProtocolArtifacts(text, final = false) {
+  if (typeof text !== "string" || !text) return text || "";
+  const withoutStack = DSML_MARK.test(text)
+    ? text.replace(DSML_CLOSING_STACK, "")
+    : text;
+  return final ? withoutStack.replace(TRAILING_EMPTY_BULLET, "") : withoutStack;
+}
+
 function parseBlock(block) {
   const inner = block
     .replace(/^\s*<tool_calls\b[^>]*>/i, "")
@@ -135,6 +151,7 @@ function parseBlock(block) {
  */
 export function parseTextToolCalls(text) {
   if (typeof text !== "string" || !text) return { text: text || "", calls: [] };
+  text = stripToolProtocolArtifacts(text, true);
   const start = BLOCK_START.exec(text);
   if (!start) return { text, calls: [] };
 

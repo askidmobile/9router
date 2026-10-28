@@ -4,7 +4,7 @@ import { FORMATS } from "../../open-sse/translator/formats.js";
 import { initState } from "../../open-sse/translator/index.js";
 import { openaiToOpenAIResponsesResponse } from "../../open-sse/translator/response/openai-responses.js";
 import { openAICompletionToResponses } from "../../open-sse/translator/response/openai-responses-json.js";
-import { parseTextToolCalls } from "../../open-sse/translator/concerns/textToolCalls.js";
+import { parseTextToolCalls, stripToolProtocolArtifacts } from "../../open-sse/translator/concerns/textToolCalls.js";
 import { createSSETransformStreamWithLogger } from "../../open-sse/utils/stream.js";
 
 // Real apinex free-tier output: the model prints the call as XML text instead
@@ -35,6 +35,13 @@ pwd
 </cmd>
 </exec>
 </tool_calls>`;
+
+const DSML_TAIL_SAMPLE = `Возможный остаток разрыва теперь надо отделить от HTTP/SSE.
+
+ \t-
+</｜｜DSML｜｜ parameter>
+</｜｜DSML｜｜ invoke>
+</｜｜DSML｜｜ calls>`;
 
 function textChunk(text) {
   return { id: "chatcmpl-1", choices: [{ index: 0, delta: { content: text } }] };
@@ -108,6 +115,20 @@ describe("textual tool-call parser", () => {
     const text = "<tool_calls>\nпросто заметка\n</tool_calls>";
     expect(parseTextToolCalls(text)).toEqual({ text, calls: [] });
   });
+
+  it("removes an already-consumed DSML closer stack and its empty bullet", () => {
+    expect(stripToolProtocolArtifacts(DSML_TAIL_SAMPLE, true)).toBe(
+      "Возможный остаток разрыва теперь надо отделить от HTTP/SSE."
+    );
+    expect(parseTextToolCalls(DSML_TAIL_SAMPLE)).toEqual({
+      text: "Возможный остаток разрыва теперь надо отделить от HTTP/SSE.",
+      calls: [],
+    });
+  });
+
+  it("removes an empty bullet when the provider consumed all DSML markup", () => {
+    expect(stripToolProtocolArtifacts("Проверяю сборку.\n \t-\n", true)).toBe("Проверяю сборку.");
+  });
 });
 
 describe("streaming chat → Responses recovery", () => {
@@ -142,6 +163,29 @@ describe("streaming chat → Responses recovery", () => {
     expect(streamedText(events)).toBe("Привет, мир!");
     expect(doneItems(events).map((item) => item.type)).toEqual(["message"]);
   });
+
+  it("removes a split DSML closer stack before a following function call", () => {
+    const parts = DSML_TAIL_SAMPLE.match(/[\s\S]{1,3}/g);
+    const events = runStream([
+      ...parts.map(textChunk),
+      {
+        id: "chatcmpl-1",
+        choices: [{
+          index: 0,
+          delta: { tool_calls: [{ index: 0, id: "call_1", type: "function", function: { name: "shell", arguments: '{"command":"pwd"}' } }] },
+          finish_reason: null,
+        }],
+      },
+      finishChunk(),
+    ]);
+
+    expect(streamedText(events)).toBe("Возможный остаток разрыва теперь надо отделить от HTTP/SSE.");
+    const items = doneItems(events);
+    expect(items.find((item) => item.type === "message").content[0].text).toBe(
+      "Возможный остаток разрыва теперь надо отделить от HTTP/SSE."
+    );
+    expect(items.find((item) => item.type === "function_call")).toMatchObject({ name: "shell" });
+  });
 });
 
 describe("non-streaming chat → Responses recovery", () => {
@@ -175,6 +219,25 @@ describe("non-streaming chat → Responses recovery", () => {
     });
     expect(response.output.map((item) => item.type)).toEqual(["message", "function_call"]);
     expect(response.output[1].call_id).toBe("call_1");
+  });
+
+  it("removes the DSML closer stack from non-streaming message content", () => {
+    const response = openAICompletionToResponses({
+      id: "chatcmpl-3",
+      choices: [{
+        index: 0,
+        message: {
+          role: "assistant",
+          content: DSML_TAIL_SAMPLE,
+          tool_calls: [{ id: "call_1", type: "function", function: { name: "shell", arguments: '{"command":"pwd"}' } }],
+        },
+        finish_reason: "tool_calls",
+      }],
+    });
+
+    expect(response.output[0].content[0].text).toBe(
+      "Возможный остаток разрыва теперь надо отделить от HTTP/SSE."
+    );
   });
 });
 
