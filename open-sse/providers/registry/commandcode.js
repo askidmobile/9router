@@ -20,6 +20,15 @@ export default {
   category: "apikey",
   transport: {
     baseUrl: "https://api.commandcode.ai/provider/v1/chat/completions",
+    // Static identity headers of command-code@1.88.0 buildCommandAuthHeaders().
+    // Dynamic project/session ids are added by shared/commandCodeHeaders.js.
+    headers: {
+      "User-Agent": "cli",
+      "x-command-code-version": "1.88.0",
+      "x-cli-environment": "production",
+      "x-cli-surface": "cli",
+      "x-taste-learning": "false",
+    },
   },
   models: [
     { id: "deepseek/deepseek-v4-pro", name: "DeepSeek V4 Pro" },

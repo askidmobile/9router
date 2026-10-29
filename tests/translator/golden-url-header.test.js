@@ -26,6 +26,7 @@ const SPECIALIZED = new Set([
 // Per-process / per-request values: kimi's random device name, minimax's session UUID.
 const VOLATILE_HEADERS = new Set([
   "x-msh-device-name", "x-mavis-session-id", "x-mavis-timezone-offset",
+  "x-request-id", "x-conversation-id", "x-conversation-request-id", "x-conversation-message-id",
   // machine- and release-dependent: keep snapshots reproducible across hosts
   "user-agent", "x-platform", "x-platform-version", "x-client-version", "x-core-version",
 ]);

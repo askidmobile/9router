@@ -338,7 +338,10 @@
     "auth": {
       "combined": true,
       "header": "Authorization",
-      "scheme": "bearer"
+      "scheme": "bearer",
+      "hooks": [
+        "codebuddyHeaders"
+      ]
     },
     "usage": {
       "url": "https://copilot.tencent.com/v2/billing/meter/get-user-resource"
@@ -361,7 +364,10 @@
     "auth": {
       "combined": true,
       "header": "Authorization",
-      "scheme": "bearer"
+      "scheme": "bearer",
+      "hooks": [
+        "codebuddyHeaders"
+      ]
     },
     "usage": {
       "url": "https://www.codebuddy.ai/v2/billing/meter/get-user-resource"
@@ -394,6 +400,13 @@
   },
   "commandcode": {
     "baseUrl": "https://api.commandcode.ai/provider/v1/chat/completions",
+    "headers": {
+      "User-Agent": "cli",
+      "x-command-code-version": "1.88.0",
+      "x-cli-environment": "production",
+      "x-cli-surface": "cli",
+      "x-taste-learning": "false"
+    },
     "format": "openai"
   },
   "cursor": {
@@ -1220,6 +1233,11 @@
       }
     ]
   },
+  "runcrate": {
+    "baseUrl": "https://api.runcrate.ai/v1/chat/completions",
+    "validateUrl": "https://www.runcrate.ai/api/v1/billing/balance",
+    "format": "openai"
+  },
   "sambanova": {
     "baseUrl": "https://api.sambanova.ai/v1/chat/completions",
     "validateUrl": "https://api.sambanova.ai/v1/models",
@@ -1389,10 +1407,5 @@
       "url": "https://cloud.zed.dev/client/users/me"
     },
     "modelsUrl": "https://cloud.zed.dev/models"
-  },
-  "runcrate": {
-    "baseUrl": "https://api.runcrate.ai/v1/chat/completions",
-    "validateUrl": "https://www.runcrate.ai/api/v1/billing/balance",
-    "format": "openai"
   }
 }

@@ -149,6 +149,7 @@ import p145 from "./xquik.js";
 import p146 from "./youcom.js";
 import p147 from "./zai.js";
 import p148 from "./zed.js";
+import p153 from "./nace.js";
 export default [
   p110,
   p0,
@@ -299,4 +300,5 @@ export default [
   p146,
   p147,
   p148,
+  p153,
 ];
