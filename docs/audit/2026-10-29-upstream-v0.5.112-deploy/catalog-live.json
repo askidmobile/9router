@@ -1,0 +1,30 @@
+{
+  "passed": true,
+  "local": {
+    "managementCatalog": {
+      "status": 200,
+      "nace": true,
+      "gpt61Terra": true
+    },
+    "openAiCompatibleCatalog": {
+      "status": 200,
+      "gpt61Terra": true,
+      "commandcode": true,
+      "nace": false,
+      "reason": "Nace is a System One provider and is not part of the OpenAI-compatible /v1/models catalog"
+    }
+  },
+  "publicHttps": {
+    "openAiCompatibleCatalog": {
+      "status": 200,
+      "gpt61Terra": true,
+      "commandcode": true,
+      "nace": false
+    }
+  },
+  "notCalled": [
+    "Nace provider inference",
+    "MiniMax Code desktop broker with a real signed-in desktop app",
+    "paid models"
+  ]
+}

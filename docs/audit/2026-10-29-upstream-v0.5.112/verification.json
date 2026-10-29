@@ -1,0 +1,77 @@
+{
+  "upstream": {
+    "ref": "v0.5.112",
+    "commit": "1fe586bb1cf35e1ed0cb2150a8ef7d1db040b21d",
+    "date": "2026-10-28",
+    "commitsSinceV0_5_111": 13,
+    "changedFiles": 48
+  },
+  "fork": {
+    "masterBeforeMerge": "6fe7ac9a",
+    "backupBranch": "codex/backup-before-v0.5.112-20261029",
+    "mergeBranch": "codex/upstream-v0.5.112-20261029",
+    "mergeCommit": "98f2aabf9a4a9dbdc582a81b34e891dcb1b6f136"
+  },
+  "merge": {
+    "conflicts": 9,
+    "preserved": [
+      "CommandCode official Provider API transport",
+      "fork provider registry ordering and custom providers",
+      "Qoder imported model prefix normalization",
+      "request lifecycle and centralized completion tracking",
+      "existing provider, proxy, response and model configuration contracts"
+    ],
+    "adaptations": [
+      "Added Command Code 1.88 identity headers to the official Provider API lane and shared validation/usage headers.",
+      "Kept the proprietary CommandCode NDJSON executor deleted.",
+      "Added Nace after the fork provider registry entries rather than replacing the generated order.",
+      "Normalized CodeBuddy request IDs in golden snapshots and updated the Kimi package version snapshot.",
+      "Adapted the non-streaming SSE unit test to the fork's centralized trackDone lifecycle."
+    ]
+  },
+  "tests": {
+    "runner": "vitest 4.1.10",
+    "testFiles": 515,
+    "testFilesPassed": 495,
+    "testFilesFailed": 3,
+    "testFilesSkipped": 17,
+    "tests": 5550,
+    "passed": 5436,
+    "failed": 3,
+    "expectedFailures": 14,
+    "skipped": 96,
+    "todo": 1,
+    "knownFailures": [
+      "tests/unit/combo-credit-fallback.test.js :: combo credit fallback routes a 400 response correctly: Bad request",
+      "tests/unit/headroom-responses-format.test.js :: compressWithHeadroom openai-responses format (#1998) skips Responses tool/reasoning history instead of collapsing it into a message (#2132)",
+      "tests/unit/security-audit.test.js :: AUDIT-002: API key masking byApiKey object keys should use masked key, not raw key"
+    ],
+    "focusedUpstreamTests": {
+      "files": 12,
+      "passed": 165,
+      "failed": 0
+    },
+    "goldenSnapshots": {
+      "tests": 176,
+      "passed": 176,
+      "failed": 0
+    }
+  },
+  "checks": {
+    "productionBuild": "passed",
+    "providerBaseline": "107 providers byte-for-byte",
+    "aliasBaseline": "141 alias tokens byte-for-byte",
+    "oauthUrlBaseline": "unchanged",
+    "gitDiffCheck": "passed",
+    "eslintChangedFiles": {
+      "newErrors": 0,
+      "preExistingProviderPageErrors": 4
+    }
+  },
+  "limitations": [
+    "The three known failures predate this merge and were reproduced with the same test identities.",
+    "MiniMax desktop broker behavior was exercised through the production image's named-pipe client and a fake Unix-socket broker; a real desktop app session was not used.",
+    "Nace inference was not called with a paid API key; registry, management catalog and system-one routing tests passed.",
+    "No paid model inference was used for release acceptance."
+  ]
+}

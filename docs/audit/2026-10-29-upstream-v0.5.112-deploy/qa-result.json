@@ -1,0 +1,99 @@
+{
+  "passed": true,
+  "network": "none",
+  "image": "sha256:749ea6d7c8072a75a4f1d8ec79bae7ac23f22be130c9138f8ec9d7de1caab6d1",
+  "routing": {
+    "passed": true,
+    "checks": [
+      "HTTP SSE same-prefix: A,A,B with all three streams held open",
+      "Affinity: follow-up stays on B after A becomes free",
+      "Combo: full accounts spill to next provider without freezing the first",
+      "Cancellation: freed slots reused by two parallel streams on A",
+      "Connection edit API: limit 3 saved and read back",
+      "HTTP JSON chat succeeds after streamed requests"
+    ],
+    "upstreamCalls": 13
+  },
+  "management": {
+    "passed": true,
+    "checks": [
+      {
+        "path": "/api/health",
+        "ok": true
+      },
+      {
+        "path": "/api/settings",
+        "ok": true
+      },
+      {
+        "path": "/api/providers",
+        "ok": true
+      },
+      {
+        "path": "/api/combos",
+        "ok": true
+      },
+      {
+        "path": "/api/keys",
+        "ok": true
+      },
+      {
+        "path": "/api/models",
+        "ok": true
+      },
+      {
+        "path": "/api/models/caps?summary=1",
+        "ok": true
+      },
+      {
+        "path": "/api/usage/stats?period=today",
+        "ok": true
+      },
+      {
+        "path": "/dashboard/models",
+        "ok": true
+      },
+      {
+        "path": "dashboard JS/CSS",
+        "assets": 17,
+        "ok": true
+      },
+      {
+        "path": "/dashboard/combos",
+        "ok": true
+      },
+      {
+        "path": "/providers/nous.png",
+        "ok": true
+      }
+    ]
+  },
+  "media": {
+    "passed": true,
+    "network": "none",
+    "checks": [
+      "HTTP embeddings: saved /v1 host normalized, dimensions and bearer auth",
+      "HTTP TTS: default format normalizes to WAV",
+      "HTTP TTS: response_format in request body forwards PCM",
+      "HTTP TTS: no-key default host respects unavailable required proxy"
+    ],
+    "upstreamCalls": 3
+  },
+  "upstream": {
+    "passed": true,
+    "network": "none",
+    "checks": [
+      "Non-stream chat propagated request-scoped upstream SSE error 422",
+      "Image registries expose Nace, GPT-6.1 Terra and fork CommandCode provider API",
+      "Docker image resolves baked playwright-core and wreq-js runtime dependencies",
+      "MiniMax lease status/connect/reuse over named-pipe protocol"
+    ],
+    "brokerRequests": [
+      "status",
+      "lease",
+      "lease"
+    ],
+    "upstreamCalls": 1
+  },
+  "qaDatabase": "quick_check=ok, no QA residue"
+}
