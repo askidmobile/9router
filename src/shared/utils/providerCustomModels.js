@@ -1,4 +1,5 @@
 import { getProviderAlias } from "@/shared/constants/providers";
+import { findModelName } from "open-sse/config/providerModels.js";
 
 function modelType(model) {
   return model?.kind || model?.type || "llm";
@@ -34,9 +35,13 @@ export function getProviderCustomModelRows({
     const fullModel = `${providerAlias}/${model.id}`;
     if (seenFullModels.has(fullModel)) continue;
     seenFullModels.add(fullModel);
+    // A name equal to the id carries no information (bulk imports used to store
+    // it that way), so prefer the registry label when one exists — otherwise an
+    // opaque upstream key like Qoder's `qmodel_38max` is all the card ever shows.
+    const savedName = model.name && model.name !== model.id ? model.name : null;
     rows.push({
       id: model.id,
-      name: model.name || model.id,
+      name: savedName || findModelName(providerAlias, model.id) || model.id,
       alias: aliasByFullModel[fullModel],
       fullModel,
       source: "custom",

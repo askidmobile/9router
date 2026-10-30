@@ -187,13 +187,17 @@ export default function ProviderDetailPage() {
   const models = ((providerId === "cursor" || providerId === "zed") && liveModels.length > 0
     ? liveModels
     : staticModels).map((model) => {
-      // Keep a saved name when a manually added model joins the catalog.
+      // Keep a saved name when a manually added model joins the catalog. A saved
+      // name that merely repeats the id is not a real label — bulk imports used
+      // to store `name: id`, so those rows would otherwise pin the raw internal
+      // key (qmodel_38max) over the registry's display name.
       const saved = customModels.find((entry) =>
         getProviderAlias(entry.providerAlias) === providerAlias
         && entry.id === model.id
         && (entry.kind || entry.type || "llm") === "llm"
       );
-      return saved?.name ? { ...model, name: saved.name } : model;
+      const savedName = saved?.name && saved.name !== saved.id ? saved.name : null;
+      return savedName ? { ...model, name: savedName } : model;
     });
   
   const isOpenAICompatible = isOpenAICompatibleProvider(providerId);
