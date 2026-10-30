@@ -184,7 +184,11 @@ export default function ProviderDetailPage() {
   const isQoderProvider = providerId === "qoder" || providerId === "qoder-cn";
   const staticModels = getModelsByProviderId(providerId);
   const providerAlias = getProviderAlias(providerId);
-  const models = ((providerId === "cursor" || providerId === "zed") && liveModels.length > 0
+  // Prefer the live catalog where the static registry would advertise models
+  // this account cannot route (Qoder omits plan-gated keys from /model/list and
+  // the chat endpoint rejects them with 400).
+  const usesLiveCatalog = providerId === "cursor" || providerId === "zed" || isQoderProvider;
+  const models = ((usesLiveCatalog && liveModels.length > 0)
     ? liveModels
     : staticModels).map((model) => {
       // Keep a saved name when a manually added model joins the catalog. A saved
@@ -554,12 +558,14 @@ export default function ProviderDetailPage() {
     fetchDisabledModels();
   }, [fetchConnections, fetchAliases, fetchCustomModels, fetchDisabledModels]);
 
-  // Live per-connection catalogs (cursor, zed): the static registry carries
-  // no usable list, so resolve from the active connection. Fires only when
-  // the provider id or connection list changes — no polling, no loop.
-  // Cursor path is statement-identical to before; zed adds error surfacing.
+  // Live per-connection catalogs (cursor, zed, qoder): the static registry is a
+  // menu of everything the vendor can serve, not what this account can use.
+  // Qoder's per-account /model/list omits plan-gated keys, and routing those
+  // returns 400 "model_config not yet known" — so the card list follows the
+  // live catalog for the active connection. Fires only when the provider id or
+  // connection list changes — no polling, no loop.
   useEffect(() => {
-    const isLiveCatalog = providerId === "cursor" || providerId === "zed";
+    const isLiveCatalog = providerId === "cursor" || providerId === "zed" || isQoderProvider;
     if (!isLiveCatalog) {
       setLiveModels([]);
       return;
@@ -579,7 +585,11 @@ export default function ProviderDetailPage() {
       .then(({ ok, data }) => {
         if (cancelled) return;
         if (ok && Array.isArray(data?.models) && data.models.length > 0) {
-          setLiveModels(data.models);
+          // Qoder catalog ids carry the provider prefix; the card shows the bare
+          // key and the router expects "<alias>/<key>" built from it.
+          setLiveModels(isQoderProvider
+            ? data.models.map((m) => ({ ...m, id: stripQoderPrefix(m.id) }))
+            : data.models);
           if (providerId === "zed" && data?.warning) setLiveModelsError(data.warning);
           return;
         }
@@ -596,7 +606,7 @@ export default function ProviderDetailPage() {
       });
 
     return () => { cancelled = true; };
-  }, [providerId, connections]);
+  }, [providerId, connections, isQoderProvider]);
 
   // Fetch suggested models from provider's public API (if configured)
   useEffect(() => {
