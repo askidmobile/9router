@@ -203,6 +203,27 @@ export const PROVIDER_PRICING = {
   gh: {
     "gpt-5.3-codex": { input: 1.75, output: 14.00, cached: 0.175, reasoning: 14.00, cache_creation: 1.75 },
   },
+  // Experiential Labs — platform-funded catalog rates (USD per 1M tokens) read
+  // from the public catalog (GET api.experientiallabs.ai/api/models) on
+  // 2026-10-30. Clef bills output at $0. The gateway reports the charged cost
+  // inline (usage.cost); these rates only feed the router's own cost display.
+  experiential: {
+    "gpt-6-luna": { input: 0.10, output: 0.50, cached: 0.01, reasoning: 0.50 },
+    "gpt-6.1-sol": { input: 2.00, output: 10.00, cached: 0.10, reasoning: 10.00 },
+    "deepseek-v4.1-flash-1017": { input: 0.30, output: 1.20, cached: 0.006, reasoning: 1.20 },
+    "deepseek-v4.1-flash-uncensored": { input: 0.30, output: 1.20, cached: 0.03, reasoning: 1.20 },
+    "claude-opus-5.5": { input: 4.00, output: 20.00, cached: 0.20, reasoning: 20.00 },
+    "claude-sonnet-5.5": { input: 2.00, output: 10.00, cached: 0.10, reasoning: 10.00 },
+    "claude-haiku-5.5": { input: 0.10, output: 0.50, cached: 0.01, reasoning: 0.50 },
+    "gemini-4-argon": { input: 2.00, output: 10.00, cached: 0.10, reasoning: 10.00 },
+    "gemini-3.8-flash": { input: 0.75, output: 3.75, cached: 0.075, reasoning: 3.75 },
+    "glm-5.3": { input: 1.40, output: 4.40, cached: 0.26, reasoning: 4.40 },
+    "glm-5.3-flash": { input: 0.15, output: 0.50, cached: 0.03, reasoning: 0.50 },
+    "kimi-k3": { input: 3.00, output: 15.00, cached: 0.23, reasoning: 15.00 },
+    "clef": { input: 0.24, output: 0, cached: 0.24, reasoning: 0 },
+    "clef-flash": { input: 0.09, output: 0, cached: 0.09, reasoning: 0 },
+    "muse-wonder-1.0": { input: 4.00, output: 20.00, cached: 0.20, reasoning: 20.00 },
+  },
   // TokenRouter — exact rates from https://api.tokenrouter.com/api/pricing ($1/1M tokens).
   // Ratio→USD: input = model_ratio×2, output = model_ratio×completion_ratio×2.
   // These override the canonical MODEL_PRICING/PATTERN_PRICING, whose rates often

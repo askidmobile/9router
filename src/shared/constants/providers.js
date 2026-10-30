@@ -42,6 +42,8 @@ function buildProviderEntry(r) {
     ...(r.authHint ? { authHint: r.authHint } : {}),
     ...(r.apiKeyOptionalWith ? { apiKeyOptionalWith: r.apiKeyOptionalWith } : {}),
     ...(r.credentialForm ? { credentialForm: r.credentialForm } : {}),
+    // Per-provider RPM presets (plan allowances) for the connection modal.
+    ...(r.rateLimitPresets ? { rateLimitPresets: r.rateLimitPresets } : {}),
   };
 }
 

@@ -3,6 +3,7 @@ import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil } from "open-sse/services/accountFallback.js";
 import { abortableDelay } from "open-sse/utils/abort.js";
 import { tryAcquireConnectionSlot, releaseConnectionSlot, getInflightCount, connectionMaxConcurrent } from "./connectionConcurrency.js";
+import { isRpmAvailable, recordRpmHit, rpmRetryAfterMs } from "./connectionRpm.js";
 import { getSessionAffinity, setSessionAffinity } from "./sessionAffinity.js";
 import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
 import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
@@ -192,6 +193,17 @@ async function selectProviderCredentialsCore(provider, excludeConnectionIds = nu
           waitable: !!pinnedConnection || availableConnections.length === 1,
         };
       }
+      // Local RPM budget (connectionRpm.js): an account out of per-minute
+      // requests is skipped like a busy one. Waiting cannot help — the window
+      // only rolls once requests stop arriving — so report it with the real
+      // retry delay instead of polling.
+      const rpmCandidates = candidates.filter(c => isRpmAvailable(c, model));
+      if (rpmCandidates.length === 0) {
+        const retryAfterMs = Math.max(0, ...candidates.map(c => rpmRetryAfterMs(c, model)));
+        log.warn("AUTH", `${provider} | all ${candidates.length} accounts at their local RPM limit (${model || "any model"})`);
+        return { allBusy: true, rpmLimited: true, waitable: false, retryAfterMs };
+      }
+      candidates = rpmCandidates;
     }
 
     const settings = await getSettings();
@@ -268,6 +280,9 @@ async function selectProviderCredentialsCore(provider, excludeConnectionIds = nu
       }
       slotAcquired = true;
       if (affinityKey) setSessionAffinity(affinityKey, connection.id);
+      // Count the dispatch against the account's per-minute budget while the
+      // selection mutex is still held (see connectionRpm.js).
+      recordRpmHit(connection, model);
     }
 
     let resolvedProxy;

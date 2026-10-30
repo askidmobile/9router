@@ -349,9 +349,23 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       return errorResponse(499, "Request aborted");
     }
 
-    // Every account of this provider is at its concurrent-request cap.
+    // Every account of this provider is at its concurrent-request cap, or out
+    // of its local per-minute request budget (see connectionRpm.js).
     if (credentials?.allBusy) {
-      const retryAfter = new Date(Date.now() + 10_000).toISOString();
+      const requestedMs = Number.parseInt(credentials.retryAfterMs, 10);
+      const retryAfter = new Date(
+        Date.now() + (Number.isSafeInteger(requestedMs) && requestedMs > 0 ? requestedMs : 10_000)
+      ).toISOString();
+      if (credentials.rpmLimited) {
+        log.warn("CHAT", `[${provider}/${model}] all accounts at their local RPM limit`);
+        return unavailableResponse(
+          HTTP_STATUS.SERVICE_UNAVAILABLE,
+          `[${provider}/${model}] All accounts at their requests-per-minute limit`,
+          retryAfter,
+          "retry after a few seconds",
+          { ...lastHeaders, [LOCAL_CAPACITY_HEADER]: "1" }
+        );
+      }
       log.warn("CHAT", `[${provider}/${model}] all accounts busy (per-account concurrent limit)`);
       return unavailableResponse(
         HTTP_STATUS.SERVICE_UNAVAILABLE,

@@ -996,6 +996,25 @@ case "llm7": {
         }, effectiveProxy);
         return { valid: res.ok, error: res.ok ? null : "Invalid API key", refreshed: false };
       }
+      case "experiential": {
+        // GET /v1/models is the documented key check: 200 with the org's
+        // callable set, 401 for absent/malformed/revoked/expired keys.
+        const res = await fetchWithConnectionProxy(PROVIDERS.experiential.validateUrl, {
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${connection.apiKey}`,
+          },
+        }, effectiveProxy);
+        return {
+          valid: res.ok,
+          error: res.ok
+            ? null
+            : res.status === 401 || res.status === 403
+              ? "Invalid API key"
+              : `Experiential Labs API error (${res.status})`,
+          refreshed: false,
+        };
+      }
       default:
         return { valid: false, error: "Provider test not supported" };
     }

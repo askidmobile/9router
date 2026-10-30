@@ -773,6 +773,25 @@ exports[`GOLDEN buildHeaders (default executor providers) > deepseek-web → hea
 }
 `;
 
+exports[`GOLDEN buildHeaders (default executor providers) > experiential → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
 exports[`GOLDEN buildHeaders (default executor providers) > featherless → headers (apiKey / oauth) 1`] = `
 {
   "apiKey": {
@@ -2149,6 +2168,13 @@ exports[`GOLDEN buildUrl (default executor providers) > deepseek-web → url (st
 {
   "nonStream": "https://chat.deepseek.com/api/v0/chat/completion",
   "stream": "https://chat.deepseek.com/api/v0/chat/completion",
+}
+`;
+
+exports[`GOLDEN buildUrl (default executor providers) > experiential → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://api.experientiallabs.ai/v1/chat/completions",
+  "stream": "https://api.experientiallabs.ai/v1/chat/completions",
 }
 `;
 

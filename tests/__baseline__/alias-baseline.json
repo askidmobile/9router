@@ -140,7 +140,11 @@
     "respan": "respan",
     "rs": "respan",
     "runcrate": "runcrate",
-    "rc": "runcrate"
+    "rc": "runcrate",
+    "experiential": "experiential",
+    "exp": "experiential",
+    "xpl": "experiential",
+    "experientiallabs": "experiential"
   },
   "idToAlias": {
     "agnes": "agnes",
@@ -190,6 +194,7 @@
     "edge-tts": "edge-tts",
     "elevenlabs": "el",
     "exa": "exa",
+    "experiential": "experiential",
     "fal-ai": "fal-ai",
     "featherless": "featherless",
     "firecrawl": "firecrawl",
@@ -334,6 +339,7 @@
     "edge-tts",
     "el",
     "elevenlabs-tts-models",
+    "experiential",
     "fal-ai",
     "featherless",
     "fireworks",

@@ -15,6 +15,7 @@ import { getCodeBuddyCnUsage, getCodeBuddyIntlUsage } from "./usage/codebuddy-cn
 import { getGrokCliUsage } from "./usage/grok-cli.js";
 import { getKimiUsage } from "./usage/kimi.js";
 import { getDeepseekUsage } from "./usage/deepseek.js";
+import { getExperientialUsage } from "./usage/experiential.js";
 import { getCloudflareUsage } from "./usage/cloudflare.js";
 import { getCommandCodeUsage } from "./usage/commandcode.js";
 import { getOpenCodeGoUsage } from "./usage/opencode-go.js";
@@ -89,6 +90,7 @@ const USAGE_HANDLERS = {
   zed: (c) => getZedUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),
   "xiaomi-mimo": (c) => getXiaomiMimoUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),
   cursor: (c) => getCursorUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),
+  experiential: (c) => getExperientialUsage(c.apiKey, c.proxyOptions),
 };
 
 // Qoder intl/CN share one usage path: PATs must be exchanged to a job token

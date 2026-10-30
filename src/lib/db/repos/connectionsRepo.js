@@ -10,6 +10,9 @@ const OPTIONAL_FIELDS = [
   "consecutiveUseCount", "idToken", "lastRefreshAt",
   // Parallel-request cap (per-account subscription limit). 0/undefined = default.
   "maxConcurrentRequests",
+  // Local requests-per-minute budget; rpmPerModel meters it per model (gateway
+  // free tiers count per model) instead of per account.
+  "rpmLimit", "rpmPerModel",
 ];
 
 const MODEL_LOCK_PREFIX = "modelLock_";

@@ -94,6 +94,8 @@ export async function PUT(request, { params }) {
       lastErrorAt,
       providerSpecificData,
       maxConcurrentRequests,
+      rpmLimit,
+      rpmPerModel,
     } = body;
 
     const existing = await getProviderConnectionById(id);
@@ -120,6 +122,14 @@ export async function PUT(request, { params }) {
       const cap = Number.parseInt(maxConcurrentRequests, 10);
       // 0 or invalid resets to the provider default; positive integer overrides it.
       updateData.maxConcurrentRequests = Number.isSafeInteger(cap) && cap > 0 ? cap : null;
+    }
+    if (rpmLimit !== undefined) {
+      const rpm = Number.parseInt(rpmLimit, 10);
+      // 0 or invalid turns the local per-minute budget off.
+      updateData.rpmLimit = Number.isSafeInteger(rpm) && rpm > 0 ? rpm : null;
+    }
+    if (rpmPerModel !== undefined) {
+      updateData.rpmPerModel = rpmPerModel === true;
     }
     if (isActive !== undefined) updateData.isActive = isActive;
     if (apiKey && existing.authType === "apikey") updateData.apiKey = apiKey;

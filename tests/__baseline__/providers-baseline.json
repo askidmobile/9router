@@ -1407,5 +1407,13 @@
       "url": "https://cloud.zed.dev/client/users/me"
     },
     "modelsUrl": "https://cloud.zed.dev/models"
+  },
+  "experiential": {
+    "baseUrl": "https://api.experientiallabs.ai/v1/chat/completions",
+    "validateUrl": "https://api.experientiallabs.ai/v1/models",
+    "retry": {
+      "429": 2
+    },
+    "format": "openai"
   }
 }

@@ -1171,6 +1171,14 @@ export default function ProviderLimits() {
                           {getConnectionSecondaryLabel(conn)}
                         </p>
                       ) : null}
+                      {quota?.plan ? (
+                        <span
+                          className="mt-1 inline-flex max-w-full truncate rounded-full bg-brand-500/10 px-2 py-0.5 text-[10px] font-semibold text-brand-600 dark:text-brand-300"
+                          title={`Plan: ${quota.plan}`}
+                        >
+                          {quota.plan}
+                        </span>
+                      ) : null}
                       {conn.provider === "kiro" && (
                         <div className="mt-1 flex flex-wrap items-center gap-1">
                           <span className="rounded-full bg-brand-500/10 px-2 py-0.5 text-[10px] font-semibold text-brand-600 dark:text-brand-300">
