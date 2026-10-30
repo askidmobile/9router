@@ -18,6 +18,9 @@ export default {
   category: "oauth",
   authModes: ["oauth", "apikey"],
   hasOAuth: true,
+  // Same gateway family as codebuddy-intl: no /models endpoint exists, so do not
+  // derive one (the derived URL only produced a 404 + dead import button).
+  noModelsList: true,
   transport: {
     baseUrl: "https://copilot.tencent.com/v2/chat/completions",
     forceStream: true,

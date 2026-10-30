@@ -83,13 +83,26 @@ async function getCodeBuddyUsage(providerId, accessToken, apiKey, providerSpecif
       const r = parseResetTime(acc.CycleEndTime);
       return r ? new Date(r).getTime() : Number.POSITIVE_INFINITY;
     };
-    // Refill packs roll into a new cycle before the resource expires; bonus packs
-    // end exactly at expiry. >2d gap between cycle end and validity end = refill.
-    const REFILL_GAP_MS = 2 * 24 * 60 * 60 * 1000;
+    // A refill pack rolls into a new cycle before the resource expires; a bonus
+    // pack runs a single cycle that ends exactly at expiry.
+    //
+    // The old test compared CycleEndTime against DeductionEndTime with a 2-day
+    // tolerance, but both are the SAME instant on the wire (DeductionEndTime is
+    // CycleEndTime rendered as epoch ms — gap is ~-5h, purely a timezone shift),
+    // so `de - ce > 2d` was never true and EVERY package fell into the bonus
+    // bucket. A plan that ships "Pro Plan Monthly Subscription" was therefore
+    // titled "Bonus Pack", and recurring allowances rendered as one-shot credit.
+    //
+    // Classify on the package itself instead: Tencent names the bonus packs
+    // explicitly (`*_bonus_pack` / `*_bonus`), and a monthly plan bills as a
+    // subscription (FeeType 2). Anything that is not a bonus grant is a refill
+    // allowance.
+    const BONUS_CODE_RE = /bonus/i;
     const isRefill = (acc) => {
-      const ce = cycleEndMs(acc);
-      const de = Number(acc.DeductionEndTime);
-      return Number.isFinite(ce) && Number.isFinite(de) && de - ce > REFILL_GAP_MS;
+      const code = String(acc.SubProductCode || acc.PackageCode || "");
+      if (BONUS_CODE_RE.test(code)) return false;
+      if (BONUS_CODE_RE.test(String(acc.PackageName || ""))) return false;
+      return true;
     };
     const byExpiry = (a, b) => cycleEndMs(a) - cycleEndMs(b);
 
@@ -98,12 +111,15 @@ async function getCodeBuddyUsage(providerId, accessToken, apiKey, providerSpecif
 
     const quotas = {};
     // Refill packs first: cadence-labelled, using the *Cycle* balance and
-    // resetting at the next refresh.
+    // resetting at the next refresh. Keep the upstream package name when it
+    // says more than the cadence ("Pro Plan Monthly Subscription" beats a bare
+    // "Monthly") so two concurrent allowances stay distinguishable.
     const seenRefill = {};
     refills.forEach((acc) => {
       const base = refillCadence(acc);
       seenRefill[base] = (seenRefill[base] || 0) + 1;
-      const name = seenRefill[base] > 1 ? `${base} ${seenRefill[base]}` : base;
+      const pkgName = String(acc.PackageName || "").trim();
+      const name = pkgName || (seenRefill[base] > 1 ? `${base} ${seenRefill[base]}` : base);
       quotas[name] = {
         used: num(acc.CycleCapacityUsedPrecise, acc.CycleCapacityUsed),
         total: num(acc.CycleCapacitySizePrecise, acc.CycleCapacitySize),
@@ -115,11 +131,15 @@ async function getCodeBuddyUsage(providerId, accessToken, apiKey, providerSpecif
       };
     });
     // Bonus packs: use the lifetime Capacity balance; resetAt is the expiry.
-    // These are one-shot credits (CycleEndTime == DeductionEndTime), so they
-    // never replenish — mark recurring:false so the UI shows "Expires in"
-    // instead of implying a monthly refill.
+    // These are one-shot credits that run a single cycle, so they never
+    // replenish — mark recurring:false so the UI shows "Expires in" instead of
+    // implying a monthly refill. Name them by the upstream label when present,
+    // falling back to "Bonus Pack N" for the anonymous ones.
     bonuses.forEach((acc, i) => {
-      quotas[`Bonus Pack ${i + 1}`] = {
+      const pkgName = String(acc.PackageName || "").trim();
+      let name = pkgName || `Bonus Pack ${i + 1}`;
+      if (quotas[name]) name = `${name} ${i + 1}`;
+      quotas[name] = {
         used: num(acc.CapacityUsedPrecise, acc.CapacityUsed),
         total: num(acc.CapacitySizePrecise, acc.CapacitySize),
         resetAt: parseResetTime(acc.CycleEndTime),

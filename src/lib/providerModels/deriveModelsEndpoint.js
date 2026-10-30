@@ -40,6 +40,11 @@ const isCatalogAggregatorUrl = (url) => {
  */
 export function deriveModelsEndpoint(entry) {
   if (!entry) return null;
+  // Explicit opt-out: some gateways answer chat but publish no model catalog at
+  // all, so deriving `<base>/models` from baseUrl only produces a guaranteed 404
+  // and a dead "Import Models" button (CodeBuddy: /v2/models is 404 on every
+  // host, including the CN gateway).
+  if (entry.noModelsList === true) return null;
   const kinds = entry.serviceKinds ?? ["llm"];
   if (!kinds.includes("llm")) return null;
   if (entry.modelsFetcher?.url && !isCatalogAggregatorUrl(entry.modelsFetcher.url)) {
