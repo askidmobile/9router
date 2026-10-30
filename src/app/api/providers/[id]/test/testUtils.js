@@ -901,6 +901,39 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
         }, effectiveProxy);
         return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
       }
+      case "codebuddy-intl":
+      case "codebuddy-cn": {
+        // The gateway publishes no /models or /profile endpoint, and a chat probe
+        // would spend a request against the per-model frequency limit (429/6004) —
+        // which then reads as a broken connection. The billing endpoint is the
+        // cheap authenticated probe: 200 + credit packages on a valid key,
+        // 401 {"message":"not_found"} on a bad one.
+        const billingUrl = PROVIDERS[provider]?.usage?.url
+          || (provider === "codebuddy-cn"
+            ? "https://copilot.tencent.com/v2/billing/meter/get-user-resource"
+            : "https://www.codebuddy.ai/v2/billing/meter/get-user-resource");
+        const billingRes = await fetchWithConnectionProxy(
+          billingUrl,
+          {
+            method: "POST",
+            headers: {
+              ...(PROVIDERS[provider]?.headers || {}),
+              Authorization: `Bearer ${connection.apiKey}`,
+              "Content-Type": "application/json",
+              Accept: "application/json",
+            },
+            body: "{}",
+          },
+          effectiveProxy,
+        );
+        if (billingRes.status === 401 || billingRes.status === 403) {
+          return { valid: false, error: "Invalid API key" };
+        }
+        return {
+          valid: billingRes.ok,
+          error: billingRes.ok ? null : `CodeBuddy billing API error (${billingRes.status})`,
+        };
+      }
       case "qoder":
       case "qoder-cn": {
         // PAT (pt-...) exchange → job token. A successful exchange proves the PAT.
@@ -1004,6 +1037,24 @@ export async function testSingleConnection(id) {
   }
 
   const latencyMs = Date.now() - start;
+
+  // "Test not supported" describes OUR test harness, not the connection: the
+  // provider simply has no cheap authenticated probe wired up. Persisting it used
+  // to flip testStatus to "error" and overwrite lastError, which then leaked into
+  // unrelated chat failures ("HTTP 503: [codebuddy-intl/deepseek-v4.1-flash]
+  // Provider test not supported") instead of the real upstream reason — and the
+  // model lock that actually caused the 503 was invisible. Leave the record alone
+  // and report the gap separately.
+  if (result.error === "Provider test not supported") {
+    return {
+      valid: null,
+      unsupported: true,
+      error: "Test not supported for this provider",
+      refreshed: false,
+      latencyMs,
+      testedAt: new Date().toISOString(),
+    };
+  }
 
   // Soft success (e.g. Grok CLI 402 spending-limit): credentials are good, account is
   // out of credits. Keep testStatus active; surface the message as lastError so the

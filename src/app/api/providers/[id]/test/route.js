@@ -13,6 +13,10 @@ export async function POST(request, { params }) {
 
     return NextResponse.json({
       valid: result.valid,
+      // `valid: null` + unsupported means our test harness has no probe for this
+      // provider — it says nothing about the credential, so the caller must not
+      // render it as a failure.
+      ...(result.unsupported ? { unsupported: true } : {}),
       error: result.error,
       refreshed: result.refreshed || false,
     });

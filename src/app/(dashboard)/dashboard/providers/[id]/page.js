@@ -711,10 +711,11 @@ export default function ProviderDetailPage() {
     setOneByOneStopping(false);
     setOneByOneCurrentConnectionId(null);
     setOneByOneResults(queuedState);
-    setOneByOneSummary({ total: connections.length, completed: 0, passed: 0, failed: 0, stopped: false });
+    setOneByOneSummary({ total: connections.length, completed: 0, passed: 0, failed: 0, skipped: 0, stopped: false });
 
     let passed = 0;
     let failed = 0;
+    let skipped = 0;
 
     try {
       for (let index = 0; index < connections.length; index += 1) {
@@ -724,6 +725,7 @@ export default function ProviderDetailPage() {
             completed: index,
             passed,
             failed,
+            skipped,
             stopped: true,
           });
           break;
@@ -743,6 +745,11 @@ export default function ProviderDetailPage() {
 
           if (valid) {
             passed += 1;
+          } else if (data.unsupported) {
+            // No probe wired up for this provider — the credential is untested,
+            // not broken. Count it separately so the summary stays honest and the
+            // row is not painted red.
+            skipped += 1;
           } else {
             failed += 1;
           }
@@ -750,7 +757,7 @@ export default function ProviderDetailPage() {
           setOneByOneResults((prev) => ({
             ...prev,
             [connection.id]: {
-              state: valid ? "success" : "failed",
+              state: valid ? "success" : data.unsupported ? "skipped" : "failed",
               error: valid ? null : (data.error || null),
             },
           }));
@@ -770,6 +777,7 @@ export default function ProviderDetailPage() {
           completed: index + 1,
           passed,
           failed,
+          skipped,
           stopped: false,
         });
 
@@ -1693,6 +1701,11 @@ export default function ProviderDetailPage() {
                     <span>Completed: {oneByOneSummary.completed}</span>
                     <span>Passed: {oneByOneSummary.passed}</span>
                     <span>Failed: {oneByOneSummary.failed}</span>
+                    {oneByOneSummary.skipped > 0 && (
+                      <span title="No probe is available for this provider, so the credential was not verified serially">
+                        Skipped: {oneByOneSummary.skipped}
+                      </span>
+                    )}
                     {oneByOneSummary.stopped && (
                       <span className="text-amber-600 dark:text-amber-400">Stopped</span>
                     )}
