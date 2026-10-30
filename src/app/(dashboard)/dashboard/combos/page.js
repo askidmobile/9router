@@ -10,7 +10,7 @@ import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { getConservativeComboCapabilities } from "open-sse/providers/capabilities.js";
 import { buildComboProviderMap, getComboMemberCircuit, applyComboCapOverrides } from "@/shared/utils/comboHealth";
-import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, getProviderAlias, resolveProviderId, AI_PROVIDERS } from "@/shared/constants/providers";
+import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, getProviderAlias, resolveProviderId, AI_PROVIDERS, ALIAS_TO_ID } from "@/shared/constants/providers";
 
 // Validate combo name: only a-z, A-Z, 0-9, -, _
 const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
@@ -124,8 +124,14 @@ export default function CombosPage() {
     return m;
   }, [activeProviders]);
   const aliasCandidates = useCallback((provider, model) => {
-    const ids = prefixToProviderIds.get(provider) || [];
-    return ids.map((id) => `${id}|${model}`);
+    const keys = [];
+    // Registry aliases (exp, cbai, ds, …) are legal combo spellings while caps
+    // overrides are keyed by provider id — resolve the token first, or the
+    // member falls back to the static pattern guess (128k out instead of 384k).
+    const providerId = ALIAS_TO_ID[provider] || provider;
+    if (providerId !== provider) keys.push(`${providerId}|${model}`);
+    for (const id of prefixToProviderIds.get(provider) || []) keys.push(`${id}|${model}`);
+    return keys;
   }, [prefixToProviderIds]);
 
   // Providers whose every connection is switched off. A provider with no

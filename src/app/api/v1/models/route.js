@@ -357,8 +357,14 @@ export async function buildModelsList(kindFilter, options = {}) {
     }
   }
   const aliasCandidates = (provider, model) => {
-    const ids = prefixToProviderIds.get(provider) || [];
-    return ids.map((id) => `${id}|${model}`);
+    const keys = [];
+    // Registry aliases (exp, cbai, ds, …) are legal combo spellings while caps
+    // overrides are keyed by provider id — resolve the token first, or the
+    // member silently falls back to the static pattern guess.
+    const providerId = ALIAS_TO_PROVIDER_ID[provider] || provider;
+    if (providerId !== provider) keys.push(`${providerId}|${model}`);
+    for (const id of prefixToProviderIds.get(provider) || []) keys.push(`${id}|${model}`);
+    return keys;
   };
 
   // Build a per-model caps map (fullModel → caps) so combo conservative caps
@@ -375,7 +381,18 @@ export async function buildModelsList(kindFilter, options = {}) {
   };
   for (const [alias, providerModels] of Object.entries(PROVIDER_MODELS)) {
     const providerId = (Object.entries(PROVIDER_ID_TO_ALIAS).find(([, a]) => a === alias) || [alias])[0];
-    for (const m of providerModels) recordCaps(`${alias}/${m.id}`, providerId, m.id);
+    // Extra registry aliases (exp, cbai, ds, …) are valid combo spellings too;
+    // register the same caps under them so a member written that way keeps the
+    // catalog limits instead of falling back to the static pattern table.
+    const extraTokens = Object.entries(ALIAS_TO_ID)
+      .filter(([token, id]) => id === providerId && token !== alias)
+      .map(([token]) => token);
+    for (const m of providerModels) {
+      recordCaps(`${alias}/${m.id}`, providerId, m.id);
+      for (const token of extraTokens) {
+        if (!modelCaps.has(`${token}/${m.id}`)) modelCaps.set(`${token}/${m.id}`, modelCaps.get(`${alias}/${m.id}`));
+      }
+    }
   }
   for (const conn of connections) {
     const prefix = conn?.providerSpecificData?.prefix;
