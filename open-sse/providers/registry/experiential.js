@@ -36,18 +36,45 @@ export default {
     retry: { 429: 2 },
   },
   passthroughModels: true,
-  // Plan presets for the RPM picker in Edit Connection. Only the free core
-  // allowance is published by the platform (10 requests/min and 250k tokens/min
-  // PER MODEL, 1M tokens/day shared), so paid plans are the user's own value.
+  // Plan ceilings from the account's plan page (Settings > Plans, "Rate limits
+  // by plan"). They are ORGANIZATION-wide requests/min and tokens/min, so the
+  // presets meter the whole connection (perModel:false) — a single key is the
+  // whole org for most setups. Model-specific allowances sit on top and remain
+  // the platform's business; they are not additive to these ceilings.
   rateLimitPresets: [
     {
-      id: "free-core",
-      label: "Free core — 10 rpm per model",
-      rpm: 10,
-      perModel: true,
-      note: "Published free allowance: 10 requests/min and 250k tokens/min per model, 1M tokens/day shared across them.",
+      id: "free",
+      label: "Free",
+      rpm: 240,
+      tpm: 4_000_000,
+      perModel: false,
+      note: "Free base ceiling: 240 requests/min, 4M tokens/min. Free-core models (GPT-6 Luna, DeepSeek V4.1 Flash, Clef) are additionally capped at 10 requests/min and 250k tokens/min PER MODEL with 1M tokens/day shared.",
     },
-    { id: "off", label: "No local limit", rpm: 0, perModel: true },
+    {
+      id: "pro",
+      label: "Pro (Tier 2)",
+      rpm: 1500,
+      tpm: 25_000_000,
+      perModel: false,
+      note: "Pro Tier 2: 1,500 requests/min, 25M tokens/min. Organization-wide.",
+    },
+    {
+      id: "max",
+      label: "Max (Tier 3)",
+      rpm: 6000,
+      tpm: 100_000_000,
+      perModel: false,
+      note: "Max Tier 3: 6,000 requests/min, 100M tokens/min. Organization-wide.",
+    },
+    {
+      id: "ultra",
+      label: "Ultra (Tier 4)",
+      rpm: 10_000,
+      tpm: 150_000_000,
+      perModel: false,
+      note: "Ultra Tier 4: 10,000 requests/min, 150M tokens/min. Organization-wide.",
+    },
+    { id: "off", label: "No local limit", rpm: 0, perModel: false },
   ],
   // Seed list; the gateway's own catalog is larger and every id is forwarded
   // as-is. Prices are the platform-funded catalog rates (USD per 1M tokens).

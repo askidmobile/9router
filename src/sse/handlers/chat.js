@@ -350,17 +350,17 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     }
 
     // Every account of this provider is at its concurrent-request cap, or out
-    // of its local per-minute request budget (see connectionRpm.js).
+    // of its local per-minute budget (see open-sse/services/localRateLimit.js).
     if (credentials?.allBusy) {
       const requestedMs = Number.parseInt(credentials.retryAfterMs, 10);
       const retryAfter = new Date(
         Date.now() + (Number.isSafeInteger(requestedMs) && requestedMs > 0 ? requestedMs : 10_000)
       ).toISOString();
-      if (credentials.rpmLimited) {
-        log.warn("CHAT", `[${provider}/${model}] all accounts at their local RPM limit`);
+      if (credentials.localRateLimited) {
+        log.warn("CHAT", `[${provider}/${model}] all accounts at their local rate limit`);
         return unavailableResponse(
           HTTP_STATUS.SERVICE_UNAVAILABLE,
-          `[${provider}/${model}] All accounts at their requests-per-minute limit`,
+          `[${provider}/${model}] All accounts at their local requests/tokens-per-minute limit`,
           retryAfter,
           "retry after a few seconds",
           { ...lastHeaders, [LOCAL_CAPACITY_HEADER]: "1" }

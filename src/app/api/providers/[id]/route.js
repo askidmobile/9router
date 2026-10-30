@@ -96,6 +96,7 @@ export async function PUT(request, { params }) {
       maxConcurrentRequests,
       rpmLimit,
       rpmPerModel,
+      tpmLimit,
     } = body;
 
     const existing = await getProviderConnectionById(id);
@@ -130,6 +131,11 @@ export async function PUT(request, { params }) {
     }
     if (rpmPerModel !== undefined) {
       updateData.rpmPerModel = rpmPerModel === true;
+    }
+    if (tpmLimit !== undefined) {
+      const tpm = Number.parseInt(tpmLimit, 10);
+      // 0 or invalid turns the local tokens-per-minute budget off.
+      updateData.tpmLimit = Number.isSafeInteger(tpm) && tpm > 0 ? tpm : null;
     }
     if (isActive !== undefined) updateData.isActive = isActive;
     if (apiKey && existing.authType === "apikey") updateData.apiKey = apiKey;

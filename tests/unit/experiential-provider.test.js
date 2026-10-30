@@ -76,13 +76,20 @@ describe("Experiential Labs provider", () => {
     expect(USAGE_APIKEY_PROVIDERS).toContain("experiential");
   });
 
-  it("ships the published free-core allowance as an RPM preset", () => {
+  it("ships the plan rate-limit ceilings as RPM presets", () => {
     const presets = AI_PROVIDERS.experiential.rateLimitPresets;
     expect(presets).toBeDefined();
-    const free = presets.find((p) => p.id === "free-core");
-    expect(free).toMatchObject({ rpm: 10, perModel: true });
-    expect(free.note).toMatch(/per model/i);
+    // The account plan page publishes org-wide requests/min and tokens/min.
+    const byId = Object.fromEntries(presets.map((p) => [p.id, p]));
+    expect(byId.free).toMatchObject({ rpm: 240, tpm: 4_000_000, perModel: false });
+    expect(byId.pro).toMatchObject({ rpm: 1500, tpm: 25_000_000, perModel: false });
+    expect(byId.max).toMatchObject({ rpm: 6000, tpm: 100_000_000, perModel: false });
+    expect(byId.ultra).toMatchObject({ rpm: 10_000, tpm: 150_000_000, perModel: false });
+    // Presets meter the whole connection: the ceilings are organization-wide.
+    for (const preset of presets.filter((p) => p.rpm > 0)) expect(preset.perModel).toBe(false);
+    // The free-core per-model allowance is documented in the Free note.
+    expect(byId.free.note).toMatch(/per model/i);
     // The off preset clears the budget instead of setting an rpm of 0.
-    expect(presets.find((p) => p.id === "off").rpm).toBe(0);
+    expect(byId.off.rpm).toBe(0);
   });
 });

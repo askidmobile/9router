@@ -16,6 +16,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
     maxConcurrentRequests: "",
     rpmLimit: "",
     rpmPerModel: true,
+    tpmLimit: "",
     apiKey: "",
   });
   const [rpmPresetId, setRpmPresetId] = useState("");
@@ -43,6 +44,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
         maxConcurrentRequests: connection.maxConcurrentRequests ?? "",
         rpmLimit: connection.rpmLimit ?? "",
         rpmPerModel: connection.rpmPerModel !== false,
+        tpmLimit: connection.tpmLimit ?? "",
         apiKey: "",
       });
       setRpmPresetId("");
@@ -92,6 +94,14 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
   const rpmPresets = connection ? (AI_PROVIDERS?.[connection.provider]?.rateLimitPresets || null) : null;
   const rpmPreset = rpmPresets?.find((preset) => preset.id === rpmPresetId) || null;
 
+  // Preset captions carry the numeric ceilings: "Max (Tier 3) — 6,000 rpm · 100M tok/min".
+  const rpmPresetSummary = (preset) => {
+    const parts = [];
+    if (preset.rpm > 0) parts.push(`${preset.rpm.toLocaleString()} rpm`);
+    if (preset.tpm > 0) parts.push(`${Math.round(preset.tpm / 1_000_000)}M tok/min`);
+    return parts.join(" · ");
+  };
+
   const applyRpmPreset = (presetId) => {
     const preset = rpmPresets?.find((item) => item.id === presetId);
     setRpmPresetId(presetId);
@@ -99,6 +109,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
     setFormData((prev) => ({
       ...prev,
       rpmLimit: preset.rpm > 0 ? String(preset.rpm) : "",
+      tpmLimit: preset.tpm > 0 ? String(preset.tpm) : "",
       rpmPerModel: preset.perModel !== false,
     }));
   };
@@ -169,6 +180,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
         maxConcurrentRequests: formData.maxConcurrentRequests,
         rpmLimit: formData.rpmLimit,
         rpmPerModel: formData.rpmPerModel,
+        tpmLimit: formData.tpmLimit,
       };
       if (!isOAuth && formData.apiKey) {
         updates.apiKey = formData.apiKey;
@@ -270,7 +282,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
           min="0"
           value={formData.rpmLimit}
           placeholder="0 (no local limit)"
-          hint="Local per-minute request budget. While it is spent the account is skipped instead of collecting a 429. Leave blank or 0 to disable."
+          hint="Local per-minute request budget. While it is spent the account is skipped instead of collecting a 429. Provider ceilings are usually org-wide, so one connection per org key keeps the budget exact. Leave blank or 0 to disable."
           onChange={(e) => setFormData({ ...formData, rpmLimit: e.target.value.trim() || "" })}
         />
         {Number(formData.rpmLimit) > 0 && (
@@ -283,6 +295,15 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
             Count per model (gateway free tiers meter each model separately)
           </label>
         )}
+        <Input
+          label="Tokens per minute (TPM)"
+          type="number"
+          min="0"
+          value={formData.tpmLimit}
+          placeholder="0 (no local limit)"
+          hint="Local tokens-per-minute budget (input + output). Settled usage counts, so it caps sustained volume rather than one large request. Leave blank or 0 to disable."
+          onChange={(e) => setFormData({ ...formData, tpmLimit: e.target.value.trim() || "" })}
+        />
         {rpmPresets && (
           <Select
             label="Plan allowance preset"
@@ -290,7 +311,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
             onChange={(e) => applyRpmPreset(e.target.value)}
             options={rpmPresets.map((preset) => ({
               value: preset.id,
-              label: preset.rpm > 0 ? `${preset.label} (${preset.rpm} rpm)` : preset.label,
+              label: [preset.label, rpmPresetSummary(preset)].filter(Boolean).join(" — "),
             }))}
             placeholder="Pick a published allowance"
             hint={rpmPreset?.note || "Presets only cover allowances the provider publishes; set any other value in the RPM field."}
@@ -447,6 +468,7 @@ EditConnectionModal.propTypes = {
     maxConcurrentRequests: PropTypes.number,
     rpmLimit: PropTypes.number,
     rpmPerModel: PropTypes.bool,
+    tpmLimit: PropTypes.number,
     authType: PropTypes.string,
     provider: PropTypes.string,
     providerSpecificData: PropTypes.object,

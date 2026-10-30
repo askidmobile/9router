@@ -1,6 +1,7 @@
 import { saveRequestUsage, appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
 import { COLORS } from "../../utils/stream.js";
 import { canonicalizeUsage } from "../../utils/usageTracking.js";
+import { recordTokenUsage } from "../../services/localRateLimit.js";
 
 const OPTIONAL_PARAMS = [
   "temperature", "top_p", "top_k",
@@ -141,6 +142,11 @@ export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, 
   if (tokens.cost_details) normalized.cost_details = tokens.cost_details;
   if (tokens.completion_tokens_details) normalized.completion_tokens_details = tokens.completion_tokens_details;
   if (tokens.output_tokens_details) normalized.output_tokens_details = tokens.output_tokens_details;
+
+  // Feed the connection's local tokens-per-minute budget (see
+  // localRateLimit.js). Settled usage only: a per-minute ceiling is enforced on
+  // traffic already served, so it caps sustained volume rather than one burst.
+  recordTokenUsage(connectionId, inTokens + outTokens);
 
   saveRequestUsage({
     provider: provider || "unknown",
