@@ -74,8 +74,11 @@ export async function deleteCustomModel({ providerAlias, id, type = "llm" }) {
   await customKv.remove(customKey(providerAlias, id, type));
 }
 
-// Bulk insert in one transaction; existing keys are skipped (same rule as addCustomModel)
-export async function addCustomModelsBulk({ providerAlias, type = "llm", ids = [], catalogOnly = false }) {
+// Bulk insert in one transaction; existing keys are skipped (same rule as addCustomModel).
+// `names` maps id → display name for providers whose catalog publishes a label the
+// raw key doesn't convey (Qoder's opaque `qmodel_38max` → "Qwen3.8-Max"). Without it
+// the stored name defaults to the id and the card renders the internal key.
+export async function addCustomModelsBulk({ providerAlias, type = "llm", ids = [], names = {}, catalogOnly = false }) {
   const db = await getAdapter();
   let added = 0;
   let skipped = 0;
@@ -92,7 +95,14 @@ export async function addCustomModelsBulk({ providerAlias, type = "llm", ids = [
         } else skipped += 1;
         continue;
       }
-      const value = stringifyJson({ providerAlias, id, type, name: id, ...(catalogOnly ? { catalogOnly: true } : {}) });
+      const label = typeof names?.[id] === "string" ? names[id].trim() : "";
+      const value = stringifyJson({
+        providerAlias,
+        id,
+        type,
+        name: label || id,
+        ...(catalogOnly ? { catalogOnly: true } : {}),
+      });
       db.run(`INSERT INTO kv(scope, key, value) VALUES('customModels', ?, ?)`, [k, value]);
       added += 1;
     }

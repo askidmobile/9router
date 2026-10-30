@@ -136,10 +136,17 @@ export default function ImportModelsModal({
     setImporting(true);
     setError("");
     try {
+      // Send the catalog's display labels along with the ids. Several providers
+      // expose opaque internal keys (Qoder: qmodel_38max), and without the label
+      // the stored model renders as the raw key on every card.
+      const names = {};
+      for (const m of models) {
+        if (selected.has(m.id) && m.name && m.name !== m.id) names[m.id] = m.name;
+      }
       const res = await fetch("/api/models/custom/bulk", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ providerAlias: providerStorageAlias, type: "llm", ids: [...selected] }),
+        body: JSON.stringify({ providerAlias: providerStorageAlias, type: "llm", ids: [...selected], names }),
       });
       const data = await res.json();
       if (!res.ok) {

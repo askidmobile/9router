@@ -7,11 +7,13 @@ export const dynamic = "force-dynamic";
 const MAX_IDS = 500;
 
 // POST /api/models/custom/bulk - add many custom models in one transaction
-// Body: { providerAlias, type?, ids: string[] }
+// Body: { providerAlias, type?, ids: string[], names?: { [id]: displayName } }
+// `names` carries the provider's published labels so opaque ids (Qoder's
+// `qmodel_38max`) land in the dashboard as "Qwen3.8-Max" instead of the raw key.
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { providerAlias, type = "llm", ids } = body || {};
+    const { providerAlias, type = "llm", ids, names } = body || {};
 
     if (!providerAlias || !Array.isArray(ids)) {
       return NextResponse.json({ error: "providerAlias and ids[] required" }, { status: 400 });
@@ -28,7 +30,16 @@ export async function POST(request) {
       return NextResponse.json({ error: `Too many ids (max ${MAX_IDS})` }, { status: 400 });
     }
 
-    const result = await addCustomModelsBulk({ providerAlias, type, ids: cleanIds });
+    // Keep only string labels for ids we are actually inserting.
+    const cleanNames = {};
+    if (names && typeof names === "object") {
+      for (const id of cleanIds) {
+        const label = names[id];
+        if (typeof label === "string" && label.trim()) cleanNames[id] = label.trim();
+      }
+    }
+
+    const result = await addCustomModelsBulk({ providerAlias, type, ids: cleanIds, names: cleanNames });
     return NextResponse.json({ success: true, ...result });
   } catch (error) {
     console.log("Error bulk-adding custom models:", error);
