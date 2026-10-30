@@ -123,7 +123,7 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
   const [testingModelId, setTestingModelId] = useState(null);
   const [modelTestResults, setModelTestResults] = useState({});
   const [editing, setEditing] = useState(null);
-  const { getCaps, overrides: capsOverrides } = useModelCaps();
+  const { getCaps, overrides: capsOverrides, effective: capsEffective } = useModelCaps();
   const { getName, overrides: nameOverrides } = useModelNames();
   const { getPricing } = usePricing();
 
@@ -231,7 +231,10 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
               hasOverride={!!capsOverrides[`${providerStorageAlias}|${id}`]}
               caps={(() => {
                 const base = getCapabilitiesForModel(providerStorageAlias, id) || {};
-                return { ...base, ...(capsOverrides[`${providerStorageAlias}|${id}`] || {}) };
+                // Effective layer (manual + catalog import), same as the modal.
+                const override = capsEffective[`${providerStorageAlias}|${id}`]
+                  || capsOverrides[`${providerStorageAlias}|${id}`] || null;
+                return { ...base, ...(override || {}) };
               })()}
               onEdit={() => setEditing(buildEditModel({
                 id,

@@ -102,7 +102,13 @@ export default function CombosPage() {
   const [editingCombo, setEditingCombo] = useState(null);
   const [activeProviders, setActiveProviders] = useState([]);
   const [disabledMap, setDisabledMap] = useState({});
-  const { getCaps, overrides } = useModelCaps();
+  const { getCaps, overrides, effective: effectiveCapsOverrides } = useModelCaps();
+  // Combo caps must mirror /v1/models, which resolves the EFFECTIVE layer
+  // (manual edits + catalog imports). The manual-only map made a combo inherit
+  // the static pattern guess (128k out) instead of the imported 384k.
+  const capsForCombo = effectiveCapsOverrides && Object.keys(effectiveCapsOverrides).length
+    ? effectiveCapsOverrides
+    : overrides;
   // Map compatible-node prefixes (combo member prefix) → their UUID providerId,
   // so override keys stored under the providerId resolve when a combo lists
   // the user-facing prefix (e.g. oc-zen → openai-compatible-chat-...).
@@ -714,7 +720,7 @@ export default function CombosPage() {
               key={combo.id}
               combo={combo}
               getCaps={getCaps}
-              capsOverrides={overrides}
+              capsOverrides={capsForCombo}
               allCombos={combos}
               aliasCandidates={aliasCandidates}
               modelCaps={modelCaps}
@@ -757,7 +763,7 @@ export default function CombosPage() {
           onSave={handleCreate}
           activeProviders={activeProviders}
           getCaps={getCaps}
-          capsOverrides={overrides}
+          capsOverrides={capsForCombo}
           modelCaps={modelCaps}
           aliasCandidates={aliasCandidates}
           allCombos={combos}
@@ -774,7 +780,7 @@ export default function CombosPage() {
           onSave={(data) => handleUpdate(editingCombo.id, data)}
           activeProviders={activeProviders}
           getCaps={getCaps}
-          capsOverrides={overrides}
+          capsOverrides={capsForCombo}
           modelCaps={modelCaps}
           aliasCandidates={aliasCandidates}
           allCombos={combos}

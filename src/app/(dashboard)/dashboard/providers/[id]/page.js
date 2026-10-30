@@ -57,7 +57,7 @@ export default function ProviderDetailPage() {
   const params = useParams();
   const router = useRouter();
   const providerId = params.id;
-  const { getCaps, overrides: capsOverrides } = useModelCaps();
+  const { getCaps, overrides: capsOverrides, effective: capsEffective } = useModelCaps();
   const { getPricing } = usePricing();
   const { getName, overrides: nameOverrides } = useModelNames();
   const [editingModel, setEditingModel] = useState(null);
@@ -226,7 +226,10 @@ export default function ProviderDetailPage() {
   };
   const providerStorageAlias = isCompatible ? providerId : providerAlias;
   // Preserve saved custom caps when a model joins the upstream catalog.
-  // Explicit overrides win; accept either storage alias or registry id keys.
+  // Values must match the edit modal and /v1/models: those read the EFFECTIVE
+  // layer (manual + catalog import), so a card built from manual-only caps
+  // showed the static pattern guess (e.g. 128k out) while the modal showed the
+  // imported 384k for the same model.
   const effectiveCaps = (modelId) => {
     const base = getCapabilitiesForModel(providerId, modelId) || {};
     const saved = customModels.find((entry) =>
@@ -234,7 +237,9 @@ export default function ProviderDetailPage() {
       && entry.id === modelId
       && (entry.kind || entry.type || "llm") === "llm"
     );
-    const override = capsOverrides[`${providerStorageAlias}|${modelId}`]
+    const override = capsEffective[`${providerStorageAlias}|${modelId}`]
+      || capsEffective[`${providerId}|${modelId}`]
+      || capsOverrides[`${providerStorageAlias}|${modelId}`]
       || capsOverrides[`${providerId}|${modelId}`] || null;
     return { ...base, ...(saved?.caps || {}), ...(override || {}) };
   };

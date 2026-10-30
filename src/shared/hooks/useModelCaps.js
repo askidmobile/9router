@@ -127,6 +127,9 @@ export function useModelCaps({ enabled = true } = {}) {
     [byFull, byId, effective],
   );
 
-  // overrides exposed for combined-caps computation (combo card mirrors /v1/models)
-  return { getCaps, overrides, ready };
+  // `overrides` = manual edits only (drives the "configured" badge);
+  // `effective` = manual + the automatic catalog-import layer. Cards that show
+  // numbers must use `effective`, or they disagree with the edit modal and
+  // /v1/models for every catalog-imported model.
+  return { getCaps, overrides, effective, ready };
 }

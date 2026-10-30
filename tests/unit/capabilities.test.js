@@ -320,3 +320,18 @@ describe("OpenCode Free ids newer than the capability tables", () => {
     });
   });
 });
+
+describe("CodeBuddy CN/intl caps parity", () => {
+  // Both aliases front the same gateway catalog. When CN's 2026-09-30 sync
+  // raised deepseek-v4.1-flash output to 393216, intl kept 128000 — and because
+  // combo caps take the minimum across members, that stale value became the
+  // binding ceiling of every combo listing cbai/deepseek-v4.1-flash.
+  it("agrees with codebuddy-cn on deepseek-v4.1-flash limits", () => {
+    const cn = getCapabilitiesForModel("codebuddy-cn", "deepseek-v4.1-flash");
+    const intl = getCapabilitiesForModel("codebuddy-intl", "deepseek-v4.1-flash");
+    expect(intl.maxOutput).toBe(cn.maxOutput);
+    expect(intl.contextWindow).toBe(cn.contextWindow);
+    // The thinking shape is the reason this provider entry exists at all.
+    expect(intl.thinkingFormat).toBe("openai");
+  });
+});

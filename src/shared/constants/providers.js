@@ -142,9 +142,14 @@ export function getProviderAlias(providerId) {
   return provider?.alias || providerId;
 }
 
-// Alias to ID mapping (for quick lookup)
+// Alias to ID mapping (for quick lookup). Extra routing tokens from the
+// registry's `aliases` must resolve too: a combo or a client may spell a model
+// as `exp/model`, and leaving that token unmapped made the UI look up caps for
+// provider "exp" instead of "experiential" — so the effective override (384k out)
+// was missed and the static pattern guess (128k) was shown.
 export const ALIAS_TO_ID = Object.values(AI_PROVIDERS).reduce((acc, p) => {
   acc[p.alias] = p.id;
+  for (const extra of p.aliases || []) acc[extra] = p.id;
   return acc;
 }, {});
 

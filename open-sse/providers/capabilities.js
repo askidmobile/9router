@@ -389,8 +389,11 @@ export const PROVIDER_CAPABILITIES = {
   // the codebuddy-cn entry (the openai-style reasoning_effort format matters:
   // the generic *deepseek-v4* pattern would otherwise pick the vendor-native
   // "deepseek" thinking shape, which the CodeBuddy gateway does not accept).
+  // Keep maxOutput in step with CN: the 2026-09-30 catalog sync raised it to
+  // 393216 there, and a stale 128000 here silently became the binding member of
+  // every combo that lists this model (conservative caps take the minimum).
   "codebuddy-intl": {
-    "deepseek-v4.1-flash": { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 1000000, maxOutput: 128000 },
+    "deepseek-v4.1-flash": { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 1000000, maxOutput: 393216 },
   },
   // Qoder — upstream exposes opaque internal ids (dfmodel, kmodel, …); the
   // registry `name` is display-only and capability lookup matches on the raw
