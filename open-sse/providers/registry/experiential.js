@@ -8,10 +8,13 @@ export default {
   features: { usage: true, usageApikey: true },
   priority: 130,
   alias: "experiential",
-  // `experientiallabs` keeps the vendor-prefixed ids a tool may have learned
-  // from /api/v1/models (`experientiallabs/<slug>`) routable: the prefix
-  // resolves to this provider and the slug is forwarded untouched.
-  aliases: ["exp", "xpl", "experientiallabs"],
+  // NOTE: no "experientiallabs" alias. It looks like a natural spelling (the
+  // vendor-prefixed ids from /api/v1/models use it), but a user-defined
+  // provider NODE already carries that prefix, and getModelInfo() checks
+  // reserved prefixes before looking nodes up — adding it here makes the node
+  // unroutable and every `<prefix>/model` request lands on this provider
+  // instead. Migrate such a node to this provider rather than shadowing it.
+  aliases: ["exp", "xpl"],
   uiAlias: "experiential",
   category: "apikey",
   authType: "apikey",

@@ -32,7 +32,7 @@ const ALIAS_TOKENS = [
   "typesafe",
   "respan","rs",
   "runcrate","rc",
-  "experiential","exp","xpl","experientiallabs",
+  "experiential","exp","xpl",
 ];
 
 // Sort idToAlias by key — runtime accesses by key, order is irrelevant (content-based)

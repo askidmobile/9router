@@ -20,7 +20,16 @@ describe("Experiential Labs provider", () => {
     expect(entry.authType).toBe("apikey");
     expect(entry.authModes).toEqual(["apikey"]);
     expect(entry.alias).toBe("experiential");
-    expect(entry.aliases).toEqual(expect.arrayContaining(["exp", "xpl", "experientiallabs"]));
+    expect(entry.aliases).toEqual(expect.arrayContaining(["exp", "xpl"]));
+  });
+
+  it("does not claim the vendor prefix a provider node may already own", () => {
+    // getModelInfo() checks reserved prefixes BEFORE looking provider nodes up,
+    // so a registry alias named after a node's prefix silently steals every
+    // `<prefix>/model` request from that node. "experientiallabs" is exactly
+    // the prefix a hand-made node for this gateway carries — keep it free.
+    expect(entry.aliases).not.toContain("experientiallabs");
+    expect(entry.alias).not.toBe("experientiallabs");
   });
 
   it("points at the documented gateway endpoints", () => {
@@ -30,17 +39,14 @@ describe("Experiential Labs provider", () => {
     expect(PROVIDERS.experiential.format).toBe("openai");
   });
 
-  it("resolves the shortcuts and keeps vendor-prefixed ids routable", () => {
+  it("resolves the shortcuts and keeps slugs routable", () => {
     expect(resolveProviderAlias("experiential")).toBe("experiential");
     expect(resolveProviderAlias("exp")).toBe("experiential");
     expect(resolveProviderAlias("xpl")).toBe("experiential");
-    // A custom provider pointed at /api/v1/models imports vendor-prefixed ids;
-    // the prefix resolves here and the bare slug is what the gateway expects.
-    expect(resolveProviderAlias("experientiallabs")).toBe("experiential");
-    const parsed = parseModel("experientiallabs/deepseek-v4.1-flash-1017");
+    const parsed = parseModel("exp/deepseek-v4.1-flash-1017");
     expect(parsed.provider).toBe("experiential");
     expect(parsed.model).toBe("deepseek-v4.1-flash-1017");
-    expect(parseModel("exp/claude-opus-5.5").provider).toBe("experiential");
+    expect(parseModel("experiential/claude-opus-5.5").provider).toBe("experiential");
   });
 
   it("exposes seed models with catalog context windows and forwards unknown slugs", () => {

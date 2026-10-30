@@ -143,8 +143,7 @@
     "rc": "runcrate",
     "experiential": "experiential",
     "exp": "experiential",
-    "xpl": "experiential",
-    "experientiallabs": "experiential"
+    "xpl": "experiential"
   },
   "idToAlias": {
     "agnes": "agnes",
