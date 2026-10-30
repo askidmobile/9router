@@ -43,10 +43,28 @@ function tierName(entry, tokenCount) {
 
 /**
  * Normalize a model_config into sorted tiers: [{ name, tokenCount, isDefault }] ascending.
- * Accepts snake_case and camelCase shapes; returns [] when the model has no tiers.
+ * Accepts snake_case and camelCase shapes, as a list OR as the keyed object the live
+ * catalog actually sends; returns [] when the model has no tiers.
+ *
+ * Live shape (every key in /algo/api/v2/model/list):
+ *   "context_config": {"1M": {"token_count": 1000000},
+ *                      "200K": {"token_count": 200000, "is_default": true},
+ *                      "400K": {"token_count": 400000}}
+ * Before the object form was handled, getQoderContextTiers returned [] for every
+ * Qoder model, so tier escalation never fired and long sessions were rejected
+ * once they outgrew the ~180K default tier.
  */
 export function getQoderContextTiers(modelConfig) {
-  const list = modelConfig?.context_config ?? modelConfig?.contextConfig;
+  const raw = modelConfig?.context_config ?? modelConfig?.contextConfig;
+  const list = Array.isArray(raw)
+    ? raw
+    : raw && typeof raw === "object"
+      // Keyed form: the key is the tier label ("200K"/"400K"/"1M"), so hand it
+      // to tierName via `name` when the value doesn't carry its own label.
+      ? Object.entries(raw).map(([name, value]) =>
+          value && typeof value === "object" ? { name, ...value } : { name, token_count: value },
+        )
+      : null;
   if (!Array.isArray(list)) return [];
   const byCount = new Map();
   for (const entry of list) {

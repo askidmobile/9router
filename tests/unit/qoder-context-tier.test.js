@@ -74,6 +74,30 @@ describe("getQoderContextTiers", () => {
     ]);
   });
 
+  it("parses the keyed object shape the live catalog actually sends", () => {
+    // Verbatim from /algo/api/v2/model/list. Every Qoder model uses this shape;
+    // before it was handled, tiers came back [] and escalation never fired.
+    const tiers = getQoderContextTiers({
+      key: "qmodel_38max",
+      max_input_tokens: 180000,
+      context_config: {
+        "1M": { token_count: 1000000 },
+        "200K": { token_count: 200000, is_default: true },
+        "400K": { token_count: 400000 },
+      },
+    });
+    expect(tiers).toEqual([
+      { name: "200K", tokenCount: 200_000, isDefault: true },
+      { name: "400K", tokenCount: 400_000, isDefault: false },
+      { name: "1M", tokenCount: 1_000_000, isDefault: false },
+    ]);
+  });
+
+  it("accepts a bare number as a keyed tier value", () => {
+    const tiers = getQoderContextTiers({ context_config: { "200K": 200_000 } });
+    expect(tiers).toEqual([{ name: "200K", tokenCount: 200_000, isDefault: false }]);
+  });
+
   it("returns [] when the model has no tiers", () => {
     expect(getQoderContextTiers({ max_input_tokens: 131072 })).toEqual([]);
     expect(getQoderContextTiers(null)).toEqual([]);

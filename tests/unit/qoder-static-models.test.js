@@ -66,18 +66,33 @@ describe("Qoder capabilities", () => {
 
   it("gives opaque concrete ids a real window instead of the heuristic default", () => {
     // `dmodel` / `kmodel` / `qmodel_38max` match no pattern, so without the
-    // provider table they fall through to the generic defaults.
+    // provider table they fall through to the generic defaults. The table is
+    // declared once only now — a second assignment used to shadow it and
+    // reverted every model to 200K.
     for (const key of ["dmodel", "kmodel", "qmodel_38max", "gmodel"]) {
       const caps = getCapabilitiesForModel("qoder", key);
       expect(caps.vision).toBe(true);
-      expect(caps.contextWindow).toBe(200000);
+      expect(caps.reasoning).toBe(true);
+      expect(caps.contextWindow).toBeGreaterThan(200000);
     }
   });
 
-  it("keeps the tier aliases text-only", () => {
-    // `auto` / `efficient` / `lite` resolve to a variable target upstream.
+  it("does not let a second table assignment shadow the real one", () => {
+    // Regression guard: `performance` was missing from the old shadowing table,
+    // which is how the duplicate assignment was noticed in the first place.
+    const perf = getCapabilitiesForModel("qoder", "performance");
+    expect(perf.reasoning).toBe(true);
+    expect(perf.contextWindow).toBe(1000000);
+    expect(perf.maxOutput).toBe(128000);
+  });
+
+  it("keeps the tier aliases on the conservative default window", () => {
+    // `auto` / `efficient` / `lite` resolve to a variable target upstream, so
+    // their limits stay at the floor while vision follows the live is_vl flag.
     for (const key of ["auto", "efficient", "lite"]) {
-      expect(getCapabilitiesForModel("qoder", key).vision).toBe(false);
+      const caps = getCapabilitiesForModel("qoder", key);
+      expect(caps.contextWindow).toBe(200000);
+      expect(caps.vision).toBe(true);
     }
   });
 
@@ -99,5 +114,16 @@ describe("Qoder registry", () => {
     const byId = Object.fromEntries((qoderRegistry.models || []).map((m) => [m.id, m.name]));
     expect(byId.smodel).toBe("Sonus");
     expect(byId.cmodel).toBe("Cantus");
+  });
+
+  it("keeps display names aligned with the live catalog", () => {
+    // Verified against /algo/api/v2/model/list for the intl host. The ids are
+    // stable upstream, the labels rotate — this pins the labels so a stale
+    // registry entry shows up as a test failure instead of a wrong card.
+    const byId = Object.fromEntries((qoderRegistry.models || []).map((m) => [m.id, m.name]));
+    expect(byId.kmodel_latest).toBe("Kimi-K3.1-Pro");
+    expect(byId.kmodel).toBe("Kimi-K2.8-Preview");
+    expect(byId.dfmodel).toBe("DeepSeek-Flash");
+    expect(byId.mmodel).toBe("MiniMax-M3.1-Flash");
   });
 });

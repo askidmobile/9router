@@ -38,8 +38,9 @@ import { getScheduleSlotLabels } from "@/shared/services/quotaPingSchedule";
 
 const ONE_BY_ONE_DELAY_MS = 1000;
 
-// Qoder upstream ids may carry a "qoder/" prefix that the router does not expect.
-const stripQoderPrefix = (id) => id.replace(/^qoder\//, "");
+// Qoder upstream ids carry a "<provider>/" prefix (qoder/ or qoder-cn/) that the
+// router does not expect in the stored custom-model id.
+const stripQoderPrefix = (id) => id.replace(/^qoder(-cn)?\//, "");
 
 const MCODE_LEASE_PROVIDERS = new Set(["minimax-code", "minimax-code-global"]);
 
@@ -179,6 +180,8 @@ export default function ProviderDetailPage() {
   const isOAuth = !!OAUTH_PROVIDERS[providerId] || !!FREE_PROVIDERS[providerId] || authModes.includes("oauth");
   const supportsApiKeyAuth = !!APIKEY_PROVIDERS[providerId] || authModes.includes("apikey");
   const isFreeNoAuth = !!FREE_PROVIDERS[providerId]?.noAuth;
+  // Both Qoder regions prefix catalog ids with their provider id on import.
+  const isQoderProvider = providerId === "qoder" || providerId === "qoder-cn";
   const staticModels = getModelsByProviderId(providerId);
   const providerAlias = getProviderAlias(providerId);
   const models = ((providerId === "cursor" || providerId === "zed") && liveModels.length > 0
@@ -1982,7 +1985,7 @@ export default function ProviderDetailPage() {
         providerAlias={providerAlias}
         providerStorageAlias={providerStorageAlias}
         existingIds={importExistingIds}
-        transformId={providerId === "qoder" ? stripQoderPrefix : undefined}
+        transformId={isQoderProvider ? stripQoderPrefix : undefined}
         onImported={() => { fetchCustomModels(); fetchAliases(); fetchConnections(); fetchDisabledModels(); }}
       />
 

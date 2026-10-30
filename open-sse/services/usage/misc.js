@@ -333,7 +333,25 @@ export async function getQoderUsage(accessToken, proxyOptions = null, providerId
         detailUrl: addOnQuota.detailUrl || null,
       };
     }
+    // Surface the plan tier — `personal_standard` is what a free account reports,
+    // and without it an all-zero payload is indistinguishable from a broken fetch.
+    const planLabel = typeof body.userType === "string" && body.userType
+      ? body.userType.split("_").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")
+      : null;
+
+    // Every bucket at zero means the account holds no spendable credits right
+    // now. The dashboard drops zero-total rows (they would render as "0/0"),
+    // which left the quota card blank with no explanation. Say it plainly and
+    // point at Qoder's own console — never invent numbers.
+    const hasGrant = Object.values(quotas).some((q) => (Number(q.total) || 0) > 0);
+    const zeroGrantMessage = hasGrant
+      ? null
+      : `No active credits on this Qoder account${planLabel ? ` (${planLabel})` : ""}. `
+        + `Remaining balance is tracked in the Qoder console${body.upgradeUrl ? `: ${body.upgradeUrl}` : "."}`;
+
     return {
+      ...(planLabel ? { plan: planLabel } : {}),
+      ...(zeroGrantMessage ? { message: zeroGrantMessage } : {}),
       quotas,
       totalUsagePercentage: Number(body.totalUsagePercentage) || 0,
       isQuotaExceeded: !!body.isQuotaExceeded,

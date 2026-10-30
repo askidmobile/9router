@@ -25,6 +25,7 @@ export default {
       url: "https://openapi.qoder.com.cn/api/v2/quota/usage",
     },
   },
+  // Same id→name map as the intl registry — CN serves the identical catalog.
   models: [
     { id: "ultimate", name: "Ultimate" },
     { id: "auto", name: "Auto" },
@@ -35,13 +36,13 @@ export default {
     { id: "qmodel_latest", name: "Qwen3.7-Max" },
     { id: "qmodel", name: "Qwen3.7-Plus" },
     { id: "qfmodel", name: "Qwen3.8-Flash" },
-    { id: "kmodel_latest", name: "Kimi-K3" },
-    { id: "kmodel", name: "Kimi-K2.7-Code" },
+    { id: "kmodel_latest", name: "Kimi-K3.1-Pro" },
+    { id: "kmodel", name: "Kimi-K2.8-Preview" },
     { id: "gmodel", name: "GLM-5.3" },
     { id: "gfmodel", name: "GLM-5.3-Flash" },
     { id: "dmodel", name: "DeepSeek-V4-Pro" },
-    { id: "dfmodel", name: "DeepSeek-V4-Flash" },
-    { id: "mmodel", name: "MiniMax-M3" },
+    { id: "dfmodel", name: "DeepSeek-Flash" },
+    { id: "mmodel", name: "MiniMax-M3.1-Flash" },
   ],
   oauth: {
     openApiBaseUrl: "https://openapi.qoder.com.cn",

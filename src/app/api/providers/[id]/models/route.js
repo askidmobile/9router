@@ -7,7 +7,7 @@ import { refreshGoogleToken, refreshCodexToken, updateProviderCredentials } from
 import { resolveOllamaLocalHost } from "open-sse/config/providers.js";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
-import { resolveQoderModels } from "open-sse/services/qoderModels.js";
+import { resolveQoderModels, routableQoderModels } from "open-sse/services/qoderModels.js";
 import { resolveGrokCliModels } from "open-sse/services/grokCliModels.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { resolveCursorModels } from "open-sse/services/cursorModels.js";
@@ -148,18 +148,28 @@ function buildQoderModelsResolver(providerId) {
       try {
         const result = await resolveQoderModels(credentials, { forceRefresh: true });
         if (result?.models?.length) {
+          // Route through the same resolver /v1/models uses so the import dialog
+          // offers every key the chat endpoint accepts — including catalog
+          // entries upstream flags enable:false (hidden in the IDE picker only;
+          // verified live that they still stream) and the Sonus/Cantus pair that
+          // the per-account catalog omits but the executor serves statically.
+          const metaById = new Map(result.models.map((m) => [m.id, m]));
           return {
-            models: result.models.map((m) => ({
-              // Use the canonical "<providerId>/<key>" id so the dashboard
-              // surfaces the same identifier the chat router expects.
-              id: `${providerId}/${m.id}`,
-              name: m.name,
-              contextLength: m.contextLength,
-              isVL: m.isVL,
-              isReasoning: m.isReasoning,
-              maxOutputTokens: m.maxOutputTokens,
-              description: m.description,
-            })),
+            models: routableQoderModels(result).map((m) => {
+              const meta = metaById.get(m.id) || {};
+              return {
+                // Use the canonical "<providerId>/<key>" id so the dashboard
+                // surfaces the same identifier the chat router expects.
+                id: `${providerId}/${m.id}`,
+                name: m.name || meta.name,
+                contextLength: meta.contextLength,
+                isVL: meta.isVL,
+                isReasoning: meta.isReasoning,
+                maxOutputTokens: meta.maxOutputTokens,
+                description: meta.description || "",
+                hidden: m.hidden === true,
+              };
+            }),
           };
         }
         warning = "Qoder returned no models; falling back to static catalog.";

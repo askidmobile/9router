@@ -262,8 +262,14 @@ async function fetchQoderCatalogRaw(credentials, signal, proxyOptions = null, re
     // Always cache the config — chat needs model_config even for UI-hidden
     // models (enable:false). Upstream still accepts chat for these keys.
     rawConfigs.set(key, entry);
-    if (entry.enable === false) continue;
 
+    // Keep `enable:false` entries in the model list too. Qoder flags a key as
+    // disabled when the IDE picker should hide it (account policy, rollout
+    // gating), NOT because chat rejects it — verified live: a
+    // `personal_standard` account reports 2 enabled keys out of 12, yet the
+    // endpoint serves the other 10. Dropping them here made the dashboard and
+    // the import dialog show a 2-model catalog that looked broken. The
+    // `hidden` flag lets callers separate the two when it matters.
     const display = entry.display_name || key;
     const ctx = Number(entry.max_input_tokens) || 131_072;
     models.push({
@@ -274,6 +280,7 @@ async function fetchQoderCatalogRaw(credentials, signal, proxyOptions = null, re
       isReasoning: !!entry.is_reasoning,
       maxOutputTokens: Number(entry.max_output_tokens) || 0,
       description: entry.description || "",
+      hidden: entry.enable === false,
     });
   }
 
@@ -387,7 +394,10 @@ export function routableQoderModels(catalog) {
   for (const m of catalog.models || []) {
     if (!m?.id || seen.has(m.id)) continue;
     seen.add(m.id);
-    out.push({ id: m.id, name: m.name || m.id, hidden: false });
+    // `hidden` marks catalog keys upstream flagged enable:false. They are still
+    // routable, so they stay in the list — callers that want the IDE-visible
+    // subset can filter on the flag.
+    out.push({ id: m.id, name: m.name || m.id, hidden: m.hidden === true });
   }
   for (const [key, cfg] of catalog.rawConfigs || []) {
     if (!key || seen.has(key)) continue;

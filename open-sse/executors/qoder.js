@@ -36,6 +36,7 @@ import {
   qoderInferenceBase,
 } from "../shared/qoder/constants.js";
 import { getQoderModelConfig, resolveQoderModels, isQoderPat, resolveQoderCredentials } from "../services/qoderModels.js";
+import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { OPENAI_BLOCK, CLAUDE_BLOCK } from "../translator/schema/blocks.js";
 import { encodeDataUri } from "../translator/concerns/image.js";
 import { buildCosyHeaders, deriveMachineId } from "../shared/qoder/cosy.js";
@@ -295,8 +296,12 @@ async function buildQoderRequestBody({ model, body, credentials, log, proxyOptio
   const isReasoning = !!modelConfig.is_reasoning;
   const maxOutputTokens = Number(modelConfig.max_output_tokens) || 0;
 
-  let maxTokens = 32_768;
-  if (maxOutputTokens > 0) maxTokens = maxOutputTokens;
+  // The live catalog reports max_output_tokens: 0 for every model, so fall back
+  // to the real model family's spec instead of a flat 32K guess — otherwise a
+  // Claude/Kimi/MiniMax key is capped far below what it actually streams.
+  let maxTokens = maxOutputTokens > 0
+    ? maxOutputTokens
+    : (getCapabilitiesForModel(region === "cn" ? "qoder-cn" : "qoder", qoderKey)?.maxOutput || 32_768);
   if (typeof body.max_tokens === "number" && body.max_tokens > 0 && body.max_tokens < maxTokens) {
     maxTokens = body.max_tokens;
   }
