@@ -1,7 +1,7 @@
 import { HTTP_STATUS, LOCAL_CAPACITY_HEADER } from "../config/runtimeConfig.js";
 import { COMBO_HEALTH_CONFIG } from "../config/comboHealth.js";
 import { GEMINI_FLEX_TIMEOUT_MS } from "../config/gemini.js";
-import { getComboHealth, freezeComboModel, clearComboModel } from "./comboHealth.js";
+import { getComboHealth, freezeComboModel, clearComboModel, recordUpstreamTimeout } from "./comboHealth.js";
 import { errorResponse, unavailableResponse } from "../utils/error.js";
 import { isComboDeadlineError } from "../utils/abort.js";
 
@@ -170,7 +170,7 @@ export async function runComboModelExecution({
   provider, model, body, signal, execute, flex = false, log,
   requestTimeoutFloorMs,
   config = COMBO_HEALTH_CONFIG,
-  health = { get: getComboHealth, freeze: freezeComboModel, clear: clearComboModel },
+  health = { get: getComboHealth, freeze: freezeComboModel, clear: clearComboModel, recordTimeout: recordUpstreamTimeout },
 }) {
   if (signal?.aborted) return errorResponse(499, "Request aborted");
   const frozen = await health.get(provider, model);
@@ -244,6 +244,21 @@ export async function runComboModelExecution({
   const firstMs = Math.max(flex ? GEMINI_FLEX_TIMEOUT_MS : config.firstResponseTimeoutMs, timeoutFloorMs);
   const fullMs = Math.max(flex ? GEMINI_FLEX_TIMEOUT_MS : config.requestTimeoutMs, timeoutFloorMs);
   const wantsStream = body.stream === true || Array.isArray(body.contents) || !!body.request?.contents;
+  const startedAt = Date.now();
+  // Deadlines alone never freeze a pair — that is a property of the request. A run of them on
+  // the same member without one success is a property of the pair, so it is counted separately
+  // and only for streamed attempts: headersTimeoutMs also bounds non-stream requests, where a
+  // healthy model may legitimately generate for longer than the first-response window.
+  const noteTimeout = async () => {
+    if (!wantsStream || (signal?.aborted && !isComboDeadlineError(signal.reason))) return;
+    try {
+      const frozen = await health.recordTimeout?.({ provider, model, startedAt });
+      if (frozen) log?.warn?.("COMBO_HEALTH", `Frozen ${provider}/${model}: ${frozen.lastReason}`);
+    } catch (error) {
+      // Counting is bookkeeping: a failure here must never change the answer.
+      log?.warn?.("COMBO_HEALTH", `Timeout streak not recorded: ${error?.message}`);
+    }
+  };
   arm(wantsStream ? firstMs : fullMs, wantsStream ? "First response timeout" : "Response deadline exceeded");
 
   try {
@@ -268,6 +283,7 @@ export async function runComboModelExecution({
       try { payload = JSON.parse(text); } catch { /* Plain HTTP errors remain HTTP errors. */ }
       if (response.headers.get(LOCAL_CAPACITY_HEADER) !== "1") {
         await fail(response.status, `Upstream HTTP ${response.status}`, comboRetryAfter(response, payload));
+        if (response.status === HTTP_STATUS.GATEWAY_TIMEOUT) await noteTimeout();
       }
       cleanup();
       return new Response(text, { status: response.status, statusText: response.statusText, headers: response.headers });
@@ -361,6 +377,7 @@ export async function runComboModelExecution({
       // ours is request-scoped and must not take a working provider offline.
       const providerFailure = completionError && error.healthFailure;
       if (providerFailure) await fail(status, reason);
+      if (timeoutReason === "First response timeout") await noteTimeout();
       else log?.warn?.("COMBO", `Rejected ${provider}/${model} response without opening its circuit: ${reason}`);
       if (!completionError && !timeoutReason && status !== 499) log?.warn?.("COMBO", `Unexpected ${provider}/${model} failure`, { stack: error?.stack });
     } finally { cancel(); cleanup(); }

@@ -1,5 +1,7 @@
 # Askid fork (2026-10-20)
 
+- **Combo timeouts**: an upstream deadline is now reported as 504 instead of 502, so a slow answer no longer freezes the member (the freeze set keeps 504 in rotation). The executor's own timer classifies the failure instead of the caught error, which survives transport wrappers and undici's bare `AbortError`. The deadline marker that used to mask every late stream failure as "First response timeout" is gone: a stream that breaks on its own freezes the pair again, at any point of its life. Because a run of deadlines without a single success *is* evidence about the pair, three in a row now freeze it through the normal backoff (`COMBO_TIMEOUT_STREAK_THRESHOLD`, `COMBO_TIMEOUT_STREAK_WINDOW_MS`); streamed attempts only, and any success resets the run.
+
 - **Quota tracker**: adapt quota rows to card width with container queries. Narrow cards give amounts, remaining balances and reset dates their own rows; financial values and labels wrap instead of being ellipsized.
 
 - **Ollama quotas**: use the official API-key authenticated `/api/balance` for monthly included/purchased USD credits and legacy session/weekly remaining percentages and reset dates. Remove the settings-cookie prompt and HTML scraping; coalesce reads with a one-minute cache and respect balance-endpoint Retry-After. Document current plan concurrency separately from the router default.

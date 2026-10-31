@@ -4,6 +4,7 @@ vi.mock("../../open-sse/services/comboHealth.js", () => ({
   getComboHealth: vi.fn(() => { throw new Error("Use injected health storage"); }),
   freezeComboModel: vi.fn(() => { throw new Error("Use injected health storage"); }),
   clearComboModel: vi.fn(() => { throw new Error("Use injected health storage"); }),
+  recordUpstreamTimeout: vi.fn(() => { throw new Error("Use injected health storage"); }),
 }));
 
 import { runComboModelExecution } from "../../open-sse/services/comboExecution.js";
@@ -235,6 +236,44 @@ describe("Combo HTTP failure classification", () => {
     source.error(new Error("upstream reset"));
     await expect(pending).rejects.toBeTruthy();
     expect(health.freeze).toHaveBeenCalledOnce();
+  });
+
+  it("counts a 504 from a streamed member", async () => {
+    const recordTimeout = vi.fn(async () => null);
+    execute.mockResolvedValue(new Response("Gateway timeout", { status: 504 }));
+    const response = await run({ body: { stream: true }, health: { ...health, recordTimeout } });
+    expect(response.status).toBe(504);
+    expect(recordTimeout).toHaveBeenCalledOnce();
+  });
+
+  it("does not count a non-streamed timeout", async () => {
+    // headersTimeoutMs also bounds non-stream requests, where a healthy model may legitimately
+    // generate for longer than the first-response window.
+    const recordTimeout = vi.fn(async () => null);
+    execute.mockImplementation(() => new Promise(() => {}));
+    const task = run({ health: { ...health, recordTimeout } });
+    await vi.advanceTimersByTimeAsync(130);
+    expect((await task).status).toBe(504);
+    expect(recordTimeout).not.toHaveBeenCalled();
+  });
+
+  it("does not count a cancelled request", async () => {
+    const recordTimeout = vi.fn(async () => null);
+    const controller = new AbortController();
+    execute.mockImplementation(() => new Promise(() => {}));
+    const task = run({ body: { stream: true }, signal: controller.signal, health: { ...health, recordTimeout } });
+    await pump();
+    controller.abort();
+    expect((await task).status).toBe(499);
+    expect(recordTimeout).not.toHaveBeenCalled();
+  });
+
+  it("keeps the 504 answer when counting throws", async () => {
+    const recordTimeout = vi.fn(async () => { throw new Error("health storage down"); });
+    execute.mockResolvedValue(new Response("Gateway timeout", { status: 504 }));
+    const response = await run({ body: { stream: true }, health: { ...health, recordTimeout } });
+    expect(response.status).toBe(504);
+    expect(await response.text()).toBe("Gateway timeout");
   });
 
   it("passes HTTP 504 through without freezing the provider/model", async () => {

@@ -28,7 +28,7 @@ beforeEach(() => {
   adapter.run("DELETE FROM kv");
   timestamp = 1_800_000_000_000;
   repository = createComboHealthRepository(async () => adapter);
-  service = createComboHealthService({ repository, now: () => timestamp });
+  service = createComboHealthService({ repository, now: () => timestamp, streaks: new Map() });
 });
 
 afterAll(() => {
@@ -175,5 +175,79 @@ describe("Combo health environment configuration", () => {
     expect(loadComboHealthConfig({ COMBO_FIRST_RESPONSE_TIMEOUT_MS: "1234" }).firstResponseTimeoutMs).toBe(1_234);
     expect(loadComboHealthConfig({ COMBO_FIRST_RESPONSE_TIMEOUT_MS: "999999999" }).firstResponseTimeoutMs).toBe(6 * 60 * 60_000);
     expect(loadComboHealthConfig({ COMBO_BASE_COOLDOWN_MS: "5000", COMBO_MAX_COOLDOWN_MS: "1000" }).maxCooldownMs).toBe(5_000);
+  });
+});
+
+describe("timeout streak", () => {
+  const at = (ms) => { timestamp = 1_800_000_000_000 + ms; };
+  const base = () => { timestamp = 1_800_000_000_000; };
+
+  it("does not freeze the pair for one or two deadlines", async () => {
+    base();
+    expect(await service.recordUpstreamTimeout({ ...pair, startedAt: timestamp })).toBeNull();
+    at(1000);
+    expect(await service.recordUpstreamTimeout({ ...pair, startedAt: timestamp })).toBeNull();
+    expect(await service.getComboHealth(pair.provider, pair.model)).toBeNull();
+  });
+
+  it("freezes on the third deadline and reports the run in the reason", async () => {
+    base();
+    await service.recordUpstreamTimeout({ ...pair, startedAt: timestamp });
+    at(1000); await service.recordUpstreamTimeout({ ...pair, startedAt: timestamp });
+    at(2000);
+    const record = await service.recordUpstreamTimeout({ ...pair, startedAt: timestamp });
+    expect(record).toMatchObject({ state: "open", lastStatus: 504 });
+    expect(record.lastReason).toContain("3 times in a row");
+    expect(record.failureCount).toBe(1);
+    expect(record.nextProbeAt).toBe(timestamp + COMBO_HEALTH_CONFIG.baseCooldownMs);
+  });
+
+  it("freezes immediately on the deadline after a streak freeze", async () => {
+    base();
+    for (let i = 0; i < 3; i++) { at(i * 1000); await service.recordUpstreamTimeout({ ...pair, startedAt: timestamp }); }
+    at(5000);
+    const record = await service.recordUpstreamTimeout({ ...pair, startedAt: timestamp });
+    // The counter dropped to threshold-1, so this single deadline is enough to freeze again.
+    expect(record).toMatchObject({ state: "open", lastStatus: 504 });
+    // The pair is still inside its cooldown, so this counts as the same incident.
+    expect(record.failureCount).toBe(1);
+  });
+
+  it("resets the run on success", async () => {
+    base();
+    await service.recordUpstreamTimeout({ ...pair, startedAt: timestamp });
+    at(1000); await service.recordUpstreamTimeout({ ...pair, startedAt: timestamp });
+    await service.clearComboModel(pair);
+    at(2000); await service.recordUpstreamTimeout({ ...pair, startedAt: timestamp });
+    at(3000);
+    expect(await service.recordUpstreamTimeout({ ...pair, startedAt: timestamp })).toBeNull();
+    expect(await service.getComboHealth(pair.provider, pair.model)).toBeNull();
+  });
+
+  it("keeps pairs apart", async () => {
+    base();
+    for (let i = 0; i < 3; i++) { at(i * 1000); await service.recordUpstreamTimeout({ ...pair, startedAt: timestamp }); }
+    at(4000); await service.recordUpstreamTimeout({ ...otherPair, startedAt: timestamp });
+    expect(await service.getComboHealth(otherPair.provider, otherPair.model)).toBeNull();
+  });
+
+  it("counts parallel requests of the same incident once", async () => {
+    const t0 = 1_800_000_000_000;
+    base();
+    at(1000);
+    await service.recordUpstreamTimeout({ ...pair, startedAt: timestamp });
+    // A request that began BEFORE the last counted deadline belongs to the same incident.
+    expect(await service.recordUpstreamTimeout({ ...pair, startedAt: t0 })).toBeNull();
+    at(2000);
+    expect(await service.recordUpstreamTimeout({ ...pair, startedAt: timestamp })).toBeNull(); // 2nd
+  });
+
+  it("forgets a run older than the window", async () => {
+    base();
+    await service.recordUpstreamTimeout({ ...pair, startedAt: timestamp });
+    at(COMBO_HEALTH_CONFIG.timeoutStreakWindowMs + 1);
+    await service.recordUpstreamTimeout({ ...pair, startedAt: timestamp });
+    at(COMBO_HEALTH_CONFIG.timeoutStreakWindowMs + 2000);
+    expect(await service.recordUpstreamTimeout({ ...pair, startedAt: timestamp })).toBeNull();
   });
 });

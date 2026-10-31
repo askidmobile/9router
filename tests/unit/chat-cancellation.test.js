@@ -28,6 +28,7 @@ vi.mock("../../open-sse/services/comboHealth.js", () => ({
   getComboHealth: mocks.getComboHealth,
   freezeComboModel: mocks.freezeComboModel,
   clearComboModel: mocks.clearComboModel,
+  recordUpstreamTimeout: vi.fn(async () => null),
 }));
 vi.mock("../../open-sse/executors/index.js", () => ({ getExecutor: () => mocks.executor }));
 vi.mock("../../src/sse/services/auth.js", () => ({

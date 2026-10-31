@@ -22,6 +22,11 @@ export function loadComboHealthConfig(env = process.env) {
     baseCooldownMs,
     maxCooldownMs: Math.max(baseCooldownMs, envInteger(env, "COMBO_MAX_COOLDOWN_MS", 1_800_000, maxTimerMs)),
     maxBufferedBytes: envInteger(env, "COMBO_MAX_BUFFERED_BYTES", 1_048_576, 16_777_216),
+    // A run of upstream deadlines on the same member is not bad luck: it means this pair is
+    // slow for this workload. Counted in memory, reset by any success. Set the threshold very
+    // high to disable the counter; set the window to shorten how far back a run reaches.
+    timeoutStreakThreshold: envInteger(env, "COMBO_TIMEOUT_STREAK_THRESHOLD", 3, 10_000),
+    timeoutStreakWindowMs: envInteger(env, "COMBO_TIMEOUT_STREAK_WINDOW_MS", 600_000, maxTimerMs),
   });
 }
 

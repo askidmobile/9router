@@ -12,7 +12,7 @@ vi.mock("open-sse/index.js", () => ({}));
 vi.mock("../../open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: mocks.transport }));
 vi.mock("../../open-sse/utils/debugLog.js", () => ({ dbg: vi.fn(), isDebugEnabled: () => false }));
 vi.mock("../../open-sse/executors/index.js", () => ({ getExecutor: (provider) => mocks.executors.get(provider) }));
-vi.mock("../../open-sse/services/comboHealth.js", () => ({ getComboHealth: mocks.getHealth, freezeComboModel: mocks.freeze, clearComboModel: mocks.clear }));
+vi.mock("../../open-sse/services/comboHealth.js", () => ({ getComboHealth: mocks.getHealth, freezeComboModel: mocks.freeze, clearComboModel: mocks.clear, recordUpstreamTimeout: vi.fn(async () => null) }));
 vi.mock("../../src/sse/services/auth.js", () => ({
   getProviderCredentials: mocks.credentials, markAccountUnavailable: mocks.lockAccount,
   clearAccountError: mocks.clearAccount, extractApiKey: () => null, isValidApiKey: async () => true,
