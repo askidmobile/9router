@@ -264,6 +264,30 @@ describe("chat caller cancellation across the public production path", () => {
     assertPendingSettledOnce();
   });
 
+  it("reports an upstream connect timeout as 504, not as a provider failure", async () => {
+    const controller = new AbortController();
+    mocks.executor.config.timeoutMs = 50;
+    let attempt = 0;
+    mocks.transport.mockImplementation((...args) => new Promise((resolve, reject) => {
+      attempt += 1;
+      const signal = args.find((arg) => arg && typeof arg === "object" && arg.signal)?.signal;
+      if (!signal) { resolve(successResponse()); return; }
+      signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+      // Every attempt hangs: the account has no healthy path, so the attempt itself must be
+      // classified as a timeout before any fallback decides what to do with the account.
+      cleanup.push(() => resolve(successResponse()));
+    }));
+    const task = handleChat(request(controller.signal));
+    await pumpUntil(() => mocks.transport.mock.calls.length >= 1);
+    for (let i = 0; i < 6; i++) await vi.advanceTimersByTimeAsync(1000);
+    await task.catch(() => {});
+    const lines = mocks.logger.errorLine.mock.calls.map((call) => String(call[2]));
+    expect(attempt).toBeGreaterThan(0);
+    expect(lines.some((line) => line.startsWith("ERROR 504"))).toBe(true);
+    expect(lines.some((line) => line.startsWith("ERROR 502"))).toBe(false);
+    assertPendingSettledOnce();
+  });
+
   it("persists rotated refresh credentials received after caller cancellation without retrying inference", async () => {
     const controller = new AbortController();
     let finishRefresh;

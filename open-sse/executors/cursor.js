@@ -1,6 +1,7 @@
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS, PROVIDER_OAUTH } from "../config/providers.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
+import { createUpstreamTimeoutError, isUpstreamTimeoutError } from "../utils/abort.js";
 import {
   generateCursorBody,
   encodeField,
@@ -501,7 +502,7 @@ export class CursorExecutor extends BaseExecutor {
 
       // Hard timeout: close session if server never responds
       const hangTimeout = setTimeout(finish(() => {
-        reject(new Error("HTTP/2 request timed out"));
+        reject(createUpstreamTimeoutError("HTTP/2 request timed out"));
       }), HTTP2_TIMEOUT_MS);
 
       client.on("error", finish(reject));
@@ -1063,7 +1064,7 @@ export class CursorExecutor extends BaseExecutor {
           code: ""
         }
       }), {
-        status: HTTP_STATUS.SERVER_ERROR,
+        status: isUpstreamTimeoutError(error) ? HTTP_STATUS.GATEWAY_TIMEOUT : HTTP_STATUS.SERVER_ERROR,
         headers: { "Content-Type": "application/json" }
       });
       return { response: errorResponse, url, headers, transformedBody: body };

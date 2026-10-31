@@ -4,7 +4,7 @@ import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { dbg } from "../utils/debugLog.js";
 import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE } from "../providers/shared.js";
 import { resolveOpenAICompatibleApiType } from "../services/provider.js";
-import { abortableDelay, throwIfAborted } from "../utils/abort.js";
+import { abortableDelay, createUpstreamTimeoutError, isUpstreamTimeoutError, throwIfAborted } from "../utils/abort.js";
 import { sanitizeUpstreamBody } from "../utils/error.js";
 
 /**
@@ -190,7 +190,7 @@ export class BaseExecutor {
       const remainingMs = Number.isFinite(requestPolicy?.deadlineAtMs)
         ? Math.max(1, requestPolicy.deadlineAtMs - Date.now()) : Infinity;
       const timeoutMs = Math.min(Math.max(cappedTimeoutMs, timeoutFloorMs), remainingMs);
-      const connectTimer = setTimeout(() => connectCtrl.abort(new Error("fetch connect timeout")), timeoutMs);
+      const connectTimer = setTimeout(() => connectCtrl.abort(createUpstreamTimeoutError("fetch connect timeout")), timeoutMs);
       const mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
 
       try {
@@ -280,20 +280,25 @@ export class BaseExecutor {
         // Caller cancellation may carry Error, TimeoutError, or a primitive
         // reason. It must never enter provider network retries or URL fallback.
         throwIfAborted(signal);
-        lastError = error;
-        const isConnectTimeout = connectCtrl.signal.aborted && error.name === "AbortError";
-        dbg("FETCH", `${this.provider.toUpperCase()} ✖ ${error.name}: ${error.message}${isConnectTimeout ? " (connect timeout)" : ""}`);
+        // Our own connect timer always wins the classifier: the reason it aborted with is the
+        // only reliable marker of "this request was too slow". A transport wrapper (strictProxy)
+        // can hand back a different Error object, and undici may report a plain AbortError, so
+        // the signal — not the caught error — decides.
+        const isConnectTimeout = connectCtrl.signal.aborted;
+        const failure = isConnectTimeout ? connectCtrl.signal.reason : error;
+        lastError = failure;
+        dbg("FETCH", `${this.provider.toUpperCase()} ✖ ${failure.name}: ${failure.message}${isConnectTimeout || isUpstreamTimeoutError(failure) ? " (connect timeout)" : ""}`);
         // Connect timeout is internal — convert to retryable network error, don't propagate AbortError
-        if (error.name === "AbortError" && !isConnectTimeout) throw error;
+        if (failure.name === "AbortError" && !isConnectTimeout) throw failure;
 
         // Map network/fetch exceptions to 502 retry config
-        if (await tryRetry(urlIndex, HTTP_STATUS.BAD_GATEWAY, `network "${error.message}"`)) { urlIndex--; continue; }
+        if (await tryRetry(urlIndex, HTTP_STATUS.BAD_GATEWAY, `network "${failure.message}"`)) { urlIndex--; continue; }
 
         if (urlIndex + 1 < fallbackCount) {
           log?.debug?.("RETRY", `Error on ${url}, trying fallback ${urlIndex + 1}`);
           continue;
         }
-        throw error;
+        throw failure;
       }
     }
 

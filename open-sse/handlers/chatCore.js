@@ -35,7 +35,7 @@ import { prefetchRemoteImages } from "../translator/concerns/prefetch.js";
 import { defaultClaudeToolType, shouldDefaultClaudeToolType } from "../translator/concerns/toolCall.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
 import { resolveGeminiServiceTier } from "../utils/geminiModels.js";
-import { throwIfAborted } from "../utils/abort.js";
+import { isUpstreamTimeoutError, throwIfAborted } from "../utils/abort.js";
 import { validateComboUpstreamResponse } from "../utils/comboUpstream.js";
 import { captureProviderQuota } from "../services/usage/rateLimits.js";
 
@@ -438,15 +438,18 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
       throwIfAborted(signal);
     } catch (error) {
       const cancelled = signal?.aborted || error?.name === "AbortError";
+      // A deadline is a property of this request, not of the provider: report it as 504 so a
+      // Combo member stays in rotation (isComboHealthFailure keeps 504 out of the freeze set).
+      const errorStatus = isUpstreamTimeoutError(error) ? HTTP_STATUS.GATEWAY_TIMEOUT : HTTP_STATUS.BAD_GATEWAY;
       trackDone(!cancelled);
-      appendRequestLog({ model, provider, connectionId, status: `FAILED ${cancelled ? 499 : HTTP_STATUS.BAD_GATEWAY}` }).catch(() => { });
+      appendRequestLog({ model, provider, connectionId, status: `FAILED ${cancelled ? 499 : errorStatus}` }).catch(() => { });
       saveRequestDetail(buildRequestDetail({
         provider, model, connectionId,
         latency: { ttft: 0, total: Date.now() - requestStartTime },
         tokens: { prompt_tokens: 0, completion_tokens: 0 },
         request: extractRequestConfig(body, stream),
         providerRequest: translatedBody || null,
-        response: { error: error?.message || String(error), status: cancelled ? 499 : 502, thinking: null },
+        response: { error: error?.message || String(error), status: cancelled ? 499 : errorStatus, thinking: null },
         pxpipe: pxpipeSummary,
         status: "error"
       })).catch(() => { });
@@ -454,11 +457,11 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
       if (cancelled) {
         return createErrorResult(499, "Request aborted");
       }
-      const errMsg = formatProviderError(error, provider, model, HTTP_STATUS.BAD_GATEWAY);
+      const errMsg = formatProviderError(error, provider, model, errorStatus);
       if (log?.errorLine) {
-        log.errorLine(reqTag, "✗", `ERROR 502 · ${provider}/${model} · ${Date.now() - requestStartTime}ms\n    ${errMsg}${error.stack ? `\n    ${error.stack}` : ""}`);
+        log.errorLine(reqTag, "✗", `ERROR ${errorStatus} · ${provider}/${model} · ${Date.now() - requestStartTime}ms\n    ${errMsg}${error.stack ? `\n    ${error.stack}` : ""}`);
       }
-      return createErrorResult(HTTP_STATUS.BAD_GATEWAY, errMsg);
+      return createErrorResult(errorStatus, errMsg);
     }
 
     // Handle 401/403 - try token refresh (skip for noAuth providers)

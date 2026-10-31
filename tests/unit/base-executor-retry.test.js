@@ -8,6 +8,7 @@ vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
 }));
 
 const { BaseExecutor } = await import("../../open-sse/executors/base.js");
+const { isUpstreamTimeoutError, createUpstreamTimeoutError } = await import("../../open-sse/utils/abort.js");
 
 function res(status) {
   return { status, headers: { get: () => "" } };
@@ -166,5 +167,70 @@ describe("BaseExecutor.execute — computeRetryDelay hook veto", () => {
     // hook vetoes retry → no fallback url → returns the 429 response as-is
     expect(out.response.status).toBe(429);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("BaseExecutor.execute — connect timeout classification", () => {
+  // A hanging transport that only settles when the executor's own timer aborts it.
+  // The runner also probes mocks with no arguments — those calls get a parked promise.
+  const hangUntilAborted = (rejectWith) => (...args) => {
+    const signal = args.find((arg) => arg && typeof arg === "object" && arg.signal)?.signal;
+    if (!signal) return Promise.resolve({ status: 200, ok: true, headers: { get: () => "application/json" }, text: async () => "{}", json: async () => ({}) });
+    return new Promise((resolve, reject) => {
+      signal.addEventListener("abort", () => reject(rejectWith(signal)), { once: true });
+    });
+  };
+  const noRetry = { 502: { attempts: 0, delayMs: 0 }, 503: { attempts: 0, delayMs: 0 } };
+
+  it("marks its own header timeout as UPSTREAM_TIMEOUT, not a bare error", async () => {
+    const ex = makeExec({ baseUrl: "https://x/api", timeoutMs: 20, retry: noRetry });
+    fetchMock.mockImplementation(hangUntilAborted((signal) => signal.reason));
+    const error = await ex.execute({ model: "m", body: {}, stream: false, credentials: creds }).catch((e) => e);
+    expect(isUpstreamTimeoutError(error)).toBe(true);
+    expect(error.code).toBe("UPSTREAM_TIMEOUT");
+  });
+
+  it("keeps the timeout class when the transport hands back an AbortError", async () => {
+    // undici reports a plain AbortError when the signal carries no reason; that must not read
+    // as a caller cancellation downstream (chatCore answers 499 for those).
+    const ex = makeExec({ baseUrl: "https://x/api", timeoutMs: 20, retry: noRetry });
+    fetchMock.mockImplementation(hangUntilAborted(() => new DOMException("aborted", "AbortError")));
+    const error = await ex.execute({ model: "m", body: {}, stream: false, credentials: creds }).catch((e) => e);
+    expect(error.name).not.toBe("AbortError");
+    expect(isUpstreamTimeoutError(error)).toBe(true);
+  });
+
+  it("keeps the timeout class when a proxy wrapper replaces the error object", async () => {
+    // strictProxy wraps transport failures in a fresh Error with no cause; the abort signal is
+    // then the only reliable marker of "this request was too slow".
+    const ex = makeExec({ baseUrl: "https://x/api", timeoutMs: 20, retry: noRetry });
+    fetchMock.mockImplementation(hangUntilAborted(() => new Error("[ProxyFetch] Proxy required but failed (strictProxy=true)")));
+    const error = await ex.execute({ model: "m", body: {}, stream: false, credentials: creds }).catch((e) => e);
+    expect(isUpstreamTimeoutError(error)).toBe(true);
+  });
+
+  it("does not treat a caller cancellation as an upstream timeout", async () => {
+    const controller = new AbortController();
+    const ex = makeExec({ baseUrl: "https://x/api", timeoutMs: 5000, retry: noRetry });
+    fetchMock.mockImplementation((...args) => {
+      const signal = args.find((arg) => arg && typeof arg === "object" && arg.signal)?.signal;
+      if (!signal) return Promise.resolve({ status: 200, ok: true, headers: { get: () => "application/json" }, text: async () => "{}", json: async () => ({}) });
+      return new Promise((resolve, reject) => {
+        signal.addEventListener("abort", () => reject(signal.reason ?? new DOMException("aborted", "AbortError")), { once: true });
+      });
+    });
+    const task = ex.execute({ model: "m", body: {}, stream: false, credentials: creds, signal: controller.signal }).catch((e) => e);
+    setTimeout(() => controller.abort(), 5);
+    const error = await task;
+    expect(isUpstreamTimeoutError(error)).toBe(false);
+  });
+
+  it("classifies undici header/body timeouts and ignores connect timeouts", () => {
+    expect(isUpstreamTimeoutError({ code: "UND_ERR_HEADERS_TIMEOUT" })).toBe(true);
+    expect(isUpstreamTimeoutError({ cause: { code: "UND_ERR_BODY_TIMEOUT" } })).toBe(true);
+    expect(isUpstreamTimeoutError({ code: "UPSTREAM_TIMEOUT" })).toBe(true);
+    expect(isUpstreamTimeoutError({ code: "UND_ERR_CONNECT_TIMEOUT" })).toBe(false);
+    expect(isUpstreamTimeoutError(createUpstreamTimeoutError("x", { cause: { code: "UND_ERR_HEADERS_TIMEOUT" } }))).toBe(true);
+    expect(isUpstreamTimeoutError(null)).toBe(false);
   });
 });

@@ -21,6 +21,7 @@
  */
 
 import { qoderEncodeBody } from "../shared/qoder/encoding.js";
+import { createUpstreamTimeoutError } from "../utils/abort.js";
 import { v4 as uuidv4 } from "uuid";
 import { createHash } from "crypto";
 
@@ -800,7 +801,7 @@ export class QoderExecutor extends BaseExecutor {
       // Abort if upstream doesn't return response headers within connect timeout.
       const timeoutMs = this.config?.timeoutMs || FETCH_CONNECT_TIMEOUT_MS;
       const connectCtrl = new AbortController();
-      const connectTimer = setTimeout(() => connectCtrl.abort(new Error("fetch connect timeout")), timeoutMs);
+      const connectTimer = setTimeout(() => connectCtrl.abort(createUpstreamTimeoutError("fetch connect timeout")), timeoutMs);
       const mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
 
       let response;

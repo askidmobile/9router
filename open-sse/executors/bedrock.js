@@ -1,4 +1,5 @@
 import { BaseExecutor } from "./base.js";
+import { createUpstreamTimeoutError } from "../utils/abort.js";
 import { PROVIDERS } from "../config/providers.js";
 import { AWS_EVENTSTREAM, AWS_SIGV4, BEDROCK } from "../config/awsConstants.js";
 import {
@@ -125,7 +126,7 @@ export class BedrockExecutor extends BaseExecutor {
 
     const connectCtrl = new AbortController();
     const connectTimer = setTimeout(
-      () => connectCtrl.abort(new Error("Bedrock fetch connect timeout")),
+      () => connectCtrl.abort(createUpstreamTimeoutError("Bedrock fetch connect timeout")),
       this.config?.timeoutMs || FETCH_CONNECT_TIMEOUT_MS,
     );
     const fetchSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
@@ -146,7 +147,7 @@ export class BedrockExecutor extends BaseExecutor {
       );
     } catch (error) {
       if (connectCtrl.signal.aborted && !signal?.aborted) {
-        throw new Error("Bedrock fetch connect timeout", { cause: error });
+        throw connectCtrl.signal.reason;
       }
       throw error;
     } finally {
