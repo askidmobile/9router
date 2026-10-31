@@ -484,6 +484,10 @@ export async function handleComboChat({
   let earliestRetryAfter = null;
   let lastStatus = null;
   const failures = [];
+  // Members that rejected the request itself (4xx): they never reach `failures`,
+  // because their answer is handed back to the client as-is — but their reasons
+  // are the only record of what each member disliked, so keep them for the log.
+  const requestScopedFailures = [];
   let requestScopedResult = null;
 
   for (let i = 0; i < rotatedModels.length; i++) {
@@ -627,6 +631,7 @@ export async function handleComboChat({
         log.warn("COMBO", `Model ${modelStr} rejected the request (${result.status}), trying next`, { status: result.status });
         lastError = errorText || String(result.status);
         if (!lastStatus) lastStatus = result.status;
+        requestScopedFailures.push({ model: modelStr, status: result.status, error: lastError });
         if (!requestScopedResult) requestScopedResult = result;
         continue;
       }
@@ -664,7 +669,8 @@ export async function handleComboChat({
   // reads as an empty success, and it buries the member that named the real cause.
   // This is also what the caller saw before combos advanced on these errors.
   if (requestScopedResult) {
-    log.warn("COMBO", `No model served the request; returning the first request-scoped failure (${requestScopedResult.status})`);
+    const detail = formatRequestScopedFailures(requestScopedFailures);
+    log.warn("COMBO", `No model served the request; returning the first request-scoped failure (${requestScopedResult.status})${detail ? ` | ${detail}` : ""}`);
     return requestScopedResult;
   }
 
@@ -699,6 +705,18 @@ export function clampComboMaxOutput(body, maxOutput) {
   if (Number.isFinite(body.max_tokens)) body.max_tokens = Math.min(body.max_tokens, cap);
   if (Number.isFinite(body.max_output_tokens)) body.max_output_tokens = Math.min(body.max_output_tokens, cap);
   return body;
+}
+
+// Every request-scoped member that rejected the body, in attempt order. One
+// member alone names nothing the caller cannot see in the returned response, so
+// the line only appears when there was more than one rejection.
+export function formatRequestScopedFailures(failures) {
+  if (!Array.isArray(failures) || failures.length < 2) return null;
+  const entries = failures.slice(0, 6).map(({ model, status, error }) => {
+    const reason = `${status || ""}${error ? ` ${String(error).replace(/\s+/g, " ").trim().slice(0, 80)}` : ""}`.trim() || "rejected";
+    return `${model} → ${reason}`;
+  });
+  return entries.join("; ") + (failures.length > 6 ? ` (+${failures.length - 6} more)` : "");
 }
 
 function comboFailureSummary(failures) {
