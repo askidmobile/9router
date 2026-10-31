@@ -390,6 +390,63 @@ export function reconcileToolHistory(messages) {
   return { messages: repairs.changed ? out : messages, repairs };
 }
 
+/**
+ * Read-only scan of a dispatched tool history, used to explain an upstream 4xx
+ * that names a `tool_calls` problem. Returns compact flags with message indexes
+ * only — no content, tool names or ids reach the log.
+ *
+ * @param {Array<object>} messages
+ * @param {{ maxToolNameLength?: number, limit?: number }} [options]
+ * @returns {string[]}
+ */
+export function findToolHistoryAnomalies(messages, { maxToolNameLength = 64, limit = 8 } = {}) {
+  if (!Array.isArray(messages) || messages.length === 0) return [];
+  const anomalies = [];
+  const claimed = new Map();
+  const answered = new Set();
+  const callIndexes = [];
+
+  messages.forEach((msg, i) => {
+    if (msg?.role === "assistant" && Array.isArray(msg.tool_calls)) {
+      if (msg.tool_calls.length === 0) anomalies.push(`m${i}:calls:empty`);
+      for (const call of msg.tool_calls) {
+        const id = typeof call?.id === "string" ? call.id : "";
+        if (!id) { anomalies.push(`m${i}:call:no-id`); continue; }
+        if (claimed.has(id)) anomalies.push(`m${i}:call:dup-id`);
+        else claimed.set(id, i);
+        callIndexes.push({ id, index: i });
+        const name = call?.function?.name;
+        if (typeof name !== "string" || name.length === 0) anomalies.push(`m${i}:call:no-name`);
+        else if (name.length > maxToolNameLength) anomalies.push(`m${i}:call:name>${maxToolNameLength}`);
+        const args = call?.function?.arguments;
+        if (typeof args !== "string") anomalies.push(`m${i}:call:args:${args === undefined ? "missing" : typeof args}`);
+        else if (args !== "") {
+          try {
+            const parsed = JSON.parse(args);
+            if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) anomalies.push(`m${i}:call:args:not-object`);
+          } catch {
+            anomalies.push(`m${i}:call:args:invalid`);
+          }
+        }
+      }
+    } else if (msg?.role === "tool") {
+      const id = msg.tool_call_id;
+      if (typeof id !== "string" || id.length === 0) anomalies.push(`m${i}:result:no-id`);
+      else if (answered.has(id)) anomalies.push(`m${i}:result:dup`);
+      else if (!claimed.has(id)) anomalies.push(`m${i}:result:orphan`);
+      else answered.add(id);
+    } else if (msg?.tool_calls) {
+      anomalies.push(`m${i}:call:on-${msg.role || "unknown"}`);
+    }
+  });
+
+  for (const { id, index } of callIndexes) {
+    if (!answered.has(id)) anomalies.push(`m${index}:call:dangling`);
+  }
+
+  return anomalies.slice(0, limit);
+}
+
 // Default `type: "custom"` on Claude-format tools that arrive without one.
 // Anthropic's Claude tool schema requires `type` to be explicitly set; strict gateways
 // (e.g., MiniMax Anthropic-compatible endpoint, error 2013) reject legacy payloads that

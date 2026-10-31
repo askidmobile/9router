@@ -22,7 +22,7 @@ import { handleNonStreamingResponse } from "./chatCore/nonStreamingHandler.js";
 import { handleStreamingResponse, buildOnStreamComplete } from "./chatCore/streamingHandler.js";
 import { detectClientTool, isNativePassthrough } from "../utils/clientDetector.js";
 import { dedupeTools } from "../utils/toolDeduper.js";
-import { reconcileToolHistory, formatToolRepairs } from "../translator/concerns/toolCall.js";
+import { reconcileToolHistory, formatToolRepairs, findToolHistoryAnomalies } from "../translator/concerns/toolCall.js";
 import { takeRenamedToolNames } from "../utils/opencodeFingerprint.js";
 import { injectCaveman } from "../rtk/caveman.js";
 import { injectPonytail } from "../rtk/ponytail.js";
@@ -545,6 +545,19 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
       throwIfAborted(signal);
       trackDone(true);
       appendRequestLog({ model, provider, connectionId, status: `FAILED ${statusCode}` }).catch(() => { });
+
+      // Shape of the tool history we actually sent — the only evidence a
+      // request-shape 4xx leaves behind, since the upstream body names the field
+      // but not the message that broke it. Flags and indexes only: no content, no
+      // tool names, no ids, so the line is safe to keep in production logs.
+      const sentMessages = (finalBody || translatedBody)?.messages;
+      if (Array.isArray(sentMessages)) {
+        const shapeFlags = findToolHistoryAnomalies(sentMessages);
+        if (shapeFlags.length > 0) {
+          log?.line?.(reqTag, "⚠", `TOOLSHAPE ${statusCode} msgs=${sentMessages.length} anomalies=[${shapeFlags.join(",")}]`);
+        }
+      }
+
       saveRequestDetail(buildRequestDetail({
         provider, model, connectionId,
         latency: { ttft: 0, total: Date.now() - requestStartTime },
