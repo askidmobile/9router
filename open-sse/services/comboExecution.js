@@ -206,7 +206,6 @@ export async function runComboModelExecution({
     if (cleaned) return;
     cleaned = true;
     clearTimeout(timer);
-    clearTimeout(deadlineTimer);
     signal?.removeEventListener("abort", onParentAbort);
     controller.signal.removeEventListener("abort", onAbort);
   };
@@ -219,14 +218,6 @@ export async function runComboModelExecution({
     timer.unref?.();
   };
   const wait = (promise) => Promise.race([promise, aborted]);
-  // The executor may convert its own header timeout into a 502 response. Mark
-  // the elapsed deadline so a slow request is still never mistaken for a
-  // provider outage and frozen.
-  let deadlineTimer;
-  const markDeadline = (ms, reason) => {
-    deadlineTimer = setTimeout(() => { timeoutReason ||= reason; }, ms);
-    deadlineTimer.unref?.();
-  };
   let failureRecorded = false;
   let cleared = false;
   const succeed = () => {
@@ -254,7 +245,6 @@ export async function runComboModelExecution({
   const fullMs = Math.max(flex ? GEMINI_FLEX_TIMEOUT_MS : config.requestTimeoutMs, timeoutFloorMs);
   const wantsStream = body.stream === true || Array.isArray(body.contents) || !!body.request?.contents;
   arm(wantsStream ? firstMs : fullMs, wantsStream ? "First response timeout" : "Response deadline exceeded");
-  markDeadline(firstMs, "First response timeout");
 
   try {
     const requestPolicy = {

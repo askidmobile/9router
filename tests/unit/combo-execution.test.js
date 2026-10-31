@@ -200,6 +200,43 @@ describe("Combo HTTP failure classification", () => {
     expect(health.freeze).not.toHaveBeenCalled();
   });
 
+  it("freezes a stream that fails after the first-response deadline", async () => {
+    // The deadline marker used to keep timeoutReason set for the whole stream, so every late
+    // failure was reported as 504 "First response timeout" and never froze the pair. A stream
+    // that broke on its own is evidence about the provider, not about this request.
+    const late = { ...config, firstResponseTimeoutMs: 40, streamIdleTimeoutMs: 500 };
+    const source = controlledResponse();
+    execute.mockResolvedValue(source.response);
+    const task = run({ body: { stream: true }, config: late });
+    await pump();
+    source.push(contentFrame("hi"));
+    const response = await task;
+    const reader = response.body.getReader();
+    expect(new TextDecoder().decode((await reader.read()).value)).toContain("hi");
+    await vi.advanceTimersByTimeAsync(60);
+    const pending = reader.read();
+    source.error(new Error("upstream reset"));
+    await expect(pending).rejects.toBeTruthy();
+    expect(health.freeze).toHaveBeenCalledOnce();
+    expect(health.freeze.mock.calls[0][0]).toMatchObject({ status: 502, reason: "Upstream stream failed" });
+  });
+
+  it("still freezes a stream that fails before the first-response deadline", async () => {
+    const source = controlledResponse();
+    execute.mockResolvedValue(source.response);
+    const task = run({ body: { stream: true } });
+    await pump();
+    source.push(contentFrame("hi"));
+    const response = await task;
+    const reader = response.body.getReader();
+    expect(new TextDecoder().decode((await reader.read()).value)).toContain("hi");
+    await vi.advanceTimersByTimeAsync(5);
+    const pending = reader.read();
+    source.error(new Error("upstream reset"));
+    await expect(pending).rejects.toBeTruthy();
+    expect(health.freeze).toHaveBeenCalledOnce();
+  });
+
   it("passes HTTP 504 through without freezing the provider/model", async () => {
     execute.mockResolvedValue(new Response("Gateway timeout", { status: 504 }));
     const response = await run();
