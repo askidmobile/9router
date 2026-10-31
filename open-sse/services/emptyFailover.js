@@ -214,7 +214,12 @@ export function reconstructStream(head, reader, pendingRead = null) {
       controller.enqueue(value);
     },
     cancel(reason) {
-      try { reader.cancel(reason); } catch { /* already closed */ }
+      // reader.cancel() RETURNS A PROMISE, and on an already-errored upstream it is a
+      // REJECTED one (ReadableStreamCancel on an errored stream rejects with the stored
+      // error). A sync try/catch cannot see that, so the rejection surfaced as an
+      // unhandledRejection ("ResponseAborted", "Stream stalled") every time a discarded
+      // stream was closed here. Swallow it on the promise instead.
+      try { return reader.cancel(reason).catch(() => {}); } catch { /* already closed */ }
     },
   });
 }

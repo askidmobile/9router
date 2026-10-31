@@ -181,6 +181,28 @@ describe("reconstructStream is byte-faithful", () => {
     const rebuilt = reconstructStream(p.head, p.reader);
     expect(await drain(rebuilt)).toBe(frames.join(""));
   });
+
+  // A discarded member stream is closed via cancel(); when the upstream has ALREADY failed,
+  // reader.cancel() is a REJECTED promise and a sync try/catch in the underlying source cannot
+  // see it — that rejection reached the process as an unhandledRejection (ResponseAborted /
+  // Stream stalled) on every such discard.
+  it("cancelling a discarded stream whose reader already failed leaks no unhandledRejection", async () => {
+    const failing = new ReadableStream({ pull() { throw new Error("upstream boom"); } });
+    const reader = failing.getReader();
+    await reader.read().catch(() => {}); // consume the failure: the stream is errored now
+
+    const discarded = reconstructStream([], reader, null);
+    const leaked = [];
+    const onUnhandled = (err) => leaked.push(err);
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      discarded.cancel();
+      await new Promise((resolve) => setTimeout(resolve, 20)); // give the rejection time to surface
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+    expect(leaked).toEqual([]);
+  });
 });
 
 // The peek reads the CLIENT-format stream. /v1/messages clients get Anthropic Messages SSE and
@@ -292,7 +314,8 @@ describe("combo fall-through per client format (real combo.js + streaming pipeli
       clientRawRequest: { endpoint: "/v1/chat/completions" }, reqTag: "t", log: LOG,
     });
     const res = await handleStreamingResponse({
-      providerResponse: new Response(sseStream(frames), { status: 200, headers: { "Content-Type": "text/event-stream" } }),
+      // `frames` may also be a factory returning a ready stream (slow/failing upstream cases).
+      providerResponse: new Response(typeof frames === "function" ? frames() : sseStream(frames), { status: 200, headers: { "Content-Type": "text/event-stream" } }),
       provider: "openai", model, sourceFormat, targetFormat, body, stream: true, requestStartTime: Date.now(),
       connectionId: "conn", apiKey: "sk-x", streamController: createStreamController({ log: LOG, provider: "openai", model }),
       onStreamComplete, streamDetailId, reqTag: "t", log: LOG,
@@ -356,6 +379,48 @@ describe("combo fall-through per client format (real combo.js + streaming pipeli
       const { tried } = await combo([[ROLE, FILTER_STOP, DONE], [ROLE, C("from-m1"), STOP, DONE]], { sourceFormat });
       expect(tried).toEqual(["openai/m0"]);
     }
+  });
+
+  // A client that leaves while the empty peek is still holding its response is a CANCELLATION,
+  // not an empty generation. An aborted read looks exactly like end-of-stream to the peek, so
+  // without a request-signal gate the combo blames a healthy member: it logs a false "returned
+  // empty", resets the sticky session and spends a whole new upstream request on a client that
+  // is already gone.
+  it("client cancellation during the empty peek \u2192 499, no false 'returned empty'", async () => {
+    const controller = new AbortController();
+    const tried = [];
+    const warnings = [];
+    const log = {
+      line: vi.fn(), errorLine: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn(),
+      warn: vi.fn((_tag, msg) => warnings.push(String(msg))),
+    };
+    // The member hands over a role-only response and then goes quiet: the handler returns after
+    // the first chunk (~30ms), so the abort below lands INSIDE the peek, never before it (the
+    // pre-peek `signal.aborted` guard must not be the one answering here). The stream then ends
+    // with no content, which is what the peek reports to the fail-through path.
+    const leavingStream = () => new ReadableStream({
+      start(c) { c.enqueue(enc.encode(ROLE)); },
+      async pull(c) { await new Promise((r) => setTimeout(r, 250)); c.close(); },
+    });
+
+    setTimeout(() => controller.abort(new Error("client gone")), 60);
+    const res = await handleComboChat({
+      body: { messages: [{ role: "user", content: "hi" }] },
+      models: ["openai/m0", "openai/m1"],
+      handleSingleModel: async (_b, m) => {
+        tried.push(m);
+        const frames = m === "openai/m0" ? leavingStream : [ROLE, C("from-m1"), STOP, DONE];
+        return memberResponse(frames, FORMATS.OPENAI, FORMATS.OPENAI, m);
+      },
+      log,
+      comboName: `c-${Math.random()}`,
+      comboStrategy: "fallback",
+      signal: controller.signal,
+    });
+
+    expect(res.status).toBe(499);
+    expect(tried).toEqual(["openai/m0"]); // the client left: no second upstream request
+    expect(warnings.some((m) => m.includes("returned empty"))).toBe(false);
   });
 
   // Responses provider + Responses client: same-format passthrough of Responses events.

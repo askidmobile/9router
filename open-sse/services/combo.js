@@ -515,6 +515,17 @@ export async function handleComboChat({
           });
         }
 
+        // A client that hung up during the peek leaves an aborted request signal and a body
+        // that can no longer be read: that is a cancellation, not an empty generation. The
+        // empty-peek path cannot tell them apart (an aborted read looks like end-of-stream),
+        // so without this gate the combo blames a healthy member — wrongly logging "returned
+        // empty", resetting the sticky session, and spending a whole new upstream request for
+        // a client that is gone. 499 matches the rest of the loop.
+        if (signal?.aborted) {
+          peeked?.response?.body?.cancel?.().catch(() => {});
+          return errorResponse(499, "Request aborted");
+        }
+
         if (!peeked) {
           // Non-streaming (or non-SSE) response — not this peek's job. The zero-content
           // JSON check still applies on a non-final seat.
