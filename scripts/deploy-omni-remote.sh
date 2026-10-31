@@ -44,21 +44,32 @@ log() { printf '[%s] %s\n' "$(date -u +%H:%M:%S)" "$*"; }
 
 # Readiness = the process is alive, it has not restarted, /api/health answers, and the app has
 # opened its database. /api/health alone is a static {"ok":true}: it says nothing about the DB.
+# Note: `docker logs ... | grep -q` is unusable here — grep -q exits on the first match, docker
+# gets SIGPIPE and, under `pipefail`, the pipeline reports failure exactly when the log DOES
+# contain the marker. `grep -c` reads to the end and gives the honest status.
 ready() {
-  local name=$1 base=$2 limit=$3 deadline ok=0
+  local name=$1 base=$2 limit=$3 require_db=${4:-1} deadline ok=0 why=""
   deadline=$((SECONDS + limit))
   while (( SECONDS < deadline )); do
-    if [[ $(docker inspect -f '{{.State.Running}}' "$name" 2>/dev/null) == true ]] &&
-       [[ $(docker inspect -f '{{.RestartCount}}' "$name" 2>/dev/null) == 0 ]] &&
-       curl -fsS --noproxy '*' --connect-timeout 2 --max-time 4 "$base/api/health" >/dev/null 2>&1 &&
-       docker logs "$name" 2>&1 | grep -q '\[DB\] Driver:'; then
+    why=""
+    if [[ $(docker inspect -f '{{.State.Running}}' "$name" 2>/dev/null) != true ]]; then
+      why="container is not running"
+    elif [[ $(docker inspect -f '{{.RestartCount}}' "$name" 2>/dev/null) != 0 ]]; then
+      why="container restarted"
+    elif ! curl -fsS --noproxy '*' --connect-timeout 2 --max-time 4 "$base/api/health" >/dev/null 2>&1; then
+      why="/api/health does not answer at $base"
+    elif (( require_db == 1 )) && ! docker logs "$name" 2>&1 | grep -c -- '\[DB\] Driver:' >/dev/null; then
+      why="database was never opened"
+    fi
+    if [[ -z $why ]]; then
       ok=$((ok + 1))
-      (( ok >= 2 )) && return 0
+      if (( ok >= 2 )); then return 0; fi
     else
       ok=0
     fi
     sleep 2
   done
+  log "readiness failed for $name: ${why:-no two consecutive healthy checks within ${limit}s}"
   return 1
 }
 
@@ -78,7 +89,7 @@ restore() {
     docker rename "$PREV" "$APP" || return 1
   fi
   docker start "$APP" >/dev/null || return 1
-  ready "$APP" "http://127.0.0.1:$PORT" "$READY_TIMEOUT"
+  ready "$APP" "http://127.0.0.1:$PORT" "$READY_TIMEOUT" 0
 }
 
 finish() {
@@ -142,7 +153,7 @@ if ! flock -n 9; then log "another deploy is already running"; exit 1; fi
 
 # Production must be healthy BEFORE we touch it, otherwise a failure cannot be told apart from
 # a problem that was already there.
-ready "$APP" "http://127.0.0.1:$PORT" 20 || { log "production is not healthy before the deploy — aborting"; exit 1; }
+ready "$APP" "http://127.0.0.1:$PORT" 20 0 || { log "production is not healthy before the deploy — aborting"; exit 1; }
 log "pre-deploy production check: ok"
 
 cleanup_images
