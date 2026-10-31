@@ -22,6 +22,7 @@ import { handleNonStreamingResponse } from "./chatCore/nonStreamingHandler.js";
 import { handleStreamingResponse, buildOnStreamComplete } from "./chatCore/streamingHandler.js";
 import { detectClientTool, isNativePassthrough } from "../utils/clientDetector.js";
 import { dedupeTools } from "../utils/toolDeduper.js";
+import { reconcileToolHistory, formatToolRepairs } from "../translator/concerns/toolCall.js";
 import { takeRenamedToolNames } from "../utils/opencodeFingerprint.js";
 import { injectCaveman } from "../rtk/caveman.js";
 import { injectPonytail } from "../rtk/ponytail.js";
@@ -333,6 +334,19 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     if (pxpipeResult.body) translatedBody = pxpipeResult.body;
     if (pxpipeSummary?.applied) xf.push(`PXPIPE:${pxpipeSummary.imageCount}img`);
     try { onPxpipeEvent?.({ provider, model, ...pxpipeSummary }); } catch { /* stats must not break requests */ }
+  }
+
+  // Tool-history reconciliation, last step before dispatch: every token saver above
+  // can reshape `messages`, and a strict OpenAI-compatible upstream validates the
+  // final shape. A client that lost a turn mid-call (interrupted agent, preemption,
+  // compaction inside a pair) replays a broken history until someone repairs it.
+  if (!passthrough && finalFormat === FORMATS.OPENAI && Array.isArray(translatedBody.messages)) {
+    const { messages: reconciled, repairs } = reconcileToolHistory(translatedBody.messages);
+    if (repairs.changed) {
+      translatedBody.messages = reconciled;
+      const fixLine = formatToolRepairs(repairs);
+      if (fixLine) xf.push(fixLine);
+    }
   }
 
   if (xf.length && log?.line) log.line(reqTag, "⚙", xf.join(" · "));

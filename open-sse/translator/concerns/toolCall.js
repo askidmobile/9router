@@ -153,6 +153,243 @@ export function fixMissingToolResponses(body) {
   return body;
 }
 
+// ── Tool-history reconciliation ──────────────────────────────────────────────
+//
+// An OpenAI chat conversation is only valid when every assistant `tool_calls`
+// entry is answered by exactly one `role:"tool"` message carrying that id, and
+// no tool message exists without a call. Strict upstreams enforce the rule:
+// CodeBuddy answers `11148 "tool calls and tool results do not match"`, DeepSeek
+// `"Invalid parameter: 'tool_calls' type error"`. A client that loses a turn in
+// the middle of a tool call — interrupted agent, a queued message preempting the
+// active turn, compaction cutting inside a pair, a Responses history whose tail
+// is an unanswered call — replays that broken history on every retry, so each
+// combo member rejects every attempt and the session never recovers.
+//
+// `fixMissingToolResponses` is not enough: it only looks at the message directly
+// after a call, so it skips a trailing dangling call outright, misses a partial
+// parallel answer (`hasToolResults` is true when *any* id matched), and on a
+// split pair (`call → user → result`) inserts an empty result and leaves the
+// real one behind as a duplicate.
+//
+// Rules applied here, in place of that heuristic:
+//   * `tool_calls` is either a non-empty array or the key is gone;
+//   * every call has a unique id, a name, and arguments as a JSON-object string;
+//   * each call owns exactly one result, emitted immediately after its assistant
+//     turn — a result found further down the history is moved up, not copied;
+//   * a call with no result anywhere is dropped when its assistant turn is the
+//     last message (the turn is still in flight: the result will arrive in the
+//     next request, and a synthesized one would shadow it), otherwise a
+//     placeholder result closes the turn;
+//   * tool messages without a call (including duplicate answers) are dropped;
+//   * an assistant turn left with no calls and no content is dropped.
+const TOOL_NO_RESPONSE_PLACEHOLDER = "[No response received]";
+
+// `arguments` must be a JSON object encoded as a string. Double-encoded values
+// (`"\"{bad\""`, produced when a client stringifies an already-stringified
+// field) and freeform text are exactly what the upstream reports as a
+// `tool_calls` type error, so they are replaced with an empty object; the call
+// itself stays, its id still pairs with a result.
+function coerceToolArguments(value) {
+  if (typeof value === "string") {
+    if (value === "") return value;
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? value : "{}";
+    } catch {
+      return "{}";
+    }
+  }
+  if (value && typeof value === "object" && !Array.isArray(value)) return JSON.stringify(value);
+  return "{}";
+}
+
+function hasMessageContent(content) {
+  if (typeof content === "string") return content.length > 0;
+  if (Array.isArray(content)) return content.length > 0;
+  return content != null;
+}
+
+export function createToolRepairStats() {
+  return {
+    changed: false,
+    droppedCalls: 0,
+    synthesizedResults: 0,
+    movedResults: 0,
+    orphanResults: 0,
+    duplicateIds: 0,
+    normalizedCalls: 0,
+    coercedArguments: 0,
+    droppedMessages: 0,
+  };
+}
+
+// Human summary for the request line; counts only, no tool names or ids.
+export function formatToolRepairs(repairs) {
+  if (!repairs?.changed) return null;
+  const parts = [];
+  if (repairs.droppedCalls) parts.push(`dropped ${repairs.droppedCalls} call${repairs.droppedCalls > 1 ? "s" : ""}`);
+  if (repairs.synthesizedResults) parts.push(`synthesized ${repairs.synthesizedResults} result${repairs.synthesizedResults > 1 ? "s" : ""}`);
+  if (repairs.movedResults) parts.push(`moved ${repairs.movedResults} result${repairs.movedResults > 1 ? "s" : ""}`);
+  if (repairs.orphanResults) parts.push(`dropped ${repairs.orphanResults} orphan${repairs.orphanResults > 1 ? "s" : ""}`);
+  if (repairs.duplicateIds) parts.push(`deduped ${repairs.duplicateIds} id${repairs.duplicateIds > 1 ? "s" : ""}`);
+  if (repairs.normalizedCalls) parts.push(`normalized ${repairs.normalizedCalls} call${repairs.normalizedCalls > 1 ? "s" : ""}`);
+  if (repairs.coercedArguments) parts.push(`coerced ${repairs.coercedArguments} args`);
+  if (repairs.droppedMessages) parts.push(`dropped ${repairs.droppedMessages} empty turn${repairs.droppedMessages > 1 ? "s" : ""}`);
+  return parts.length > 0 ? `TOOLFIX: ${parts.join(" · ")}` : null;
+}
+
+/**
+ * Repair OpenAI-format tool history. Never mutates the input messages: combo
+ * members share one body, so an in-place repair would leak into the next member.
+ * A valid history is returned as the same array instance, which lets the caller
+ * skip the assignment (and keeps the prompt prefix byte-identical for caches).
+ *
+ * @param {Array<object>} messages
+ * @returns {{ messages: Array<object>, repairs: ReturnType<typeof createToolRepairStats> }}
+ */
+export function reconcileToolHistory(messages) {
+  const repairs = createToolRepairStats();
+  if (!Array.isArray(messages) || messages.length === 0) return { messages, repairs };
+
+  // Where every tool result lives. `consumed` holds the indexes a call took.
+  const resultIndexes = new Map();
+  messages.forEach((msg, index) => {
+    if (msg?.role === "tool" && typeof msg.tool_call_id === "string" && msg.tool_call_id) {
+      const list = resultIndexes.get(msg.tool_call_id);
+      if (list) list.push(index);
+      else resultIndexes.set(msg.tool_call_id, [index]);
+    }
+  });
+
+  const consumed = new Set();
+  const claimedIds = new Set();
+  // assistant index → { msg, calls: [{ call, resultIndex }] }
+  const plan = new Map();
+
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    if (msg?.role !== "assistant" || !Array.isArray(msg.tool_calls)) continue;
+    if (msg.tool_calls.length === 0) {
+      repairs.changed = true;
+      plan.set(i, { msg, calls: [] });
+      continue;
+    }
+
+    const calls = [];
+    for (const rawCall of msg.tool_calls) {
+      if (!rawCall || typeof rawCall !== "object") {
+        repairs.droppedCalls += 1;
+        continue;
+      }
+      const id = typeof rawCall.id === "string" ? rawCall.id : "";
+      const name = rawCall.function?.name;
+      // A call we cannot name or identify cannot be paired with a result, and an
+      // upstream rejects it as a malformed entry — drop it rather than guess.
+      if (!id || typeof name !== "string" || name.length === 0) {
+        repairs.droppedCalls += 1;
+        continue;
+      }
+      if (claimedIds.has(id)) {
+        // Two turns claiming one id: keep the first, drop the impostor (its
+        // result, if any, is then an orphan and goes away below).
+        repairs.duplicateIds += 1;
+        continue;
+      }
+      claimedIds.add(id);
+
+      const rawArguments = rawCall.function?.arguments;
+      const args = coerceToolArguments(rawArguments);
+      if (args !== rawArguments) repairs.coercedArguments += 1;
+      if (!rawCall.type) repairs.normalizedCalls += 1;
+
+      const candidates = resultIndexes.get(id) || [];
+      const resultIndex = candidates.find((index) => !consumed.has(index));
+      if (resultIndex !== undefined) consumed.add(resultIndex);
+
+      calls.push({
+        call: {
+          ...rawCall,
+          id,
+          type: rawCall.type || "function",
+          function: { ...rawCall.function, name, arguments: args },
+        },
+        resultIndex,
+      });
+    }
+
+    const isTrailing = i === messages.length - 1;
+    for (const entry of calls) {
+      if (entry.resultIndex !== undefined) continue;
+      if (isTrailing) {
+        // The turn is still running: the client sends this same call again with
+        // the real output. Fabricating a result here would make the real one a
+        // duplicate that the dedup below discards — the model would lose it.
+        repairs.droppedCalls += 1;
+        entry.dropCall = true;
+      } else {
+        repairs.synthesizedResults += 1;
+      }
+    }
+
+    plan.set(i, { msg, calls: calls.filter((entry) => !entry.dropCall) });
+  }
+
+  if (plan.size === 0 && !messages.some((msg) => msg?.role === "tool")) {
+    // Nothing to pair and no results to place: the history is fine (or has no
+    // tool traffic at all).
+    return { messages, repairs };
+  }
+  // Track movement for the log line: a result that is not where the pair should
+  // sit is moved, and that is the signal that the history was split.
+  for (const [assistantIndex, entry] of plan) {
+    for (const call of entry.calls) {
+      if (call.resultIndex !== undefined && call.resultIndex > assistantIndex + 1) repairs.movedResults += 1;
+    }
+  }
+
+  const out = [];
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    const planned = plan.get(i);
+
+    if (planned) {
+      const { calls } = planned;
+      if (calls.length === 0) {
+        const { tool_calls, ...rest } = msg;
+        if (!hasMessageContent(rest.content)) {
+          repairs.droppedMessages += 1;
+          continue;
+        }
+        out.push(rest);
+        continue;
+      }
+      out.push({ ...msg, tool_calls: calls.map((entry) => entry.call) });
+      for (const entry of calls) {
+        if (entry.resultIndex !== undefined) out.push(messages[entry.resultIndex]);
+        else out.push({ role: "tool", tool_call_id: entry.call.id, content: TOOL_NO_RESPONSE_PLACEHOLDER });
+      }
+      continue;
+    }
+
+    if (msg?.role === "tool") {
+      if (consumed.has(i)) continue; // already emitted next to its call
+      repairs.orphanResults += 1;
+      continue;
+    }
+
+    out.push(msg);
+  }
+
+  repairs.changed = repairs.changed
+    || repairs.droppedCalls > 0 || repairs.synthesizedResults > 0
+    || repairs.movedResults > 0 || repairs.orphanResults > 0
+    || repairs.duplicateIds > 0 || repairs.normalizedCalls > 0 || repairs.coercedArguments > 0
+    || repairs.droppedMessages > 0
+    || out.length !== messages.length;
+
+  return { messages: repairs.changed ? out : messages, repairs };
+}
+
 // Default `type: "custom"` on Claude-format tools that arrive without one.
 // Anthropic's Claude tool schema requires `type` to be explicitly set; strict gateways
 // (e.g., MiniMax Anthropic-compatible endpoint, error 2013) reject legacy payloads that
