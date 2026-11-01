@@ -61,6 +61,16 @@ export const STREAM_FIRST_CHUNK_TIMEOUT_MS = envMs("STREAM_FIRST_CHUNK_TIMEOUT_M
 // Env: EMPTY_PEEK_DEADLINE_MS.
 export const EMPTY_PEEK_DEADLINE_MS = envMs("EMPTY_PEEK_DEADLINE_MS", 45 * 1000);
 
+// Guard against repetition collapse in a streamed answer. A flash-class model can lock
+// onto one sentence and emit it until the output limit: one real Codex turn carried
+// 145 211 characters — 11 sensible lines, then the same sentence 1527 times. When the
+// same visible line repeats LOOP_GUARD_REPEATS times, the stream is closed with the
+// client's own terminal frame and the upstream generation is cancelled.
+// Env: LOOP_GUARD=off disables, the other two tune the detector.
+export const LOOP_GUARD_ENABLED = !/^(off|0|false|no)$/i.test(String(process.env.LOOP_GUARD || "").trim());
+export const LOOP_GUARD_LINE_MIN_CHARS = envMs("LOOP_GUARD_LINE_MIN_CHARS", 60);
+export const LOOP_GUARD_REPEATS = envMs("LOOP_GUARD_REPEATS", 16);
+
 // Fetch connect timeout: abort if upstream doesn't return response headers within this duration
 export const FETCH_CONNECT_TIMEOUT_MS = envMs("FETCH_CONNECT_TIMEOUT_MS", 60 * 1000);
 

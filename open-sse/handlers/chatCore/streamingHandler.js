@@ -26,7 +26,7 @@ const CODEX_SOURCE_TO_TARGET = {
 /**
  * Determine which SSE transform stream to use based on provider/format.
  */
-function buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, customToolNames, toolNamespaces, model, connectionId, body, onStreamComplete, apiKey, credentials, trackDone, responseMetadata }) {
+function buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, customToolNames, toolNamespaces, model, connectionId, body, onStreamComplete, apiKey, credentials, trackDone, responseMetadata, onCut }) {
   const isDroidCLI = userAgent?.toLowerCase().includes("droid") || userAgent?.toLowerCase().includes("codex-cli");
   // Responses-API providers (e.g. codex) emit Responses SSE → translate into client format
   const isResponsesProvider = PROVIDERS[provider]?.format === FORMATS.OPENAI_RESPONSES;
@@ -34,11 +34,11 @@ function buildTransformStream({ provider, sourceFormat, targetFormat, userAgent,
 
   if (needsCodexTranslation) {
     const codexTarget = CODEX_SOURCE_TO_TARGET[sourceFormat] || FORMATS.OPENAI;
-    return createSSETransformStreamWithLogger(FORMATS.OPENAI_RESPONSES, codexTarget, provider, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete, apiKey, customToolNames, toolNamespaces, credentials, trackDone, responseMetadata);
+    return createSSETransformStreamWithLogger(FORMATS.OPENAI_RESPONSES, codexTarget, provider, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete, apiKey, customToolNames, toolNamespaces, credentials, trackDone, responseMetadata, onCut);
   }
 
   if (needsTranslation(targetFormat, sourceFormat)) {
-    return createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete, apiKey, customToolNames, toolNamespaces, credentials, trackDone, responseMetadata);
+    return createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete, apiKey, customToolNames, toolNamespaces, credentials, trackDone, responseMetadata, onCut);
   }
 
   // The passthrough path has no format translation, so the fingerprint's tool
@@ -88,7 +88,19 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
 
   const responseMetadata = await prepareResponseMetadata({ provider, model, translatedBody, finalBody });
   const completeWithCost = (content, usage, ttft) => onStreamComplete?.(content, usage ? { ...usage, ...responseMetadata.cost() } : usage, ttft);
-  const transformStream = buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, customToolNames, toolNamespaces, model, connectionId, body, onStreamComplete: completeWithCost, apiKey, credentials, trackDone, responseMetadata });
+
+  // Репитишн-коллапс: transform уже закрыл клиентский поток терминальным
+  // кадром и вызвал terminate(). Остаётся отменить чтение апстрима — у части
+  // web-провайдеров собственный ReadableStream, каскад pipeTo его не гасит.
+  // Строка модели в лог обрезана: в повторе может лежать что угодно, включая
+  // попавший в контекст секрет.
+  const onLoopCut = (hit) => {
+    const line = typeof hit?.line === "string" ? hit.line.slice(0, 80) : "";
+    log?.errorLine?.(reqTag, "🔁", `LOOP · ${provider}/${model} · repetitions cut after ${hit?.chars ?? 0} chars (${hit?.repeats ?? 0}× "${line}")`);
+    try { streamController?.abort?.(); } catch { /* уже отменён */ }
+  };
+
+  const transformStream = buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, customToolNames, toolNamespaces, model, connectionId, body, onStreamComplete: completeWithCost, apiKey, credentials, trackDone, responseMetadata, onCut: onLoopCut });
 
   // Terminal bytes when the stream aborts after HTTP 200 was already sent, so the
   // client sees a real error instead of a silently truncated stream.

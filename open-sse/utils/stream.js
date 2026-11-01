@@ -9,6 +9,8 @@ import { restoreToolNames } from "./opencodeFingerprint.js";
 import { getOpenAIResponsesEventName, isOpenAIResponsesTerminalEvent, formatIncompleteOpenAIResponsesStreamFailure } from "./responsesStreamHelpers.js";
 import { dbg, isDebugEnabled } from "./debugLog.js";
 import { createResponseMetadata } from "./responseMetadata.js";
+import { createRepetitionGuard } from "./repetitionGuard.js";
+import { LOOP_GUARD_ENABLED, LOOP_GUARD_LINE_MIN_CHARS, LOOP_GUARD_REPEATS } from "../config/runtimeConfig.js";
 import { isJsonOutputRequested } from "../translator/concerns/textToolCalls.js";
 
 import { SSE_DONE, SSE_HEADERS, SSE_HEADERS_NO_BUFFER } from "./sseConstants.js";
@@ -63,6 +65,7 @@ export function createSSEStream(options = {}) {
     trackDone = null,
     apiKey = null,
     credentials = null,
+    onCut = null,
     responseMetadata = createResponseMetadata({ provider, model })
   } = options;
 
@@ -101,6 +104,14 @@ export function createSSEStream(options = {}) {
 
   let finalized = false;
   let completionFlushTimer = null;
+
+  // Гард репитишн-коллапса. Работает только в translate-режиме и только когда
+  // форматы провайдера и клиента различаются: passthrough отдаёт кадры как есть,
+  // а для same-format ответа у нас нет машины событий, чтобы закрыть его
+  // корректным терминалом (лучше не трогать байты вовсе).
+  const loopGuard = LOOP_GUARD_ENABLED && mode === STREAM_MODE.TRANSLATE && sourceFormat !== targetFormat
+    ? createRepetitionGuard({ minLineChars: LOOP_GUARD_LINE_MIN_CHARS, minRepeats: LOOP_GUARD_REPEATS })
+    : null;
 
   // Lane quirk: upstream streams thinking under the OpenRouter aliases
   // (`reasoning` / `reasoning_details[]`) instead of reasoning_content — OpenCode
@@ -151,6 +162,74 @@ export function createSSEStream(options = {}) {
       sseEmittedCount++;
     }
     finalizeStream();
+  };
+
+  // Терминальный кадр КЛИЕНТСКОГО формата для досрочного закрытия потока.
+  //
+  // Null-флаш транслятора отдаёт терминал не для всех пар (openai→claude,
+  // claude→openai, antigravity→claude возвращают []). Поэтому сначала подаём
+  // синтетический OpenAI-finish через OpenAI-плечо конвейера, а затем флашим
+  // остаток: так закрываются открытые блоки/items и терминал выходит ровно один.
+  const buildClientTerminal = () => {
+    const frames = [];
+    const pushFrame = (item) => frames.push(formatSSE(responseMetadata.apply(item), sourceFormat));
+
+    const emit = (items) => {
+      for (const item of items || []) {
+        if (item !== null && item !== undefined) pushFrame(item);
+      }
+    };
+
+    // Ollama и Gemini отвечают собственным терминалом — OpenAI-finish им не нужен.
+    if (sourceFormat === FORMATS.OLLAMA) {
+      pushFrame({ message: { role: "assistant", content: "" }, done: true, done_reason: "stop" });
+      return frames.join("");
+    }
+    if (sourceFormat === FORMATS.GEMINI) {
+      pushFrame({ candidates: [{ content: { parts: [] }, finishReason: "STOP" }] });
+      return frames.join("");
+    }
+
+    // OpenAI-плечо: чанк уже в формате OpenAI, дальше translateResponse доводит
+    // его до клиентского формата (responses / claude / openai).
+    const syntheticFinish = {
+      id: state?.responseId || "loop-guard",
+      model: model || "",
+      choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+    };
+    emit(translateResponse(FORMATS.OPENAI, sourceFormat, syntheticFinish, state));
+    emit(translateResponse(FORMATS.OPENAI, sourceFormat, null, state));
+
+    // Chat-клиенты ждут sentinel; Responses закрываются на response.completed.
+    if (sourceFormat === FORMATS.OPENAI) frames.push(SSE_DONE);
+    return frames.join("");
+  };
+
+  // Обрыв деградировавшей генерации. terminate() закрывает readable штатно
+  // (клиент видит обычный конец потока) и рвёт writable — каскад pipeTo
+  // отменяет чтение апстрима. Ошибку бросать нельзя: она сбрасывает очередь
+  // readable и клиент теряет уже поставленный терминальный кадр.
+  const cutRepetitionStream = (controller, hit) => {
+    if (!hasValidUsage(state?.usage) && totalContentLength > 0) {
+      // Оценка нужна ДО сборки кадра: response.completed уходит с usage, по
+      // которому Codex считает окно контекста и решает про автокомпакт.
+      state.usage = estimateUsage(body, totalContentLength, sourceFormat);
+    }
+    const terminal = buildClientTerminal();
+    finalizeStream();
+    try { onCut?.(hit); } catch { /* колбэк не должен ломать закрытие */ }
+    if (terminal) {
+      reqLogger?.appendConvertedChunk?.(terminal);
+      controller.enqueue(sharedEncoder.encode(terminal));
+      sseEmittedCount++;
+    }
+    // terminate() есть не во всех рантаймах (Cloudflare Workers его не знают).
+    // Там остаётся бросить ошибку: терминал может потеряться, но поток закроется.
+    if (typeof controller.terminate === "function") {
+      try { controller.terminate(); } catch { /* поток уже закрыт/сломан */ }
+    } else {
+      throw new Error("loop guard: repetition collapse");
+    }
   };
 
   return new TransformStream({
@@ -416,10 +495,16 @@ export function createSSEStream(options = {}) {
           continue;
         }
 
+        // Visible assistant text of this frame, in any source format. Fed to the
+        // repetition guard below; thinking and tool-call arguments are excluded
+        // on purpose (their repeats are legitimate).
+        let deltaText = "";
+
         // Claude format - content
         if (parsed.delta?.text) {
           totalContentLength += parsed.delta.text.length;
           accumulatedContent += parsed.delta.text;
+          deltaText += parsed.delta.text;
         }
         // Claude format - thinking
         if (parsed.delta?.thinking) {
@@ -431,6 +516,7 @@ export function createSSEStream(options = {}) {
         if (typeof parsed.message?.content === "string" && parsed.message.content) {
           totalContentLength += parsed.message.content.length;
           accumulatedContent += parsed.message.content;
+          deltaText += parsed.message.content;
         }
         if (typeof parsed.message?.thinking === "string" && parsed.message.thinking) {
           totalContentLength += parsed.message.thinking.length;
@@ -441,6 +527,7 @@ export function createSSEStream(options = {}) {
         if (parsed.choices?.[0]?.delta?.content) {
           totalContentLength += parsed.choices[0].delta.content.length;
           accumulatedContent += parsed.choices[0].delta.content;
+          deltaText += parsed.choices[0].delta.content;
         }
         // OpenAI format - reasoning
         if (parsed.choices?.[0]?.delta?.reasoning_content) {
@@ -458,8 +545,20 @@ export function createSSEStream(options = {}) {
                 accumulatedThinking += part.text;
               } else {
                 accumulatedContent += part.text;
+                deltaText += part.text;
               }
             }
+          }
+        }
+
+        // Repetition collapse: the model locked onto one sentence and is emitting it
+        // until the output limit. Close the stream with the client's own terminal
+        // frame instead of forwarding the remaining thousands of copies.
+        if (loopGuard && deltaText) {
+          const hit = loopGuard.push(deltaText);
+          if (hit) {
+            cutRepetitionStream(controller, hit);
+            return;
           }
         }
 
@@ -671,7 +770,7 @@ export function createSSEStream(options = {}) {
   });
 }
 
-export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null, customToolNames = null, toolNamespaces = null, credentials = null, trackDone = null, responseMetadata = undefined) {
+export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null, customToolNames = null, toolNamespaces = null, credentials = null, trackDone = null, responseMetadata = undefined, onCut = null) {
   return createSSEStream({
     mode: STREAM_MODE.TRANSLATE,
     targetFormat,
@@ -688,7 +787,8 @@ export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, p
     trackDone,
     apiKey,
     credentials,
-    responseMetadata
+    responseMetadata,
+    onCut
   });
 }
 
