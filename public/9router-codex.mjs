@@ -169,7 +169,7 @@ export function mergeCatalog(nativeModels, manifest) {
     multi_agent_version: "v2",
     supports_parallel_tool_calls: true, supports_image_detail_original: false,
     context_window: model.contextWindow, max_context_window: model.contextWindow,
-    auto_compact_token_limit: null, effective_context_window_percent: 95,
+    auto_compact_token_limit: model.autoCompactTokenLimit ?? null, effective_context_window_percent: 95,
     experimental_supported_tools: [], input_modalities: model.imageInput ? ["text", "image"] : ["text"],
     supports_search_tool: true,
   }));
@@ -181,6 +181,8 @@ export function validateManifest(data) {
   if (data?.version !== 1 || !Array.isArray(data.models) || data.models.length > 5 ||
       data.models.some(m => !m || typeof m.id !== "string" || !m.id || m.slug !== PREFIX + m.id ||
         !Number.isFinite(m.contextWindow) || m.contextWindow < 4096 || m.contextWindow > 10000000 ||
+        (m.autoCompactTokenLimit != null && (!Number.isSafeInteger(m.autoCompactTokenLimit) ||
+          m.autoCompactTokenLimit < 4096 || m.autoCompactTokenLimit > m.contextWindow)) ||
         (m.reasoningLevels !== undefined && (!Array.isArray(m.reasoningLevels) ||
           m.reasoningLevels.length > levels.length || new Set(m.reasoningLevels).size !== m.reasoningLevels.length ||
           m.reasoningLevels.some(level => !levels.includes(level)))) ||

@@ -1,6 +1,18 @@
 export const MAX_CHATGPT_MODELS = 5;
 export const CHATGPT_MODEL_PREFIX = "9router/";
 
+// Providers count the same prompt with different tokenizers: on one 2.8M-char
+// Codex request the strict DeepSeek endpoints reported 1.42x the tokens of the
+// lenient Ollama route that answered it. Codex compacts on the usage the
+// answering member reports, so a combo that waits for 90% of its advertised
+// window reaches the stricter members' own limit first and they answer 400.
+// Compacting at 70% keeps the strict count just under that limit.
+export const COMBO_AUTO_COMPACT_RATIO = 0.7;
+
+function autoCompactLimit(contextWindow, isCombo) {
+  return isCombo ? Math.floor(contextWindow * COMBO_AUTO_COMPACT_RATIO) : undefined;
+}
+
 // Use a namespace so a router model can never shadow a subscription model.
 export function codexModelId(id) {
   return `${CHATGPT_MODEL_PREFIX}${id}`;
@@ -24,11 +36,14 @@ export function selectChatGPTModels(ids, available) {
       throw new Error(`This model does not support tools: ${id}`);
     }
     const caps = model.capabilities || {};
+    const contextWindow = Number.isFinite(model.context_length) && model.context_length >= 4096
+      ? model.context_length : 32768;
+    const limit = autoCompactLimit(contextWindow, model.owned_by === "combo");
     return {
       id,
       name: model.name || id,
-      contextWindow: Number.isFinite(model.context_length) && model.context_length >= 4096
-        ? model.context_length : 32768,
+      contextWindow,
+      ...(limit === undefined ? {} : { autoCompactTokenLimit: limit }),
       imageInput: caps.vision === true || caps.imageInput === true,
     };
   });
@@ -43,11 +58,14 @@ export function refreshSelectedModels(models, available) {
     const current = currentById.get(saved.id);
     if (!current) return saved;
     const caps = current.capabilities || {};
+    const contextWindow = Number.isFinite(current.context_length) && current.context_length >= 4096
+      ? current.context_length : saved.contextWindow;
+    const limit = autoCompactLimit(contextWindow, current.owned_by === "combo");
     return {
       ...saved,
       name: current.name || saved.name || saved.id,
-      contextWindow: Number.isFinite(current.context_length) && current.context_length >= 4096
-        ? current.context_length : saved.contextWindow,
+      contextWindow,
+      ...(limit === undefined ? {} : { autoCompactTokenLimit: limit }),
       imageInput: caps.vision === true || caps.imageInput === true,
     };
   });

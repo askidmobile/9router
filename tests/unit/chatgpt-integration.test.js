@@ -48,6 +48,19 @@ describe("ChatGPT integration settings and catalog", () => {
     expect(second.models[0].reasoningLevels).toEqual(["high", "max"]);
     expect(db.updateSettings).not.toHaveBeenCalled();
   });
+  it("moves a combo's auto-compaction ahead of its advertised window", async () => {
+    const combo = { id: "deepseek", name: "DeepSeek", owned_by: "combo", context_length: 1000000, capabilities: { tools: true } };
+    const single = { id: "glm/glm-5.3", context_length: 1000000, capabilities: { tools: true } };
+    expect(selectChatGPTModels(["deepseek"], [combo])).toEqual([
+      { id: "deepseek", name: "DeepSeek", contextWindow: 1000000, autoCompactTokenLimit: 700000, imageInput: false },
+    ]);
+    expect(selectChatGPTModels(["glm/glm-5.3"], [single])[0]).not.toHaveProperty("autoCompactTokenLimit");
+    db.buildModelsList.mockResolvedValue([combo, single]);
+    db.getSettings.mockResolvedValue({ chatgptIntegration: { models: [{ id: "deepseek", contextWindow: 1000000 }] } });
+    const manifest = await (await getChatGPTManifest(request({}))).json();
+    expect(manifest.models[0]).toMatchObject({ contextWindow: 1000000, autoCompactTokenLimit: 700000 });
+    expect(db.updateSettings).not.toHaveBeenCalled();
+  });
   it("persists validated model IDs and limits, including combos", async () => {
     const result = await PUT(request({ models: ["Coding", "glm/glm-5.3"] }));
     expect(result.status).toBe(200);

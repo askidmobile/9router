@@ -94,6 +94,15 @@ describe("catalog and endpoint validation", () => {
     expect(() => validateManifest({ ...manifest, models: [{ ...manifest.models[0], slug: "native-codex" }] })).toThrow();
     expect(() => validateManifest({ ...manifest, models: [manifest.models[0], manifest.models[0]] })).toThrow();
   });
+  it("compacts a combo before its advertised window fills up", () => {
+    const combo = { ...manifest.models[0], contextWindow: 1000000, autoCompactTokenLimit: 700000 };
+    const combined = mergeCatalog(native, { ...manifest, models: [combo] });
+    expect(combined.models[0]).toMatchObject({ context_window: 1000000, auto_compact_token_limit: 700000 });
+    expect(mergeCatalog(native, manifest).models[0].auto_compact_token_limit).toBeNull();
+  });
+  it.each([700000.5, 1000001, 1024, "700000"])("rejects a malformed auto-compaction limit %j", autoCompactTokenLimit => {
+    expect(() => validateManifest({ ...manifest, models: [{ ...manifest.models[0], autoCompactTokenLimit }] })).toThrow();
+  });
 });
 
 describe("API key selection", () => {
