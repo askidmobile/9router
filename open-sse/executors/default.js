@@ -11,6 +11,7 @@ import { stripUnsupportedParams } from "../translator/concerns/paramSupport.js";
 import { splitGeminiModelId } from "../utils/geminiModels.js";
 import { GEMINI_FLEX_TIMEOUT_MS, GEMINI_SERVICE_TIERS } from "../config/gemini.js";
 import { extractClaudeSessionIdFromUserId } from "../utils/claudeCloaking.js";
+import { normalizeResponsesToolBody } from "../translator/concerns/toolSchema.js";
 
 // Auth header descriptors — derived from registry transport.auth, fallback to hardcoded defaults.
 const BEARER = { combined: true, header: "Authorization", scheme: "bearer" };
@@ -117,6 +118,14 @@ export class DefaultExecutor extends BaseExecutor {
     const transformed = this.applyAutoToolRouting(model, this.applyJsonSchemaFallback(this.applyNousAttribution(model, body, stream, credentials)));
 
     if (transformed && typeof transformed === "object") {
+      // A native Responses passthrough skips the request translator, so tool
+      // schemas must be made wire-compatible here for every Responses endpoint.
+      const wireFormat = credentials?.runtimeTransport?.format || this.config?.format;
+      // Only Responses-shaped bodies: a Chat body that happens to be sent to a
+      // Responses-capable provider must keep its Chat tool shape for the translator.
+      if (wireFormat === "openai-responses" && transformed.input !== undefined && !Array.isArray(transformed.messages)) {
+        normalizeResponsesToolBody(transformed);
+      }
       // quirk: some openai-compatible providers reject Anthropic's client_metadata field
       if (this.config.quirks?.dropClientMetadata) {
         delete transformed.client_metadata;

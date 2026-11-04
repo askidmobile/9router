@@ -2,10 +2,19 @@ import { describe, expect, it } from "vitest";
 import {
   openaiResponsesToOpenAIRequest,
 } from "../../open-sse/translator/request/openai-responses.js";
+import "../translator/registerAll.js";
 import { translateRequest } from "../../open-sse/translator/index.js";
 import { openaiToOpenAIResponsesResponse } from "../../open-sse/translator/response/openai-responses.js";
 import { initState } from "../../open-sse/translator/index.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
+
+const ROOT_UNION_TOOL = {
+  type: "function",
+  name: "js",
+  description: "Run JavaScript",
+  parameters: { anyOf: [{ type: "object", properties: { code: { type: "string" } } }, { type: "string" }] },
+  strict: true,
+};
 
 const EXEC_TOOL = {
   type: "custom",
@@ -162,6 +171,82 @@ describe("Codex Responses Lite custom tools → OpenAI Chat", () => {
 
     expect(out.tools.map((tool) => tool.function.name)).toEqual(["search", "exec"]);
     expect(out._customToolNames).toEqual(["exec"]);
+  });
+
+  it("wraps a Responses function root union for Chat Completions", () => {
+    const out = openaiResponsesToOpenAIRequest("gpt-6-astra", {
+      input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "Run" }] }],
+      tools: [ROOT_UNION_TOOL],
+    }, true, null);
+
+    expect(out.tools[0].function.parameters).toEqual({
+      type: "object",
+      properties: { input: ROOT_UNION_TOOL.parameters },
+      required: ["input"],
+      additionalProperties: false,
+    });
+    // The union cannot satisfy strict mode; keep the schema, drop strict.
+    expect(out.tools[0].function.strict).toBe(false);
+  });
+
+  it("keeps Chat tools on the Responses wire and merges additional_tools", () => {
+    const out = translateRequest(FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, "gpt-6-astra", {
+      messages: [{ role: "user", content: "Run" }],
+      tools: [ROOT_UNION_TOOL],
+    }, false, null);
+
+    expect(out.tools[0]).toMatchObject({
+      type: "function",
+      name: "js",
+      strict: false,
+      parameters: {
+        type: "object",
+        properties: { input: ROOT_UNION_TOOL.parameters },
+      },
+    });
+  });
+
+  it("merges Responses additional_tools when converting chat to Responses", () => {
+    const out = translateRequest(FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, "gpt-6-astra", {
+      messages: [{ role: "user", content: "Run" }],
+      tools: [{ type: "function", function: { name: "read", parameters: { type: "object", properties: {} } } }],
+      input: [{ type: "additional_tools", tools: [EXEC_TOOL] }],
+    }, true, null);
+
+    expect(out.tools.map((t) => t.name)).toEqual(["read", "exec"]);
+  });
+
+  it("preserves tool_choice and parallel_tool_calls when converting to Responses", () => {
+    const out = translateRequest(FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, "gpt-6-astra", {
+      messages: [{ role: "user", content: "Run" }],
+      tools: [{ type: "function", function: { name: "read", parameters: { type: "object", properties: {} } } }],
+      tool_choice: { type: "function", function: { name: "read" } },
+      parallel_tool_calls: false,
+    }, true, null);
+
+    expect(out.tool_choice).toEqual({ type: "function", name: "read" });
+    expect(out.parallel_tool_calls).toBe(false);
+  });
+
+  it("keeps Responses-only tool extensions", () => {
+    const out = translateRequest(FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, "gpt-6-astra", {
+      messages: [{ role: "user", content: "Run" }],
+      tools: [{ type: "function", function: { name: "read", parameters: { type: "object", properties: {} } }, defer_loading: true }],
+    }, true, null);
+
+    expect(out.tools[0].defer_loading).toBe(true);
+  });
+
+  it("dedupes Responses tools repeated in tools[] and input.additional_tools", () => {
+    const read = { type: "function", function: { name: "read", parameters: { type: "object", properties: {} } } };
+    const readFlat = { type: "function", name: "read", parameters: { type: "object", properties: {} } };
+    const out = translateRequest(FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, "gpt-6-astra", {
+      messages: [{ role: "user", content: "Run" }],
+      tools: [read],
+      input: [{ type: "additional_tools", tools: [readFlat, { type: "function", name: "write", parameters: { type: "object", properties: {} } }] }],
+    }, true, null);
+
+    expect(out.tools.map((t) => t.name)).toEqual(["read", "write"]);
   });
 });
 

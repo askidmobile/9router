@@ -13,6 +13,7 @@ import {
   coerceResponsesOutput,
 } from "../formats/responsesApi.js";
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM } from "../schema/index.js";
+import { normalizeToolParameters, normalizeToolStrict, normalizeResponsesToolChoice } from "../concerns/toolSchema.js";
 
 const MAX_TOOL_NAME_LEN = 128;
 
@@ -232,13 +233,14 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
         }
         // Responses API function tool: { type: "function", name, description, parameters }
         // Only convert when a non-empty name is present; skip hosted tools without one.
+        const parameters = normalizeToolParameters(tool.parameters ?? tool.function?.parameters);
         return {
           type: OPENAI_BLOCK.FUNCTION,
           function: {
             name,
             description: String(tool.description || ""),
-            parameters: normalizeToolParameters(tool.parameters),
-            strict: tool.strict
+            parameters,
+            strict: normalizeToolStrict(parameters, tool.strict)
           }
         };
       })
@@ -285,13 +287,67 @@ function extractInstructionsText(content) {
   return "";
 }
 
-/**
- * Ensure object schema always has properties field (required by Codex Responses API)
- */
-function normalizeToolParameters(params) {
-  if (!params) return { type: "object", properties: {} };
-  if (params.type === "object" && !params.properties) return { ...params, properties: {} };
-  return params;
+// Flatten Codex namespace wrappers and return the real tool declarations.
+function flattenToolNamespaces(list, toolNamespaces = null) {
+  const out = [];
+  const walk = (items, namespace = null) => {
+    for (const tool of items ?? []) {
+      if (tool?.type === RESPONSES_ITEM.TOOL_NAMESPACE && Array.isArray(tool.tools)) {
+        walk(tool.tools, tool.name || namespace);
+        continue;
+      }
+      const name = tool?.name || tool?.function?.name;
+      if (namespace && name && toolNamespaces) toolNamespaces.set(name, namespace);
+      out.push(tool);
+    }
+  };
+  walk(list);
+  return out;
+}
+
+// Normalize either a Chat-Completions tool ({type:"function", function:{...}})
+// or a Responses tool ({type:"function", name, parameters}) to the flat Responses
+// declaration OpenAI's /responses endpoint accepts. Non-function tools pass through.
+function toResponsesTool(tool) {
+  if (!tool || typeof tool !== "object" || Array.isArray(tool)) return null;
+  if (tool.type !== OPENAI_BLOCK.FUNCTION) return tool;
+  const fn = tool.function && typeof tool.function === "object" && !Array.isArray(tool.function) ? tool.function : null;
+  const name = String(fn?.name ?? tool.name ?? "").trim();
+  if (!name) return null;
+  const description = fn?.description ?? tool.description;
+  const parameters = normalizeToolParameters(fn?.parameters ?? tool.parameters);
+  const requestedStrict = typeof (fn?.strict ?? tool.strict) === "boolean" ? (fn?.strict ?? tool.strict) : undefined;
+  const strict = normalizeToolStrict(parameters, requestedStrict);
+  // Keep Responses-only extensions (defer_loading, output_schema, …); only the
+  // fields that differ between the Chat and Responses declarations are replaced.
+  const { function: _fn, ...rest } = tool;
+  return {
+    ...rest,
+    type: OPENAI_BLOCK.FUNCTION,
+    name: name.slice(0, MAX_TOOL_NAME_LEN),
+    description: String(description || ""),
+    parameters,
+    ...(strict === undefined ? {} : { strict })
+  };
+}
+
+// Collect top-level tools + input[] additional_tools, flatten namespaces and
+// dedupe by name. Codex Lite sends the same declarations in both places.
+function collectResponsesTools(body, toolNamespaces = null) {
+  const additional = Array.isArray(body?.input)
+    ? body.input.flatMap((item) => item?.type === RESPONSES_ITEM.ADDITIONAL_TOOLS && Array.isArray(item.tools) ? item.tools : [])
+    : [];
+  const seen = new Set();
+  return flattenToolNamespaces([...(Array.isArray(body?.tools) ? body.tools : []), ...additional], toolNamespaces)
+    .map(toResponsesTool)
+    .filter(Boolean)
+    .filter((tool) => {
+      const name = tool?.name || tool?.function?.name;
+      if (!name) return true;
+      if (seen.has(name)) return false;
+      seen.add(name);
+      return true;
+    });
 }
 
 /**
@@ -338,6 +394,15 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
   // Body already in Responses API format (e.g. Cursor CLI calling /chat/completions with input[])
   if (body.input) {
     const out = { ...body, model, stream: true };
+    const toolNamespaces = new Map();
+    const tools = collectResponsesTools(out, toolNamespaces);
+    if (tools.length > 0) out.tools = tools;
+    else if (Array.isArray(out.tools) && out.tools.length === 0) delete out.tools;
+    if (Array.isArray(out.input)) {
+      out.input = out.input.filter((item) => item?.type !== RESPONSES_ITEM.ADDITIONAL_TOOLS);
+    }
+    if (out.tool_choice) out.tool_choice = normalizeResponsesToolChoice(out.tool_choice);
+    if (toolNamespaces.size > 0) out._toolNamespaces = [...toolNamespaces];
     if (out.max_output_tokens === undefined) {
       if (out.max_completion_tokens !== undefined) out.max_output_tokens = out.max_completion_tokens;
       else if (out.max_tokens !== undefined) out.max_output_tokens = out.max_tokens;
@@ -441,24 +506,12 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
     result.instructions = "";
   }
 
-  // Convert tools format
-  if (body.tools && Array.isArray(body.tools)) {
-    result.tools = body.tools.map(tool => {
-      if (tool.type === OPENAI_BLOCK.FUNCTION) {
-        // Strict upstreams reject nameless/overlong tool declarations
-        const name = typeof tool.function?.name === "string" ? tool.function.name.trim() : "";
-        if (!name) return null;
-        return {
-          type: OPENAI_BLOCK.FUNCTION,
-          name: name.slice(0, MAX_TOOL_NAME_LEN),
-          description: String(tool.function.description || ""),
-          parameters: normalizeToolParameters(tool.function.parameters),
-          strict: tool.function.strict
-        };
-      }
-      return tool;
-    }).filter(Boolean);
-  }
+  // Convert tools format. Responses callers may put the same list in input[]
+  // additional_tools and top-level tools; keep the unique union by name.
+  const toolNamespaces = new Map();
+  const tools = collectResponsesTools(body, toolNamespaces);
+  if (tools.length > 0) result.tools = tools;
+  if (toolNamespaces.size > 0) result._toolNamespaces = [...toolNamespaces];
 
   // Pass through other relevant fields
   if (body.temperature !== undefined) result.temperature = body.temperature;
@@ -474,6 +527,8 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
   if (body.reasoning_effort !== undefined) result.reasoning = { effort: body.reasoning_effort, summary: "auto" };
   if (body.service_tier !== undefined) result.service_tier = body.service_tier;
   if (body.prompt_cache_key !== undefined) result.prompt_cache_key = body.prompt_cache_key;
+  if (body.tool_choice !== undefined) result.tool_choice = normalizeResponsesToolChoice(body.tool_choice);
+  if (body.parallel_tool_calls !== undefined) result.parallel_tool_calls = body.parallel_tool_calls;
 
   return result;
 }

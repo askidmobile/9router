@@ -1,21 +1,28 @@
-// OpenAI TTS — model format: "tts-model/voice"
+// OpenAI TTS — model format: "tts-model/voice" (a bare voice keeps the default model).
 import { Buffer } from "node:buffer";
-import { PROVIDER_MEDIA } from "../../providers/index.js";
+import { PROVIDER_MEDIA, PROVIDER_MODELS } from "../../providers/index.js";
+import { getTtsVoicesForModel } from "../../config/ttsModels.js";
+import { parseModelVoice } from "./_base.js";
 
 const DEFAULT_TTS_MODEL = PROVIDER_MEDIA["openai"]?.ttsConfig?.defaultModel;
+
+function ttsModels() {
+  return (PROVIDER_MODELS.openai || []).filter((m) => (m.kind || m.type) === "tts");
+}
 
 export default {
   async synthesize(text, model, credentials) {
     if (!credentials?.apiKey) throw new Error("No OpenAI API key configured");
-
-    let ttsModel = DEFAULT_TTS_MODEL;
-    let voice = "alloy";
-    if (model && model.includes("/")) {
-      const parts = model.split("/");
-      if (parts.length === 2) [ttsModel, voice] = parts;
-    } else if (model) {
-      voice = model;
+    // Legacy form: a bare voice id keeps the default model.
+    if (model && !model.includes("/") && !ttsModels().some((m) => m.id === model)) {
+      model = `${DEFAULT_TTS_MODEL}/${model}`;
     }
+
+    const known = ttsModels();
+    const { modelId, voiceId } = parseModelVoice(model, DEFAULT_TTS_MODEL, "", known);
+    const ttsModel = modelId || DEFAULT_TTS_MODEL;
+    const knownVoice = (getTtsVoicesForModel("openai", ttsModel) || []).some((v) => v.id === voiceId);
+    const voice = knownVoice ? voiceId : "alloy";
 
     const baseUrl = (credentials.baseUrl || "https://api.openai.com").replace(/\/+$/, "");
     const res = await fetch(`${baseUrl}/v1/audio/speech`, {

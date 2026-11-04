@@ -1,5 +1,6 @@
 // OpenAI helper functions for translator
 import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK, VALID_OPENAI_CONTENT_TYPES, VALID_OPENAI_MESSAGE_TYPES } from "../schema/index.js";
+import { normalizeToolParameters, normalizeToolStrict } from "../concerns/toolSchema.js";
 
 // Re-export valid-type lists (moved to schema/blocks.js) to keep existing importers working.
 export { VALID_OPENAI_CONTENT_TYPES, VALID_OPENAI_MESSAGE_TYPES };
@@ -84,9 +85,26 @@ export function filterToOpenAIFormat(body, opts = {}) {
 
   // Normalize tools to OpenAI format (from Claude, Gemini, etc.)
   if (body.tools && Array.isArray(body.tools) && body.tools.length > 0) {
-    body.tools = body.tools.map(tool => {
+    const additional = Array.isArray(body.input)
+      ? body.input.flatMap((item) => item?.type === "additional_tools" && Array.isArray(item.tools) ? item.tools : [])
+      : [];
+    body.tools = [...body.tools, ...additional].map(tool => {
       // Already OpenAI format
-      if (tool.type === OPENAI_BLOCK.FUNCTION && tool.function) return tool;
+      if (tool.type === OPENAI_BLOCK.FUNCTION && tool.function) {
+        const rawParameters = tool.function.parameters ?? tool.parameters;
+        // Chat Completions treats omitted parameters as an empty list; keep it
+        // omitted rather than adding a field the client never sent.
+        if (rawParameters === undefined) return tool;
+        const parameters = normalizeToolParameters(rawParameters);
+        return {
+          ...tool,
+          function: {
+            ...tool.function,
+            parameters,
+            ...(tool.function.strict === true ? { strict: normalizeToolStrict(parameters, true) } : {})
+          }
+        };
+      }
       
       // Claude format: {name, description, input_schema}
       if (tool.name && (tool.input_schema || tool.description)) {
@@ -95,7 +113,7 @@ export function filterToOpenAIFormat(body, opts = {}) {
           function: {
             name: tool.name,
             description: String(tool.description || ""),
-            parameters: tool.input_schema || { type: "object", properties: {} }
+            parameters: normalizeToolParameters(tool.input_schema) || { type: "object", properties: {} }
           }
         };
       }
@@ -107,7 +125,7 @@ export function filterToOpenAIFormat(body, opts = {}) {
           function: {
             name: fn.name,
             description: String(fn.description || ""),
-            parameters: fn.parameters || { type: "object", properties: {} }
+            parameters: normalizeToolParameters(fn.parameters) || { type: "object", properties: {} }
           }
         }));
       }

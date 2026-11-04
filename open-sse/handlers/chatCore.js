@@ -11,7 +11,7 @@ import { getModelTargetFormat, getModelSupportedFormats, getModelStrip, getModel
 import { PROVIDERS } from "../config/providers.js";
 import { createErrorResult, parseUpstreamError, formatProviderError } from "../utils/error.js";
 import { upstreamResponseHeaders } from "../utils/upstreamHeaders.js";
-import { HTTP_STATUS, TOKEN_SAVER_HEADER } from "../config/runtimeConfig.js";
+import { HTTP_STATUS, OPENAI_CHAT_TOOL_LIMIT, TOKEN_SAVER_HEADER } from "../config/runtimeConfig.js";
 import { handleBypassRequest } from "../utils/bypassHandler.js";
 import { trackPendingRequest, appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
 import { getExecutor } from "../executors/index.js";
@@ -107,8 +107,17 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // translated to the Responses body (`input`) yet POSTed to the default Chat
   // Completions URL, and upstream rejects it: "unknown parameter `input`".
   const modelTargetTransport = modelTargetFormat ? resolveTransport(provider, modelTargetFormat) : null;
+  // OpenAI caps Chat Completions at 128 tools; /responses accepts more. A client
+  // with a larger catalogue (ZCode sends 179) would otherwise get a deterministic
+  // 400 before the model runs. The Responses transport carries the same tools.
+  const exceedsChatToolLimit = provider === "openai"
+    && Array.isArray(body.tools) && body.tools.length > OPENAI_CHAT_TOOL_LIMIT
+    && sourceFormat === FORMATS.OPENAI;
+  const effectiveSourceTransport = exceedsChatToolLimit
+    ? resolveTransport(provider, FORMATS.OPENAI_RESPONSES)
+    : runtimeTransport;
   const useTransport = (!modelSupportedFormats || modelSupportedFormats.includes(sourceFormat))
-    ? runtimeTransport
+    ? effectiveSourceTransport
     : modelTargetTransport;
   // A source-format-matched endpoint keeps the request lossless. Prefer it
   // over a model-level targetFormat, which is only the fallback for clients

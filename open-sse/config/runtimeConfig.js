@@ -1,3 +1,7 @@
+// OpenAI Chat Completions rejects tools arrays longer than this. The Responses
+// API has no such cap (verified live: 179 tools accepted on 2026-11-04).
+export const OPENAI_CHAT_TOOL_LIMIT = 128;
+
 // HTTP status codes
 export const HTTP_STATUS = {
   BAD_REQUEST: 400,

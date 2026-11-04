@@ -27,8 +27,33 @@ export default {
     baseUrl: "https://api.openai.com/v1/chat/completions",
     forceStream: true,
   },
+  transports: [
+    {
+      format: "openai",
+      baseUrl: "https://api.openai.com/v1/chat/completions",
+    },
+    {
+      format: "openai-responses",
+      baseUrl: "https://api.openai.com/v1/responses",
+    },
+  ],
   models: [
     { id: "gpt-5.5", name: "GPT-5.5" },
+    // These reject function tools on /chat/completions ("Function tools with
+    // reasoning_effort are not supported ... in /v1/chat/completions") and the
+    // -pro models are not served there at all. Verified live 2026-11-04.
+    { id: "gpt-6.1-terra", name: "GPT-6.1 Terra", targetFormat: "openai-responses", supportedFormats: ["openai-responses"] },
+    { id: "gpt-6.1-sol", name: "GPT-6.1 Sol", targetFormat: "openai-responses", supportedFormats: ["openai-responses"] },
+    { id: "gpt-6-luna", name: "GPT-6 Luna", targetFormat: "openai-responses", supportedFormats: ["openai-responses"] },
+    { id: "gpt-6-sol", name: "GPT-6 Sol", targetFormat: "openai-responses", supportedFormats: ["openai-responses"] },
+    { id: "gpt-6-astra", name: "GPT-6 Astra", targetFormat: "openai-responses", supportedFormats: ["openai-responses"] },
+    { id: "gpt-5.6-luna", name: "GPT-5.6 Luna", targetFormat: "openai-responses", supportedFormats: ["openai-responses"] },
+    { id: "gpt-5.6-sol", name: "GPT-5.6 Sol", targetFormat: "openai-responses", supportedFormats: ["openai-responses"] },
+    { id: "gpt-5.6-terra", name: "GPT-5.6 Terra", targetFormat: "openai-responses", supportedFormats: ["openai-responses"] },
+    { id: "gpt-5-pro", name: "GPT-5 Pro", targetFormat: "openai-responses", supportedFormats: ["openai-responses"] },
+    { id: "gpt-5.4-pro", name: "GPT-5.4 Pro", targetFormat: "openai-responses", supportedFormats: ["openai-responses"] },
+    { id: "gpt-5.5-pro", name: "GPT-5.5 Pro", targetFormat: "openai-responses", supportedFormats: ["openai-responses"] },
+    { id: "o3-pro", name: "O3 Pro", targetFormat: "openai-responses", supportedFormats: ["openai-responses"] },
     { id: "gpt-5.4", name: "GPT-5.4" },
     { id: "gpt-5.4-mini", name: "GPT-5.4 Mini" },
     { id: "gpt-5.4-nano", name: "GPT-5.4 Nano" },
@@ -45,7 +70,6 @@ export default {
     { id: "gpt-4.1-nano", name: "GPT-4.1 Nano" },
     { id: "o3", name: "O3" },
     { id: "o3-mini", name: "O3 Mini" },
-    { id: "o3-pro", name: "O3 Pro" },
     { id: "o4-mini", name: "O4 Mini" },
     { id: "o1", name: "O1" },
     { id: "o1-mini", name: "O1 Mini" },
