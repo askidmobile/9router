@@ -83,6 +83,19 @@ export function normalizeResponsesToolChoice(choice) {
  * namespaces, dedupe names, wrap root unions and relax impossible strict mode.
  */
 export function normalizeResponsesToolBody(body) {
+  // Belt-and-braces: /responses only accepts reasoning.effort. A client or an
+  // earlier pipeline stage may still carry the Chat-shaped top-level field.
+  if (body && typeof body === "object" && body.reasoning_effort !== undefined) {
+    const effort = body.reasoning_effort;
+    if (effort !== "none" && effort !== undefined && effort !== null) {
+      const current = body.reasoning && typeof body.reasoning === "object" && !Array.isArray(body.reasoning)
+        ? body.reasoning
+        : {};
+      body.reasoning = { ...current, effort };
+      if (!body.reasoning.summary) body.reasoning.summary = "auto";
+    }
+    delete body.reasoning_effort;
+  }
   if (!body || typeof body !== "object") return body;
   if (!Array.isArray(body.tools)) {
     if (body.tool_choice) body.tool_choice = normalizeResponsesToolChoice(body.tool_choice);

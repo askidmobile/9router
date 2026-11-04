@@ -35,6 +35,9 @@ export default {
     {
       format: "openai-responses",
       baseUrl: "https://api.openai.com/v1/responses",
+      // Responses nests effort as reasoning.effort and rejects the Chat-shaped
+      // top-level reasoning_effort outright.
+      thinkingFormat: "openai-responses",
     },
   ],
   models: [

@@ -237,6 +237,17 @@ describe("Codex Responses Lite custom tools → OpenAI Chat", () => {
     expect(out.tools[0].defer_loading).toBe(true);
   });
 
+  it("translates Chat reasoning_effort into reasoning.effort for the Responses wire", () => {
+    const out = translateRequest(FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, "gpt-6-astra", {
+      messages: [{ role: "user", content: "Run" }],
+      tools: [{ type: "function", function: { name: "read", parameters: { type: "object", properties: {} } } }],
+      reasoning_effort: "xhigh",
+    }, true, {}, "openai");
+
+    expect(out.reasoning_effort).toBeUndefined();
+    expect(out.reasoning).toMatchObject({ effort: "xhigh" });
+  });
+
   it("dedupes Responses tools repeated in tools[] and input.additional_tools", () => {
     const read = { type: "function", function: { name: "read", parameters: { type: "object", properties: {} } } };
     const readFlat = { type: "function", name: "read", parameters: { type: "object", properties: {} } };

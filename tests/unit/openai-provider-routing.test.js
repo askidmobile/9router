@@ -10,6 +10,11 @@ describe("OpenAI provider endpoint routing", () => {
     expect(PROVIDERS.openai.transports?.map((t) => t.format)).toEqual(["openai", "openai-responses"]);
   });
 
+  it("declares the Responses thinking format so effort is nested, not top-level", () => {
+    const responses = PROVIDERS.openai.transports.find((t) => t.format === FORMATS.OPENAI_RESPONSES);
+    expect(responses.thinkingFormat).toBe("openai-responses");
+  });
+
   it.each([
     "gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-6.1-sol", "gpt-6.1-terra",
     "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",

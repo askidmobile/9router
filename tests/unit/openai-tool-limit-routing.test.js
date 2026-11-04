@@ -67,7 +67,7 @@ function chatTools(count) {
   }));
 }
 
-async function route({ model = "gpt-4o", toolCount = 1, sourceFormat = "openai" } = {}) {
+async function route({ model = "gpt-4o", toolCount = 1, sourceFormat = "openai", providerThinking } = {}) {
   executeMock.mockResolvedValueOnce({
     response: new Response(JSON.stringify(RESPONSE_BY_FORMAT[sourceFormat]), {
       status: 200,
@@ -103,6 +103,7 @@ async function route({ model = "gpt-4o", toolCount = 1, sourceFormat = "openai" 
     credentials,
     connectionId: "openai-route-test",
     sourceFormatOverride: sourceFormat,
+    providerThinking,
     log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn() },
   });
 
@@ -145,5 +146,26 @@ describe("OpenAI tool-count transport guard (real handleChatCore)", () => {
   it("routes GPT-6 tool requests to Responses even under the limit", async () => {
     const { runtimeTransport } = await route({ model: "gpt-6-astra", toolCount: 2 });
     expect(runtimeTransport?.baseUrl).toBe(RESPONSES_URL);
+  });
+
+  it("nests a server-side thinking mode as reasoning.effort on the Responses wire", async () => {
+    const { runtimeTransport, sentBody } = await route({
+      model: "gpt-6-astra",
+      toolCount: 3,
+      providerThinking: { mode: "xhigh" },
+    });
+    expect(runtimeTransport?.baseUrl).toBe(RESPONSES_URL);
+    expect(sentBody.reasoning_effort).toBeUndefined();
+    expect(sentBody.reasoning).toMatchObject({ effort: "xhigh" });
+  });
+
+  it("does not invent a reasoning field when the client asked for none", async () => {
+    const { runtimeTransport, sentBody } = await route({
+      model: "gpt-6-astra",
+      toolCount: 179,
+    });
+    expect(runtimeTransport?.baseUrl).toBe(RESPONSES_URL);
+    expect(sentBody.reasoning_effort).toBeUndefined();
+    expect(sentBody.reasoning).toBeUndefined();
   });
 });

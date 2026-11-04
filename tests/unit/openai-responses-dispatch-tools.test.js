@@ -72,6 +72,17 @@ describe("OpenAI Responses dispatch-time tool normalization", () => {
     expect(tools[0].strict).toBe(true);
   });
 
+  it("moves Chat-shaped reasoning effort to reasoning.effort for Responses", () => {
+    const out = new DefaultExecutor("openai").transformRequest(
+      "gpt-6-astra",
+      { input: "hi", reasoning_effort: "xhigh", tools: [UNION_TOOL] },
+      true,
+      { runtimeTransport: { format: "openai-responses" } },
+    );
+    expect(out.reasoning_effort).toBeUndefined();
+    expect(out.reasoning).toMatchObject({ effort: "xhigh" });
+  });
+
   it("leaves Chat Completions bodies untouched", () => {
     const body = { messages: [{ role: "user", content: "hi" }], tools: [UNION_TOOL] };
     const out = new DefaultExecutor("openai").transformRequest("gpt-4o", structuredClone(body), false, {});

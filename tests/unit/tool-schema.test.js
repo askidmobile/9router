@@ -77,6 +77,26 @@ describe("toolSchema — OpenAI function tool compatibility", () => {
       .toEqual({ type: "custom", name: "exec" });
   });
 
+  it("moves top-level reasoning_effort into reasoning.effort", () => {
+    const body = { input: "hi", reasoning_effort: "xhigh" };
+    normalizeResponsesToolBody(body);
+    expect(body.reasoning_effort).toBeUndefined();
+    expect(body.reasoning).toEqual({ effort: "xhigh", summary: "auto" });
+  });
+
+  it("drops reasoning_effort for a disabled effort instead of sending it", () => {
+    const body = { input: "hi", reasoning_effort: "none" };
+    normalizeResponsesToolBody(body);
+    expect(body.reasoning_effort).toBeUndefined();
+    expect(body.reasoning).toBeUndefined();
+  });
+
+  it("keeps an existing reasoning summary when migrating effort", () => {
+    const body = { input: "hi", reasoning_effort: "low", reasoning: { summary: "detailed" } };
+    normalizeResponsesToolBody(body);
+    expect(body.reasoning).toEqual({ summary: "detailed", effort: "low" });
+  });
+
   it("normalizes tool_choice without touching tools", () => {
     const body = { input: "hi", tool_choice: { type: "function", function: { name: "read" } } };
     normalizeResponsesToolBody(body);
