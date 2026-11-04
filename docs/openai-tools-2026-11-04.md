@@ -59,3 +59,22 @@ Live probes against `api.openai.com` on 2026-11-04:
 - Not every catalog model was exercised through 9router; model-level routing was verified for GPT-6, GPT-5.6, GPT-5.4 and GPT-4o, and the remaining Responses-only entries match live endpoint probes.
 - GPT-6/5.6/`-pro` requests now always use `/v1/responses`, including clients that previously received Chat-shaped JSON; the response is translated back to the client format by the existing pipeline.
 - Tool-schema normalization can downgrade `strict` to `false` for schemas that cannot satisfy OpenAI's strict subset. The schema itself is preserved.
+
+## Follow-up: reasoning effort shape (same day)
+
+ZCode's next request failed with:
+
+```
+[400]: Unsupported parameter: 'reasoning_effort'. In the Responses API, this parameter has moved to 'reasoning.effort'.
+```
+
+The new Responses transport did not declare `thinkingFormat`, so `applyThinking` kept the Chat-shaped top-level field. The transport now declares `thinkingFormat: "openai-responses"`, and the dispatch normalizer migrates any leftover `reasoning_effort` into `reasoning.effort` (dropping it for a disabled effort).
+
+- Source revision: `cc4506be`.
+- Image: `9router-local:openai-reasoning-20261104-cc4506be`, ID `sha256:e4a46664df0d8d3fb059d5bd13513842c778205f551865e5b62ea23890bf924e`.
+- Rollback container: `9router-rollback` (previous image `sha256:2bfab0e18b12383dd7f2cc20c0456546b1b5ebe17f16d0835ea50cbd8701fc79`).
+- Tests: 643 focused passed (14 expected failures, 74 skipped); full unit suite 5070 passed with the same 10 pre-existing failures.
+- Built standalone server passed the ZCode shape (179 tools + `reasoning_effort: xhigh`, SSE with `[DONE]`), a Responses request with the union `js` tool, and `xhigh`/`high`/`low` across GPT-6 Astra, GPT-5.4 and GPT-4o.
+- Post-deploy public HTTPS: 179-tool ZCode-shaped SSE request HTTP 200 with `OK` and `[DONE]`; streaming `tool_choice: "required"` returned `get_weather` with `finish_reason: "tool_calls"`; union-schema Responses request HTTP 200 `completed`.
+- Container healthy, restart count 0, SQLite `quick_check=ok`; 54 connections, 16 keys and 12 combos preserved.
+- Unrelated 400s in the log are CommandCode `insufficient credits` from an existing Kimi combo member, not this change.
