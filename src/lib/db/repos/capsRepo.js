@@ -1,4 +1,5 @@
 import { makeKv } from "../helpers/kvStore.js";
+import { bumpCatalogRevision } from "../helpers/revision.js";
 
 const capsKv = makeKv("modelCaps");
 const SOURCE_RANK = { provider: 4, "manufacturer-docs": 3, "models.dev": 2, openrouter: 1 };
@@ -62,12 +63,14 @@ export async function setCapsOverride(provider, model, caps) {
     ]));
     return { ...record, manual: caps, manualSources };
   });
+  bumpCatalogRevision();
 }
 export async function deleteCapsOverride(provider, model) {
   await capsKv.updateMany([capsKey(provider, model)], previous => {
     const record = layers(previous);
     return Object.keys(record.automatic).length ? { ...record, manual: {}, manualSources: {} } : null;
   });
+  bumpCatalogRevision();
 }
 // Catalog refresh only writes the automatic layer. Missing fields retain their last observation.
 export async function setCapsOverridesBulk(provider, entries, options = {}) {
@@ -87,4 +90,5 @@ export async function setCapsOverridesBulk(provider, entries, options = {}) {
     }
     return { ...record, automatic, sources };
   });
+  bumpCatalogRevision();
 }

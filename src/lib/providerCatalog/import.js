@@ -145,7 +145,9 @@ export async function importProviderCatalog({ connection, targets = VALID_TARGET
     if (wanted.includes("pricing")) {
       const pricing = {};
       for (const [id, model] of Object.entries(fallback.models)) if (model.pricing) pricing[id] = model.pricing;
-      if (Object.keys(pricing).length) await updatePricing({ [alias]: pricing });
+      if (Object.keys(pricing).length) {
+        await updatePricing({ [alias]: pricing }, { source: "models.dev", updatedAt: new Date().toISOString() });
+      }
       response.pricing = { imported: Object.keys(pricing).length };
     }
     if (wanted.includes("caps")) {
@@ -198,7 +200,7 @@ export async function importProviderCatalog({ connection, targets = VALID_TARGET
     }
   }
   if (wanted.includes("pricing") && Object.keys(pricing).length) {
-    await updatePricing({ [alias]: pricing });
+    await updatePricing({ [alias]: pricing }, { source: "provider", updatedAt });
   }
   if (wanted.includes("caps") && Object.keys(caps).length) {
     await setCapsOverridesBulk(alias, caps, { sources });

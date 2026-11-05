@@ -3,63 +3,11 @@ import {
   getProviderConnections,
   updateProviderConnection,
 } from "@/lib/localDb";
-import { listComboHealth } from "open-sse/services/comboHealth.js";
-import { toPublicComboCircuit } from "@/shared/utils/comboHealth";
-
-const MODEL_LOCK_PREFIX = "modelLock_";
-
-function getActiveModelLocks(connection) {
-  const now = Date.now();
-  return Object.entries(connection)
-    .filter(([key, value]) => key.startsWith(MODEL_LOCK_PREFIX) && value)
-    .map(([key, value]) => ({
-      key,
-      model: key.slice(MODEL_LOCK_PREFIX.length) || "__all",
-      until: value,
-      active: new Date(value).getTime() > now,
-    }))
-    .filter((lock) => lock.active);
-}
+import { getModelAvailability, MODEL_LOCK_PREFIX } from "@/lib/modelAvailability.js";
 
 export async function GET() {
   try {
-    const [connections, comboHealth] = await Promise.all([
-      getProviderConnections(),
-      listComboHealth(),
-    ]);
-    const models = [];
-
-    for (const connection of connections) {
-      const locks = getActiveModelLocks(connection);
-      for (const lock of locks) {
-        models.push({
-          provider: connection.provider,
-          model: lock.model,
-          status: "cooldown",
-          until: lock.until,
-          connectionId: connection.id,
-          connectionName: connection.name || connection.email || connection.id,
-          lastError: connection.lastError || null,
-        });
-      }
-
-      if (locks.length === 0 && connection.testStatus === "unavailable") {
-        models.push({
-          provider: connection.provider,
-          model: "__all",
-          status: "unavailable",
-          connectionId: connection.id,
-          connectionName: connection.name || connection.email || connection.id,
-          lastError: connection.lastError || null,
-        });
-      }
-    }
-
-    return NextResponse.json({
-      models,
-      unavailableCount: models.length,
-      comboCircuits: comboHealth.map(toPublicComboCircuit).filter(Boolean),
-    });
+    return NextResponse.json(await getModelAvailability());
   } catch (error) {
     console.error("[API] Failed to get model availability:", error);
     return NextResponse.json(

@@ -1,6 +1,8 @@
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { makeKv } from "../helpers/kvStore.js";
+import { bumpCatalogRevision } from "../helpers/revision.js";
+import { setPricingMeta, getPricingMeta, clearPricingMeta, pricingSourceRank } from "./pricingMetaRepo.js";
 
 const pricingKv = makeKv("pricing");
 const CACHE_TTL_MS = 5000;
@@ -66,11 +68,39 @@ export async function getPricingForModel(provider, model) {
   return resolveConst(provider, model);
 }
 
-// Atomic merge inside transaction (per-provider read-modify-write)
-export async function updatePricing(pricingData) {
+// Atomic merge inside transaction (per-provider read-modify-write).
+//
+// `options` records provenance for every model written in this batch
+// (`{ source, updatedAt, url }`). It is optional so the existing call sites keep
+// working; without it the numbers are still stored, they just stay unattributed.
+export async function updatePricing(pricingData, options = {}) {
   const db = await getAdapter();
-  db.transaction(() => {
+
+  // Provenance ranks gate the numbers too, not just the label: a models.dev
+  // import must not replace rates a provider's own catalog published, or the
+  // dashboard would show provider numbers under a models.dev label (or worse,
+  // models.dev numbers labelled as the provider's).
+  let data = pricingData;
+  if (options.source) {
+    const existing = await getPricingMeta();
+    data = {};
     for (const [provider, models] of Object.entries(pricingData)) {
+      const kept = {};
+      for (const [model, pricing] of Object.entries(models || {})) {
+        const previous = existing[provider]?.[model];
+        if (previous && pricingSourceRank(previous.source) > pricingSourceRank(options.source)) continue;
+        kept[model] = pricing;
+      }
+      if (Object.keys(kept).length) data[provider] = kept;
+    }
+    if (Object.keys(data).length === 0) {
+      invalidate();
+      return await getUserPricing();
+    }
+  }
+
+  db.transaction(() => {
+    for (const [provider, models] of Object.entries(data)) {
       const row = db.get(`SELECT value FROM kv WHERE scope = 'pricing' AND key = ?`, [provider]);
       const current = row ? (parseJson(row.value, {}) || {}) : {};
       const merged = { ...current };
@@ -84,6 +114,13 @@ export async function updatePricing(pricingData) {
     }
   });
   invalidate();
+  if (options.source) {
+    // Only models that actually landed get a new provenance record.
+    for (const [provider, models] of Object.entries(data)) {
+      await setPricingMeta(provider, Object.keys(models || {}), options);
+    }
+  }
+  bumpCatalogRevision();
   return await getUserPricing();
 }
 
@@ -108,11 +145,15 @@ export async function resetPricing(provider, model) {
     }
   });
   invalidate();
+  await clearPricingMeta(provider || null, model || null);
+  bumpCatalogRevision();
   return await getUserPricing();
 }
 
 export async function resetAllPricing() {
   await pricingKv.clear();
   invalidate();
+  await clearPricingMeta();
+  bumpCatalogRevision();
   return {};
 }

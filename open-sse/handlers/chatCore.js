@@ -13,7 +13,7 @@ import { createErrorResult, parseUpstreamError, formatProviderError } from "../u
 import { upstreamResponseHeaders } from "../utils/upstreamHeaders.js";
 import { HTTP_STATUS, OPENAI_CHAT_TOOL_LIMIT, TOKEN_SAVER_HEADER } from "../config/runtimeConfig.js";
 import { handleBypassRequest } from "../utils/bypassHandler.js";
-import { trackPendingRequest, appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
+import { trackPendingRequest, appendRequestLog, saveRequestDetail, recordModelOutcome } from "@/lib/usageDb.js";
 import { getExecutor } from "../executors/index.js";
 import { supportsGrokCliReasoningEffort } from "../config/grokCli.js";
 import { buildRequestDetail, extractRequestConfig } from "./chatCore/requestDetail.js";
@@ -368,10 +368,22 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   const executor = getExecutor(provider);
   trackPendingRequest(model, provider, connectionId, true);
   let pending = true;
+  // Health accounting is best-effort telemetry: neither a storage hiccup nor a
+  // partial test double may fail a request that was actually served.
+  const recordOutcome = (outcome) => {
+    try { recordModelOutcome(outcome); } catch { /* telemetry only */ }
+  };
+
   const trackDone = (error = false) => {
     if (!pending) return;
     pending = false;
     trackPendingRequest(model, provider, connectionId, false, error);
+    // Success is the only outcome recorded here: failures are recorded where the
+    // status code is known (fetch throw / non-OK upstream). A client disconnect
+    // is not the provider's fault and would pollute the error rate.
+    if (!error && !signal?.aborted) {
+      recordOutcome({ provider, model, status: 200, latencyMs: Date.now() - requestStartTime });
+    }
   };
   appendRequestLog({ model, provider, connectionId, status: "PENDING" }).catch(() => { });
 
@@ -464,8 +476,17 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
       // A deadline is a property of this request, not of the provider: report it as 504 so a
       // Combo member stays in rotation (isComboHealthFailure keeps 504 out of the freeze set).
       const errorStatus = isUpstreamTimeoutError(error) ? HTTP_STATUS.GATEWAY_TIMEOUT : HTTP_STATUS.BAD_GATEWAY;
+      const timedOut = isUpstreamTimeoutError(error);
       trackDone(!cancelled);
       appendRequestLog({ model, provider, connectionId, status: `FAILED ${cancelled ? 499 : errorStatus}` }).catch(() => { });
+      recordOutcome({
+        provider, model,
+        status: cancelled ? 499 : errorStatus,
+        latencyMs: Date.now() - requestStartTime,
+        error: error?.message || String(error),
+        timeout: timedOut,
+        cancelled,
+      });
       saveRequestDetail(buildRequestDetail({
         provider, model, connectionId,
         latency: { ttft: 0, total: Date.now() - requestStartTime },
@@ -554,6 +575,11 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
       throwIfAborted(signal);
       trackDone(true);
       appendRequestLog({ model, provider, connectionId, status: `FAILED ${statusCode}` }).catch(() => { });
+      recordOutcome({
+        provider, model, status: statusCode,
+        latencyMs: Date.now() - requestStartTime,
+        error: message,
+      });
 
       // Shape of the tool history we actually sent — the only evidence a
       // request-shape 4xx leaves behind, since the upstream body names the field

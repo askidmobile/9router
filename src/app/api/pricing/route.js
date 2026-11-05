@@ -72,7 +72,8 @@ export async function PATCH(request) {
       }
     }
 
-    const updatedPricing = await updatePricing(body);
+    // Manual edits outrank every automated source (see pricingMetaRepo).
+    const updatedPricing = await updatePricing(body, { source: "manual" });
     return NextResponse.json(updatedPricing);
   } catch (error) {
     console.error("Error updating pricing:", error);

@@ -451,43 +451,61 @@ export function matchPattern(pattern, model) {
 }
 
 /**
- * Resolve pricing for a model using the 4-step fallback chain:
- *   1. PROVIDER_PRICING[provider][model]
- *   2. free namespace (upstream bills $0)
- *   3. MODEL_PRICING[model]
- *   4. PATTERN_PRICING (glob match)
+ * Resolve pricing together with the rung of the fallback chain that answered.
+ *
+ * The source matters as much as the number: a provider's own catalog is the
+ * rate actually charged on this key, while PATTERN_PRICING is a guess from the
+ * model name. The dashboard must not present a guess as a fact.
+ *
+ *   1. PROVIDER_PRICING[provider][model]  → "provider-table"
+ *   2. free namespace (upstream bills $0) → "free"
+ *   3. MODEL_PRICING[model]               → "model-table"
+ *   4. PATTERN_PRICING (glob match)       → "pattern"
+ *   nothing matched                       → { pricing: null, source: null }
+ *
+ * @param {string} provider
+ * @param {string} model
+ * @returns {{ pricing: object|null, source: string|null }}
+ */
+export function resolvePricing(provider, model) {
+  if (!model) return { pricing: null, source: null };
+
+  // 1. Provider-specific override
+  if (provider && PROVIDER_PRICING[provider]?.[model]) {
+    return { pricing: PROVIDER_PRICING[provider][model], source: "provider-table" };
+  }
+
+  // 2. Free namespaces bill $0 regardless of the model name behind them.
+  if (isFreeModel(model)) return { pricing: ZERO_PRICING, source: "free" };
+  if ((provider === "orcarouter" || provider === "orca") && isOrcaRouterFreeModel(model)) {
+    return { pricing: ZERO_PRICING, source: "free" };
+  }
+
+  // 3. Canonical model pricing (strip vendor prefix if needed: "deepseek/deepseek-chat" → "deepseek-chat")
+  const baseModel = model.includes("/") ? model.split("/").pop() : model;
+  if (MODEL_PRICING[baseModel]) return { pricing: MODEL_PRICING[baseModel], source: "model-table" };
+  if (MODEL_PRICING[model]) return { pricing: MODEL_PRICING[model], source: "model-table" };
+
+  // 4. Pattern match
+  for (const { pattern, pricing } of PATTERN_PRICING) {
+    if (matchPattern(pattern, baseModel) || matchPattern(pattern, model)) {
+      return { pricing, source: "pattern" };
+    }
+  }
+
+  return { pricing: null, source: null };
+}
+
+/**
+ * Resolve pricing for a model using the 4-step fallback chain.
+ * Thin wrapper over resolvePricing() for callers that only need the rates.
  *
  * @param {string} provider
  * @param {string} model
  * @returns {object|null}
  */
 export function getPricingForModel(provider, model) {
-  if (!model) return null;
-
-  // 1. Provider-specific override
-  if (provider && PROVIDER_PRICING[provider]?.[model]) {
-    return PROVIDER_PRICING[provider][model];
-  }
-
-  // 2. Free namespaces bill $0 regardless of the model name behind them.
-  if (isFreeModel(model)) return ZERO_PRICING;
-  if ((provider === "orcarouter" || provider === "orca") && isOrcaRouterFreeModel(model)) {
-    return ZERO_PRICING;
-  }
-
-  // 3. Canonical model pricing (strip vendor prefix if needed: "deepseek/deepseek-chat" → "deepseek-chat")
-  const baseModel = model.includes("/") ? model.split("/").pop() : model;
-  if (MODEL_PRICING[baseModel]) return MODEL_PRICING[baseModel];
-  if (MODEL_PRICING[model]) return MODEL_PRICING[model];
-
-  // 4. Pattern match
-  for (const { pattern, pricing } of PATTERN_PRICING) {
-    if (matchPattern(pattern, baseModel) || matchPattern(pattern, model)) {
-      return pricing;
-    }
-  }
-
-  return null;
+  return resolvePricing(provider, model).pricing;
 }
 
 /**

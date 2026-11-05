@@ -126,9 +126,11 @@ describe("POST /api/providers/import-models", () => {
     expect(res.status).toBe(200);
     expect(res.body.source).toBe("provider");
     expect(mocks.fetch).toHaveBeenCalledWith("https://api.cheaperinference.com/v1/models", expect.anything());
-    expect(mocks.updatePricing).toHaveBeenCalledWith({
-      cheaper: { "claude-opus-5.5": { input: 2.6, output: 13, cached: 0.65, cache_creation: 3.25 } },
-    });
+    expect(mocks.updatePricing).toHaveBeenCalledWith(
+      { cheaper: { "claude-opus-5.5": { input: 2.6, output: 13, cached: 0.65, cache_creation: 3.25 } } },
+      // Provenance travels with the numbers: the provider's own catalog wins.
+      expect.objectContaining({ source: "provider" }),
+    );
     expect(mocks.setCapsOverridesBulk).toHaveBeenCalledWith("cheaper", {
       "claude-opus-5.5": { contextWindow: 1000000, maxOutput: 128000, vision: true, reasoning: true, videoInput: false },
     }, expect.objectContaining({ sources: expect.any(Object) }));
@@ -146,7 +148,10 @@ describe("POST /api/providers/import-models", () => {
     expect(res.body.source).toBe("models.dev");
     // The failure of the provider endpoint is reported, not silently swallowed.
     expect(res.body.warning).toContain("404");
-    expect(mocks.updatePricing).toHaveBeenCalledWith({ cheaper: { "m-1": { input: 1, output: 2 } } });
+    expect(mocks.updatePricing).toHaveBeenCalledWith(
+      { cheaper: { "m-1": { input: 1, output: 2 } } },
+      expect.objectContaining({ source: "models.dev" }),
+    );
   });
 
   it("supplements registry model IDs even when both primary catalog lists are missing", async () => {
@@ -182,7 +187,10 @@ describe("field-wise catalog completion", () => {
     expect(caps["free/hy4"]).toMatchObject({contextWindow:900000,maxOutput:64000,vision:false,reasoningLevels:["none","low","high"]});
     expect(options.sources["free/hy4"].contextWindow.source).toBe("provider");
     expect(options.sources["free/hy4"].maxOutput.source).toBe("manufacturer-docs");
-    expect(mocks.updatePricing).toHaveBeenCalledWith({apinex:{"free/hy4":{input:0,output:0}}});
+    expect(mocks.updatePricing).toHaveBeenCalledWith(
+      { apinex: { "free/hy4": { input: 0, output: 0 } } },
+      expect.objectContaining({ source: "provider" }),
+    );
   });
   it("uses exact supplementary OUT/efforts while preserving provider CTX and explicit false", async () => {
     mocks.fetch.mockResolvedValue({ok:true,json:async()=>({data:[{id:"m",context_length:1000000,capabilities:{vision:false}}]})});

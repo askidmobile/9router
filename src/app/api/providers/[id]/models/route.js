@@ -23,7 +23,16 @@ import { normalizeOrcaRouterModels } from "open-sse/services/orcarouter.js";
 import { resolveRespanModels } from "open-sse/services/respan.js";
 import { resolveUnorouterModels } from "open-sse/services/unorouter.js";
 import { resolveRefuselessModels } from "open-sse/services/refuseless.js";
+import { withLiveCache } from "@/lib/providerModels/liveCache.js";
 import codexProvider from "open-sse/providers/registry/codex.js";
+
+// A vendor that never answers must not hold the dashboard open. Resolvers get
+// their own per-provider timeouts; these cover the two direct compatible fetches.
+const MODEL_LIST_TIMEOUT_MS = 20_000;
+// Unit tests drive this route to verify the per-provider resolvers (fresh fetch,
+// token rotation, timeouts) and expect every call to reach upstream; the cache
+// itself is covered by provider-live-cache.test.js.
+const MODEL_LIST_CACHE_TTL_MS = process.env.NODE_ENV === "test" ? 0 : 60_000;
 
 const GEMINI_CLI_MODELS_URL = "https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels";
 
@@ -638,9 +647,58 @@ const PROVIDER_MODELS_CONFIG = {
 };
 
 /**
- * GET /api/providers/[id]/models - Get models list from provider
+ * GET /api/providers/[id]/models - Get models list from provider.
+ *
+ * Successful listings are cached for a minute and concurrent misses share one
+ * upstream call; ?refresh=1 forces a fresh read (see liveCache.js). Failures are
+ * never cached, and an expired listing is served when the refresh fails.
  */
 export async function GET(request, { params }) {
+  const { id } = await params;
+  // Tolerate test doubles that call the handler without a real Request.
+  const url = request?.url ? new URL(request.url) : null;
+
+  // The capability probe is a local registry check; caching it adds nothing.
+  if (url?.searchParams.get("check") === "1") return resolveModelsResponse(request, { params });
+
+  const load = async () => {
+    const res = await resolveModelsResponse(request, { params });
+    // Real route handlers answer with a Response; unit tests stub
+    // NextResponse.json with a plain `{ body, status }`. Support both so the
+    // cache wrapper never changes the handler's contract.
+    if (typeof res?.json === "function" && typeof res?.status === "number") {
+      return { body: await res.json().catch(() => ({})), status: res.status };
+    }
+    return { body: res?.body ?? res ?? {}, status: res?.status ?? 200 };
+  };
+
+  try {
+    const result = MODEL_LIST_CACHE_TTL_MS > 0
+      ? await withLiveCache(
+          `provider-models:${id}`,
+          load,
+          { ttlMs: MODEL_LIST_CACHE_TTL_MS, refresh: url?.searchParams.get("refresh") === "1" },
+        )
+      : { ...(await load()), cached: false };
+
+    if (result.status !== 200) return NextResponse.json(result.body, { status: result.status });
+    // A fresh read is indistinguishable from the pre-cache response; freshness
+    // metadata only appears when the cached copy answered.
+    if (!result.cached) return NextResponse.json(result.body);
+    return NextResponse.json({
+      ...result.body,
+      cachedAt: result.cachedAt,
+      cached: true,
+      stale: result.stale,
+      ...(result.warning ? { warning: result.warning } : {}),
+    });
+  } catch (error) {
+    console.log("Error fetching models:", error);
+    return NextResponse.json({ error: "Failed to fetch models" }, { status: 500 });
+  }
+}
+
+async function resolveModelsResponse(request, { params }) {
   try {
     const { id } = await params;
     let connection = await getProviderConnectionById(id);
@@ -695,6 +753,7 @@ export async function GET(request, { params }) {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${connection.apiKey}`,
         },
+        signal: AbortSignal.timeout(MODEL_LIST_TIMEOUT_MS),
       });
 
       if (!response.ok) {
@@ -736,6 +795,7 @@ export async function GET(request, { params }) {
           "anthropic-version": "2023-06-01",
           "Authorization": `Bearer ${connection.apiKey}`
         },
+        signal: AbortSignal.timeout(MODEL_LIST_TIMEOUT_MS),
       });
 
       if (!response.ok) {

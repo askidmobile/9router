@@ -157,6 +157,19 @@ export async function getProviderModels(providerKeys, options = {}) {
   };
 }
 
+/**
+ * Read the cached catalog without ever touching the network.
+ *
+ * The model catalog endpoint runs on every dashboard load and must stay fast;
+ * getCatalog() would fetch api.json (~5 MB) on a cold instance. Callers that
+ * only want a secondary opinion (cross-source price checks) use this and simply
+ * skip when nothing is cached yet.
+ */
+export async function peekCatalog() {
+  const stored = await readStoredCatalog();
+  return stored.catalog ? { catalog: stored.catalog, fetchedAt: stored.fetchedAt } : { catalog: null, fetchedAt: 0 };
+}
+
 /** Test hook: drop the in-memory cache. */
 export function __resetCacheForTests() {
   memCache = { catalog: null, fetchedAt: 0 };

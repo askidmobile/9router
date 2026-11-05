@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getModelAliases, setModelAlias, getCustomModels } from "@/models";
 import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { getCapsOverrides, getModelNameOverrides } from "@/lib/db/index.js";
+import { catalogRevision } from "@/lib/db/helpers/revision.js";
 import { resolveModelName } from "@/shared/utils/modelNames";
 import { AI_MODELS } from "@/shared/constants/config";
 import { getProviderAlias, getProviderByAlias } from "@/shared/constants/providers";
@@ -10,13 +11,19 @@ import { getCapabilitiesForModel as resolveCapsForModel } from "open-sse/provide
 
 // Capabilities resolve through pattern tables, so an uncached merge of 800+ rows
 // on every /api/models request costs real time. Cache resolved rows in process
-// memory; a server restart invalidates but dashboard pages refetch anyway.
-const resolvedCapsCache = new Map();
+// memory, keyed by the metadata revision: every caps/pricing write bumps it
+// (see helpers/revision.js), so an import or a manual edit is visible on the
+// next request instead of after a server restart.
+let resolvedCapsCache = { revision: 0, map: new Map() };
 function capsFor(provider, model) {
+  const revision = catalogRevision();
+  if (resolvedCapsCache.revision !== revision) {
+    resolvedCapsCache = { revision, map: new Map() };
+  }
   const key = `${provider}|${model}`;
-  if (resolvedCapsCache.has(key)) return resolvedCapsCache.get(key);
+  if (resolvedCapsCache.map.has(key)) return resolvedCapsCache.map.get(key);
   const caps = resolveCapsForModel(provider, model);
-  resolvedCapsCache.set(key, caps);
+  resolvedCapsCache.map.set(key, caps);
   return caps;
 }
 
