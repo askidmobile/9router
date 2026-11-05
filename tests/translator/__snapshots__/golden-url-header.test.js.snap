@@ -1589,6 +1589,25 @@ exports[`GOLDEN buildHeaders (default executor providers) > qoder-cn → headers
 }
 `;
 
+exports[`GOLDEN buildHeaders (default executor providers) > refuseless → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
 exports[`GOLDEN buildHeaders (default executor providers) > requesty → headers (apiKey / oauth) 1`] = `
 {
   "apiKey": {
@@ -1780,6 +1799,25 @@ exports[`GOLDEN buildHeaders (default executor providers) > tokenrouter → head
 `;
 
 exports[`GOLDEN buildHeaders (default executor providers) > uc-web → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
+exports[`GOLDEN buildHeaders (default executor providers) > unorouter → headers (apiKey / oauth) 1`] = `
 {
   "apiKey": {
     "Accept": "text/event-stream",
@@ -2437,6 +2475,13 @@ exports[`GOLDEN buildUrl (default executor providers) > qoder-cn → url (stream
 }
 `;
 
+exports[`GOLDEN buildUrl (default executor providers) > refuseless → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://api.refuseless.com/v1/chat/completions",
+  "stream": "https://api.refuseless.com/v1/chat/completions",
+}
+`;
+
 exports[`GOLDEN buildUrl (default executor providers) > requesty → url (stream + non-stream) 1`] = `
 {
   "nonStream": "https://router.requesty.ai/v1/chat/completions",
@@ -2511,6 +2556,13 @@ exports[`GOLDEN buildUrl (default executor providers) > uc-web → url (stream +
 {
   "nonStream": "https://internal.chatuncensored.ai",
   "stream": "https://internal.chatuncensored.ai",
+}
+`;
+
+exports[`GOLDEN buildUrl (default executor providers) > unorouter → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://api.unorouter.com/v1/chat/completions",
+  "stream": "https://api.unorouter.com/v1/chat/completions",
 }
 `;
 

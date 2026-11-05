@@ -403,6 +403,8 @@ export async function POST(request) {
         case "chutes":
         case "respan":
         case "runcrate":
+        case "unorouter":
+        case "refuseless":
         case "xiaomi-mimo":
         case "xiaomi-tokenplan":
         case "orcarouter":

@@ -232,6 +232,19 @@ const DEVIN_CLI_GPT_CAPS = { vision: true, reasoning: true, search: true, thinki
  * Provider-specific capability overrides. Keyed by provider alias/id.
  */
 export const PROVIDER_CAPABILITIES = {
+  // Refuseless — abliterated lineup on the OpenAI wire: reasoning is
+  // `reasoning_effort` with off|low|high|max (off is 9router's "none"). GLM and
+  // MiniMax do not offer "off", so thinking cannot be disabled there. Ids are
+  // exact, so this block also keeps canonical patterns from guessing a
+  // Claude/zai thinking shape for them.
+  refuseless: {
+    "glm-5.3-abliterated": { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, reasoningLevels: ["low", "high", "max"], contextWindow: 1048576 },
+    "glm-5.3-flash-abliterated": { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, reasoningLevels: ["low", "high", "max"], contextWindow: 1048576 },
+    "deepseek-v4.1-flash-abliterated": { reasoning: true, thinkingFormat: "openai", reasoningLevels: ["none", "low", "high", "max"], contextWindow: 1048576 },
+    "deepseek-v4.1-flash-fast": { reasoning: true, thinkingFormat: "openai", reasoningLevels: ["none", "low", "high", "max"], contextWindow: 1048576 },
+    "deepseek-v4.1-flash-abliterated-free": { reasoning: true, thinkingFormat: "openai", reasoningLevels: ["none", "low", "high", "max"], contextWindow: 524288 },
+    "minimax-m3.1-flash": { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, reasoningLevels: ["low", "high", "max"], contextWindow: 1048576 },
+  },
   // ClinePass proxies z.ai's backend, which reads reasoning_effort (low|high|max)
   // alongside the zai thinking switch — unlike the direct glm lane, where
   // GLM-5.3-Flash stays binary (see MODEL_CAPABILITIES above).

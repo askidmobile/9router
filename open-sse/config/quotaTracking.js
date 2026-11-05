@@ -3,6 +3,10 @@ export const ACCOUNT_QUOTA_URLS = {
   requesty: "https://api-v2.requesty.ai/v1/manage/apikey/self",
   cheaper: "https://api.cheaperinference.com/v1/account/balance",
   kilocode: "https://api.kilo.ai/api/profile/balance",
+  // Key-scoped balances: UnoRouter answers quota units (500,000 = US$1),
+  // Refuseless answers USD directly.
+  unorouter: "https://api.unorouter.com/api/usage/token/",
+  refuseless: "https://api.refuseless.com/v1/credits",
   "jina-ai": "https://dash.jina.ai/api/v1/api_key/fe_user",
   "jina-reader": "https://dash.jina.ai/api/v1/api_key/fe_user",
   kenari: "https://kenari.id/v1/account/balance",

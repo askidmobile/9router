@@ -21,6 +21,8 @@ import { NOUS_MODELS_URL, normalizeNousModels } from "open-sse/services/nous.js"
 import { ORCAROUTER_MODELS_URL } from "open-sse/config/orcarouter.js";
 import { normalizeOrcaRouterModels } from "open-sse/services/orcarouter.js";
 import { resolveRespanModels } from "open-sse/services/respan.js";
+import { resolveUnorouterModels } from "open-sse/services/unorouter.js";
+import { resolveRefuselessModels } from "open-sse/services/refuseless.js";
 import codexProvider from "open-sse/providers/registry/codex.js";
 
 const GEMINI_CLI_MODELS_URL = "https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels";
@@ -260,6 +262,32 @@ const PROVIDER_MODELS_CONFIG = {
         console.log("Failed to fetch Respan models dynamically, falling back to static:", error.message);
       }
       return { models: [], warning };
+    },
+  },
+  // UnoRouter merges a public pricing catalog with /v1/models; Refuseless
+  // reshapes its lineup (off→none reasoning levels, static prices).
+  unorouter: {
+    customResolver: async (connection) => {
+      try {
+        const result = await resolveUnorouterModels(connection);
+        if (result.models.length) return { models: result.models };
+        return { models: getStaticProviderModels("unorouter"), warning: "UnoRouter returned no live models; falling back to static catalog." };
+      } catch (error) {
+        console.log("Failed to fetch UnoRouter models dynamically, falling back to static:", error.message);
+        return { models: getStaticProviderModels("unorouter"), warning: `Failed to fetch UnoRouter models: ${error.message}` };
+      }
+    },
+  },
+  refuseless: {
+    customResolver: async (connection) => {
+      try {
+        const result = await resolveRefuselessModels(connection);
+        if (result.models.length) return { models: result.models };
+        return { models: getStaticProviderModels("refuseless"), warning: "Refuseless returned no live models; falling back to static catalog." };
+      } catch (error) {
+        console.log("Failed to fetch Refuseless models dynamically, falling back to static:", error.message);
+        return { models: getStaticProviderModels("refuseless"), warning: `Failed to fetch Refuseless models: ${error.message}` };
+      }
     },
   },
   nous: {

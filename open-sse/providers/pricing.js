@@ -24,6 +24,9 @@ export const ZERO_PRICING = {
 export function isFreeModel(model) {
   if (!model) return false;
   const lower = String(model).toLowerCase();
+  // Aggregators (UnoRouter) mark the free lane with a `:free` suffix; the same
+  // name without it is the paid model, so only the suffixed id is free.
+  if (lower.endsWith(":free")) return true;
   return FREE_MODEL_NAMESPACES.some((ns) => lower.startsWith(ns));
 }
 
@@ -340,6 +343,20 @@ export const PROVIDER_PRICING = {
     "z-ai/glm-5.1": { input: 1.05, output: 3.5, cached: 0.525, reasoning: 3.5 },
     "z-ai/glm-5.2": { input: 1.4, output: 4.4, cached: 0.26, reasoning: 4.4 },
     "z-ai/glm-5.3-free": { input: 0, output: 0, cached: 0, reasoning: 0 },
+  },
+  // Refuseless — the API publishes no prices, so these come from the public
+  // /pricing page (Wayback snapshot 2026-10-20; all rates USD per 1M tokens).
+  // Import Models rewrites them from this same table as editable overrides.
+  // minimax-m3.1-flash joined the lineup after that snapshot and has no
+  // published rate yet — its cost stays unknown until the console lists it.
+  refuseless: {
+    "glm-5.3-abliterated": { input: 2.00, output: 3.00, cached: 0.35, reasoning: 3.00 },
+    "glm-5.3-flash-abliterated": { input: 0.25, output: 0.80, cached: 0.15, reasoning: 0.80 },
+    "deepseek-v4.1-flash-abliterated": { input: 0.60, output: 1.60, cached: 0.15, reasoning: 1.60 },
+    "deepseek-v4.1-flash-abliterated-free": { input: 0, output: 0, cached: 0, reasoning: 0 },
+    "deepseek-v4.1-flash-fast": { input: 0.05, output: 0.15, cached: 0.004, reasoning: 0.15 },
+    // Left the catalog in November 2026; kept for the case it returns.
+    "qwen3.8-flash-next-abliterated": { input: 0.18, output: 0.60, cached: 0.09, reasoning: 0.60 },
   },
 };
 

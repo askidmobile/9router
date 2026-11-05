@@ -45,6 +45,36 @@ export async function getAccountUsage(connection, proxyOptions = null) {
       quotas["Monthly key spend (USD)"] = { used, total, unit: "USD", unlimited: total === 0, remainingPercentage: total > 0 ? Math.max(0, Math.round((total - used) / total * 100)) : undefined };
     } else if (provider === "kilocode") {
       quotas["Balance (USD)"] = creditBalance(data.balance, "USD");
+    } else if (provider === "unorouter") {
+      // /api/usage/token/ reports quota units, 500,000 per US$1 (Platform API docs).
+      const payload = data?.data ?? data;
+      const available = toFiniteNumber(payload.total_available, null);
+      if (available === null) throw new Error("Balance data unavailable.");
+      quotas["Available (USD)"] = creditBalance(available / 500000, "USD");
+      if (payload.unlimited_quota === true) {
+        quotas["Available (USD)"].detail = "Unlimited quota";
+      } else {
+        const granted = toFiniteNumber(payload.total_granted, null);
+        const used = toFiniteNumber(payload.total_used, null);
+        const detail = [
+          granted !== null ? `Granted: $${(granted / 500000).toFixed(2)}` : null,
+          used !== null ? `Used: $${(used / 500000).toFixed(2)}` : null,
+        ].filter(Boolean).join(" · ");
+        if (detail) quotas["Available (USD)"].detail = detail;
+      }
+    } else if (provider === "refuseless") {
+      const available = toFiniteNumber(data.available, null);
+      if (available === null) throw new Error("Balance data unavailable.");
+      quotas["Available (USD)"] = creditBalance(available, "USD");
+      const balance = toFiniteNumber(data.balance, null);
+      const reserved = toFiniteNumber(data.reserved, null);
+      const detail = [
+        balance !== null ? `Balance: $${balance.toFixed(2)}` : null,
+        reserved !== null && reserved > 0 ? `Reserved by in-flight requests: $${reserved.toFixed(2)}` : null,
+      ].filter(Boolean).join(" · ");
+      if (detail) quotas["Available (USD)"].detail = detail;
+      const keyLimit = toFiniteNumber(data.key_limit, null);
+      if (keyLimit !== null) quotas["Key budget left (USD)"] = creditBalance(keyLimit, "USD");
     } else if (jina) {
       quotas["Balance (tokens)"] = creditBalance(data.wallet?.total_balance, "tokens");
       const trial = toFiniteNumber(data.wallet?.trial_balance, null);

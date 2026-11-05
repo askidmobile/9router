@@ -21,6 +21,8 @@ import { getSupplementaryMetadata, mergeModelCapabilities } from "../modelSource
 import { catalogMetadata } from "./metadata.js";
 import { normalizeOrcaRouterModels } from "open-sse/services/orcarouter.js";
 import { resolveRespanModels } from "open-sse/services/respan.js";
+import { resolveUnorouterModels } from "open-sse/services/unorouter.js";
+import { resolveRefuselessModels } from "open-sse/services/refuseless.js";
 
 export const VALID_TARGETS = ["pricing", "caps"];
 // A runaway catalog must not write tens of thousands of rows in one pass.
@@ -55,6 +57,16 @@ export async function resolveProviderCatalog(connection) {
   if (connection.provider === "respan") {
     const proxy = await resolveConnectionProxyConfig(connection.providerSpecificData || {}, connection.provider);
     const { models } = await withProxyContext(proxy, () => resolveRespanModels(connection));
+    return models.length ? { models, source: "provider" } : null;
+  }
+  // UnoRouter splits its catalog in two (prices vs. limits) and Refuseless
+  // needs static prices + level renaming; both services return the generic
+  // entry shape already.
+  if (connection.provider === "unorouter" || connection.provider === "refuseless") {
+    const proxy = await resolveConnectionProxyConfig(connection.providerSpecificData || {}, connection.provider);
+    const { models } = await withProxyContext(proxy, () =>
+      connection.provider === "unorouter" ? resolveUnorouterModels(connection) : resolveRefuselessModels(connection)
+    );
     return models.length ? { models, source: "provider" } : null;
   }
   const request = catalogRequest(connection);

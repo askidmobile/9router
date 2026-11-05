@@ -1059,7 +1059,18 @@
   "openai": {
     "baseUrl": "https://api.openai.com/v1/chat/completions",
     "forceStream": true,
-    "format": "openai"
+    "format": "openai",
+    "transports": [
+      {
+        "format": "openai",
+        "baseUrl": "https://api.openai.com/v1/chat/completions"
+      },
+      {
+        "format": "openai-responses",
+        "baseUrl": "https://api.openai.com/v1/responses",
+        "thinkingFormat": "openai-responses"
+      }
+    ]
   },
   "opencode-go": {
     "baseUrl": "https://opencode.ai/zen/go/v1/chat/completions",
@@ -1413,6 +1424,25 @@
     "validateUrl": "https://api.experientiallabs.ai/v1/models",
     "retry": {
       "429": 2
+    },
+    "format": "openai"
+  },
+  "refuseless": {
+    "baseUrl": "https://api.refuseless.com/v1/chat/completions",
+    "validateUrl": "https://api.refuseless.com/v1/credits",
+    "thinkingFormat": "openai",
+    "retry": {
+      "429": 2
+    },
+    "format": "openai"
+  },
+  "unorouter": {
+    "baseUrl": "https://api.unorouter.com/v1/chat/completions",
+    "validateUrl": "https://api.unorouter.com/api/usage/token/",
+    "thinkingFormat": "openai",
+    "retry": {
+      "429": 2,
+      "503": 2
     },
     "format": "openai"
   }
