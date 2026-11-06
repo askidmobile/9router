@@ -126,26 +126,61 @@ describe("buildCatalogRows", () => {
 });
 
 describe("groupRows", () => {
-  it("merges the same id across providers and keeps the free lane in the group", () => {
+  it("groups by the display name and keeps the free lane in the group", () => {
     const groups = compare.groupRows(buildRows());
-    const deepseek = groups.find((group) => group.identity === "deepseek-v4.1-flash");
+    const deepseek = groups.find((group) => group.identity === "deepseekv41flash");
 
     expect(deepseek.providers).toHaveLength(3);
-    // Cheapest first: the free lane, then the imported rate.
+    // Cheapest first: the free lane, then the paid entries.
     expect(deepseek.providers[0].providerAlias).toBe("gamma");
   });
 
-  it("never merges a dated variant into the base model", () => {
+  it("uses one readable label for the whole group", () => {
+    const groups = compare.groupRows(buildRows());
+    const deepseek = groups.find((group) => group.identity === "deepseekv41flash");
+
+    // "(free)" is a delivery marker, not a different model.
+    expect(deepseek.name).toBe("DeepSeek V4.1 Flash");
+    // The representative id is the shortest spelling, without a vendor prefix.
+    expect(deepseek.id).toBe("deepseek-v4.1-flash");
+  });
+
+  it("keeps a dated variant in its own group", () => {
     const groups = compare.groupRows(buildRows());
     const identities = groups.map((group) => group.identity);
-    expect(identities).toContain("deepseek-v4.1-flash");
-    expect(identities).toContain("deepseek-v4.1-flash-1017");
+    expect(identities).toContain("deepseekv41flash");
+    expect(identities).toContain("deepseekv41flash1017");
   });
 
   it("keeps a single-provider group intact", () => {
     const groups = compare.groupRows(buildRows());
-    const single = groups.find((group) => group.identity === "deepseek-v4.1-flash-1017");
+    const single = groups.find((group) => group.identity === "deepseekv41flash1017");
     expect(single.providers).toHaveLength(1);
+  });
+
+  it("merges the same model that arrives under different id shapes", () => {
+    // The reported case: a vendor-prefixed id, a flat id and a dated one with the
+    // same display name are one model for anyone comparing prices.
+    const rows = [
+      { key: "rc|a", providerAlias: "rc", providerId: "rc", id: "deepseek-ai/DeepSeek-V4.1-Flash-1017", name: "DeepSeek V4.1 Flash 1017", pricing: {} },
+      { key: "uno|b", providerAlias: "uno", providerId: "uno", id: "deepseek-v4.1-flash-1017", name: "DeepSeek V4.1 Flash 1017", pricing: {} },
+      { key: "exp|c", providerAlias: "experiential", providerId: "experiential", id: "deepseek-v4.1-flash-1017", name: "DeepSeek V4.1 Flash 1017", pricing: {} },
+    ];
+
+    const groups = compare.groupRows(rows);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].providers).toHaveLength(3);
+    expect(groups[0].name).toBe("DeepSeek V4.1 Flash 1017");
+    expect(groups[0].id).toBe("deepseek-v4.1-flash-1017");
+  });
+
+  it("does not fold a plus-suffixed model into its base", () => {
+    const rows = [
+      { key: "a|r", providerAlias: "a", providerId: "a", id: "command-r", name: "Command R (Aug 2024)", pricing: {} },
+      { key: "b|rp", providerAlias: "b", providerId: "b", id: "command-r-plus", name: "Command R+ (Aug 2024)", pricing: {} },
+    ];
+
+    expect(compare.groupRows(rows)).toHaveLength(2);
   });
 
   it("sorts providers by input price inside a group", () => {
@@ -159,7 +194,7 @@ describe("groupRows", () => {
         beta: { "deepseek-v4.1-flash": { source: "provider" } },
       },
     }));
-    const group = groups.find((entry) => entry.identity === "deepseek-v4.1-flash");
+    const group = groups.find((entry) => entry.identity === "deepseekv41flash");
     const prices = group.providers.map((row) => row.pricing.input);
 
     expect(prices).toEqual([...prices].sort((a, b) => a - b));

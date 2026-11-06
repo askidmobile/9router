@@ -74,9 +74,9 @@ export default function ModelsPage() {
   const [view, setView] = useState("provider");
   const [search, setSearch] = useState("");
   const [providerFilter, setProviderFilter] = useState("");
-  // Matches the old page's default: everything the registry knows about, not
-  // just connected providers. "Active" is one click away.
-  const [scopeFilter, setScopeFilter] = useState("all");
+  // Active providers by default: the full registry list is mostly providers the
+  // user never connected, and it buries the ones that actually serve traffic.
+  const [scopeFilter, setScopeFilter] = useState("active");
   const [statusFilter, setStatusFilter] = useState("");
   const [sort, setSort] = useState({ key: "name", dir: "asc" });
   const [collapsedProviders, setCollapsedProviders] = useState(() => new Set());
@@ -90,6 +90,10 @@ export default function ModelsPage() {
   const modelGroups = useMemo(() => data?.models || [], [data]);
   const totals = data?.totals || {};
   const sources = data?.sources || {};
+  const activeProviderCount = useMemo(
+    () => Object.values(providers).filter((provider) => provider?.active).length,
+    [providers],
+  );
 
   // ---- provider view -------------------------------------------------------
 
@@ -386,7 +390,9 @@ export default function ModelsPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <p className="text-sm text-text-muted">
-            {totals.models ?? 0} models across {totals.pairs ?? 0} provider entries.
+            {scopeFilter === "active"
+              ? `${visibleModelGroups.length} models in ${activeProviderCount} active provider${activeProviderCount === 1 ? "" : "s"}.`
+              : `${totals.models ?? 0} models across ${totals.pairs ?? 0} provider entries.`}
             {sources.pricing?.lastUpdated
               ? ` Prices updated ${relativeTime(sources.pricing.lastUpdated)}.`
               : " No prices imported yet."}
@@ -493,9 +499,11 @@ export default function ModelsPage() {
       {/* Body */}
       {view === "model" ? (
         visibleModelGroups.length === 0 ? (
-          <Card>
-            <p className="text-center py-8 text-sm text-text-muted">No models found.</p>
-          </Card>
+          <EmptyState
+            scopeFilter={scopeFilter}
+            hasActive={activeProviderCount > 0}
+            onShowAll={() => setScopeFilter("all")}
+          />
         ) : (
           <CompareTable
             groups={visibleModelGroups}
@@ -509,9 +517,11 @@ export default function ModelsPage() {
           />
         )
       ) : visibleProviderGroups.length === 0 ? (
-        <Card>
-          <p className="text-center py-8 text-sm text-text-muted">No models found.</p>
-        </Card>
+        <EmptyState
+          scopeFilter={scopeFilter}
+          hasActive={activeProviderCount > 0}
+          onShowAll={() => setScopeFilter("all")}
+        />
       ) : (
         visibleProviderGroups.map((group) => {
           const isCollapsed = collapsedProviders.has(group.key);
@@ -607,6 +617,36 @@ export default function ModelsPage() {
     </div>
   );
 }
+
+function EmptyState({ scopeFilter, hasActive, onShowAll }) {
+  // "Active" is the default now, so an empty list usually means "nothing is
+  // connected yet" rather than "your search matched nothing".
+  const onlyActive = scopeFilter === "active";
+  return (
+    <Card>
+      <div className="flex flex-col items-center gap-2 py-8">
+        <p className="text-sm text-text-muted">
+          {onlyActive && !hasActive
+            ? "No active providers — nothing is connected or enabled yet."
+            : onlyActive
+              ? "No models match in the active providers."
+              : "No models found."}
+        </p>
+        {onlyActive && (
+          <Button variant="secondary" size="sm" onClick={onShowAll}>
+            Show all providers
+          </Button>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+EmptyState.propTypes = {
+  scopeFilter: PropTypes.string,
+  hasActive: PropTypes.bool,
+  onShowAll: PropTypes.func.isRequired,
+};
 
 function ModelRow({ row, onEdit, onToggleDisabled, onDelete }) {
   const meta = formatModelMeta(row.caps, row.pricing);

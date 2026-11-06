@@ -20,7 +20,7 @@ import { getSettings } from "@/lib/db/repos/settingsRepo.js";
 import { getPricingMeta } from "@/lib/db/repos/pricingMetaRepo.js";
 import { getModelHealth, summarizeHealth } from "@/lib/db/repos/modelHealthRepo.js";
 import { ALL_MODELS, getModelAvailability, indexAvailability } from "@/lib/modelAvailability.js";
-import { normalizeModelIdentity } from "@/lib/modelSources/identity.js";
+import { groupLabel, modelGroupKey } from "./grouping.js";
 import { normalizeModel as normalizeModelsDevModel, peekCatalog } from "@/lib/modelsDev/index.js";
 import { resolveModelsDevProviderId } from "@/lib/modelsDev/providerMap.js";
 import { resolveModelName } from "@/shared/utils/modelNames";
@@ -148,23 +148,30 @@ export function buildCatalogRows({
 }
 
 /**
- * Group rows by exact model identity. Identity matching is intentionally strict:
- * identity.js refuses to strip dates, sizes or preview suffixes, and a wrong
- * merge ("opus" vs "opus-mini") is worse than a missed one.
+ * Group rows by the model they represent, as the user reads it.
+ *
+ * The key is the display name (see grouping.js), because the same model arrives
+ * under different ids — "deepseek-ai/DeepSeek-V4.1-Flash-1017" and
+ * "deepseek-v4.1-flash-1017" are one model to anyone comparing prices.
  */
 export function groupRows(rows) {
   const groups = new Map();
   for (const row of rows) {
-    const identity = normalizeModelIdentity(row.id) || row.id;
+    const identity = modelGroupKey(row);
     if (!groups.has(identity)) {
       groups.set(identity, { id: row.id, identity, name: row.name, providers: [] });
     }
-    const group = groups.get(identity);
-    group.providers.push(row);
-    // Prefer a human-looking name over a raw id when merging across providers.
-    if (group.name === group.id && row.name !== row.id) group.name = row.name;
+    groups.get(identity).providers.push(row);
   }
   const list = [...groups.values()];
+  for (const group of list) {
+    // One label for the whole group, not whichever row happened to arrive first.
+    group.name = groupLabel(group.providers);
+    // The shortest id reads best as the representative (no vendor prefix).
+    group.id = group.providers
+      .map((row) => row.id)
+      .sort((a, b) => a.length - b.length || a.localeCompare(b))[0];
+  }
   for (const group of list) {
     group.providers.sort((a, b) => {
       const pa = a.pricing?.input ?? Number.POSITIVE_INFINITY;

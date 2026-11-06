@@ -20,7 +20,7 @@ import { summarizeGroup } from "./summary";
 
 const COLUMNS = [
   { key: "model", label: "Model", sortKey: "name" },
-  { key: "provider", label: "Provider" },
+  { key: "provider", label: "Provider", width: "w-[190px] max-w-[190px]" },
   { key: "contextWindow", label: "Context", sortKey: "contextWindow", align: "right" },
   { key: "maxOutput", label: "Max out", sortKey: "maxOutput", align: "right" },
   { key: "input", label: "$ in", sortKey: "input", align: "right" },
@@ -82,9 +82,11 @@ function GroupRow({ group, expanded, onToggle }) {
           </div>
         </div>
       </td>
-      <td className="px-3 py-2 text-xs text-text-muted whitespace-nowrap">
-        {summary.providers} provider{summary.providers === 1 ? "" : "s"}
-        {cheapestRow ? ` · cheapest ${cheapestRow.providerAlias}` : ""}
+      <td className="px-3 py-2">
+        <div className="w-[190px] max-w-[190px] truncate text-xs text-text-muted" title={`${summary.providers} provider${summary.providers === 1 ? "" : "s"}${cheapestRow ? ` · cheapest ${cheapestRow.providerAlias}` : ""}`}>
+          {summary.providers} provider{summary.providers === 1 ? "" : "s"}
+          {cheapestRow ? ` · cheapest ${cheapestRow.providerAlias}` : ""}
+        </div>
       </td>
       <td className="px-3 py-2 text-right text-xs tabular-nums">{ctx || "—"}</td>
       <td className="px-3 py-2 text-right text-xs tabular-nums">{out || "—"}</td>
@@ -138,15 +140,17 @@ function ProviderRow({ row, provider, onEdit, onClearCooldown }) {
         )}
       </td>
       <td className="px-3 py-2">
-        <div className="flex items-center gap-1.5 min-w-0">
+        <div className="flex w-[190px] max-w-[190px] items-center gap-1.5">
           <ProviderIcon
             providerId={provider?.iconId || row.providerId}
             size={16}
             fallbackText={(provider?.name || row.providerAlias).charAt(0)}
           />
-          <span className="text-xs text-text-main truncate">{provider?.name || row.providerAlias}</span>
+          <span className="truncate text-xs text-text-main" title={provider?.name || row.providerAlias}>
+            {provider?.name || row.providerAlias}
+          </span>
           {provider?.active === false && (
-            <span className="text-[10px] text-text-muted">(not connected)</span>
+            <span className="shrink-0 text-[10px] text-text-muted">(off)</span>
           )}
         </div>
       </td>
@@ -204,7 +208,7 @@ export default function CompareTable({
                 key={column.key}
                 className={`px-3 py-2 font-semibold whitespace-nowrap ${
                   column.align === "right" ? "text-right" : "text-left"
-                }`}
+                } ${column.width || ""}`}
               >
                 <SortLabel column={column} sort={sort} onSortChange={onSortChange} />
               </th>
