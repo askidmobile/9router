@@ -386,6 +386,7 @@ export async function buildModelCatalog(options = {}) {
     totals: {
       models: models.length,
       pairs: rows.length,
+      disabled: rows.filter((row) => row.disabled).length,
       missingPrices: rows.filter((row) => !Object.keys(row.pricing).length).length,
       missingCachePrices: rows.filter((row) => row.pricingSource.fallbacks.cached === "input").length,
       withWarnings: rows.filter((row) => row.pricingSource.warnings.length > 0).length,

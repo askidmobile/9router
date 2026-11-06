@@ -12,6 +12,7 @@ import { buildEditModel } from "@/shared/utils/editModel";
 import EditModelModal from "./EditModelModal";
 import CompareTable from "./compare/CompareTable";
 import { downloadCatalogCsv } from "./compare/exportCsv";
+import { STATUS_MATCHERS, filterModelGroups, filterProviderGroups } from "./compare/filter";
 import { STATUS_RANK, summarizeGroup } from "./compare/summary";
 
 const inputClass =
@@ -122,53 +123,21 @@ export default function ModelsPage() {
     return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
   }, [modelGroups, providers]);
 
-  const visibleProviderGroups = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    return providerGroups
-      .map((group) => {
-        if (providerFilter && group.key !== providerFilter) return null;
-        if (scopeFilter === "active" && !group.active) return null;
-        const models = query
-          ? group.models.filter(
-              (row) =>
-                row.id.toLowerCase().includes(query) ||
-                row.name.toLowerCase().includes(query) ||
-                (row.alias || "").toLowerCase().includes(query),
-            )
-          : group.models;
-        return models.length > 0 ? { ...group, models } : null;
-      })
-      .filter(Boolean);
-  }, [providerGroups, search, providerFilter, scopeFilter]);
+  const visibleProviderGroups = useMemo(
+    () => filterProviderGroups(providerGroups, { scope: scopeFilter, providerFilter, query: search }),
+    [providerGroups, search, providerFilter, scopeFilter],
+  );
 
   // ---- model view ----------------------------------------------------------
 
   const visibleModelGroups = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    const matched = modelGroups
-      .map((group) => {
-        let rows = group.providers;
-        if (providerFilter) rows = rows.filter((row) => row.providerAlias === providerFilter);
-        if (scopeFilter === "active") rows = rows.filter((row) => row.active);
-        if (statusFilter === "issues") {
-          rows = rows.filter((row) => ["degraded", "down", "cooldown"].includes(row.status?.state));
-        } else if (statusFilter === "missing-price") {
-          rows = rows.filter((row) => !row.pricing || Object.keys(row.pricing).length === 0);
-        } else if (statusFilter === "cache-missing") {
-          rows = rows.filter((row) => row.pricingSource?.fallbacks?.cached === "input");
-        }
-        if (query) {
-          rows = rows.filter(
-            (row) =>
-              row.id.toLowerCase().includes(query) ||
-              row.name.toLowerCase().includes(query) ||
-              (row.alias || "").toLowerCase().includes(query) ||
-              group.name.toLowerCase().includes(query),
-          );
-        }
-        return rows.length > 0 ? { ...group, providers: rows } : null;
-      })
-      .filter(Boolean);
+    const matched = filterModelGroups(modelGroups, {
+      scope: scopeFilter,
+      providerFilter,
+      query: search,
+      statusFilter,
+      statusMatchers: STATUS_MATCHERS,
+    });
 
     const direction = sort.dir === "desc" ? -1 : 1;
     return matched.sort((a, b) => {
@@ -384,6 +353,18 @@ export default function ModelsPage() {
     .map(([alias, info]) => ({ alias, name: info?.name || alias }))
     .sort((a, b) => a.name.localeCompare(b.name));
 
+  // The headline count follows the active view: in the provider view the model
+  // filter is different (no status filter), so reusing one number would lie.
+  const visibleCounts = view === "model"
+    ? {
+        models: visibleModelGroups.length,
+        pairs: visibleModelGroups.reduce((acc, group) => acc + group.providers.length, 0),
+      }
+    : {
+        models: visibleProviderGroups.reduce((acc, group) => acc + group.models.length, 0),
+        pairs: visibleProviderGroups.reduce((acc, group) => acc + group.models.length, 0),
+      };
+
   return (
     <div className="flex min-w-0 flex-col gap-5 px-1 sm:px-0">
       {/* Header */}
@@ -391,8 +372,9 @@ export default function ModelsPage() {
         <div className="min-w-0">
           <p className="text-sm text-text-muted">
             {scopeFilter === "active"
-              ? `${visibleModelGroups.length} models in ${activeProviderCount} active provider${activeProviderCount === 1 ? "" : "s"}.`
-              : `${totals.models ?? 0} models across ${totals.pairs ?? 0} provider entries.`}
+              ? `${visibleCounts.models} model${visibleCounts.models === 1 ? "" : "s"} in ${activeProviderCount} active provider${activeProviderCount === 1 ? "" : "s"}`
+                + ` (disabled models and unconnected providers hidden).`
+              : `${totals.models ?? 0} models across ${totals.pairs ?? 0} provider entries, including disabled ones.`}
             {sources.pricing?.lastUpdated
               ? ` Prices updated ${relativeTime(sources.pricing.lastUpdated)}.`
               : " No prices imported yet."}
@@ -404,6 +386,16 @@ export default function ModelsPage() {
             {fromCache ? " Showing the last saved snapshot." : ""}
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            {scopeFilter === "active" && totals.disabled > 0 && (
+              <button
+                type="button"
+                onClick={() => setScopeFilter("all")}
+                className="rounded-full bg-surface-2 px-2 py-0.5 text-[10px] font-semibold text-text-muted hover:text-primary"
+                title="Disabled models are hidden in the Active view"
+              >
+                {totals.disabled} disabled hidden
+              </button>
+            )}
             {totals.missingPrices > 0 && (
               <Badge variant="warning" size="sm">{totals.missingPrices} without prices</Badge>
             )}
@@ -629,12 +621,12 @@ function EmptyState({ scopeFilter, hasActive, onShowAll }) {
           {onlyActive && !hasActive
             ? "No active providers — nothing is connected or enabled yet."
             : onlyActive
-              ? "No models match in the active providers."
+              ? "No models match among the active providers and enabled models."
               : "No models found."}
         </p>
         {onlyActive && (
           <Button variant="secondary" size="sm" onClick={onShowAll}>
-            Show all providers
+            Show all models
           </Button>
         )}
       </div>
