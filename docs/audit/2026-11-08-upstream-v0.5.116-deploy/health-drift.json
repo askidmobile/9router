@@ -1,0 +1,16 @@
+{
+  "poolCount": 10,
+  "changedPaths": [
+    ".data.autoDisabled",
+    ".data.exitIp",
+    ".data.lastError",
+    ".data.lastTestedAt",
+    ".data.latencyMs",
+    ".isActive",
+    ".testStatus",
+    ".updatedAt"
+  ],
+  "autoHealthTransitions": 1,
+  "manualProxyIntentUnchanged": true,
+  "urlsAndBindingsUnchanged": true
+}

@@ -1,0 +1,43 @@
+{
+  "passed": true,
+  "image": "sha256:1261ba3f9db3a11dffb75309a3fcb918532b2291bcf0013b54a32ff7d96aeaa0",
+  "revision": "4ef0c7a490b7271b2e973c5bcc495303fb127f7a",
+  "version": {
+    "app": "0.5.116",
+    "node": "v22.23.4",
+    "next": "16.4.5",
+    "undici": "8.12.4"
+  },
+  "restarts": 0,
+  "sqlite": "quick_check=ok",
+  "connections": 55,
+  "keys": 17,
+  "combos": 13,
+  "environmentUnchanged": true,
+  "hostConfigUnchanged": true,
+  "mountsUnchanged": true,
+  "protectedConfigurationUnchanged": true,
+  "fatalLogMarkers": 0,
+  "localHealth": true,
+  "publicHealth": true,
+  "rollbackReady": true,
+  "startedAt": "2026-11-08T19:29:37.520717901Z",
+  "preservationPolicy": {
+    "protected": [
+      "settings except freeProxyLastSync",
+      "connection configuration",
+      "keys",
+      "combos",
+      "nodes",
+      "model caps and selection",
+      "manual and legacy prices",
+      "pricing provenance except automatic timestamps",
+      "proxy URLs, bindings and manual enablement"
+    ],
+    "allowedRuntimeChanges": [
+      "OAuth/usage state",
+      "automatic proxy health and autoDisabled transitions",
+      "opted-in automatic price values and observation timestamps"
+    ]
+  }
+}
