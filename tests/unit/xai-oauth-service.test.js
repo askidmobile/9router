@@ -1,10 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+const transport = vi.hoisted(() => ({ fetch: vi.fn() }));
+vi.mock("undici", async (importOriginal) => ({ ...await importOriginal(), fetch: transport.fetch }));
+
 describe("xai/oauth service", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.restoreAllMocks();
     vi.stubGlobal("fetch", vi.fn());
+    transport.fetch.mockImplementation(globalThis.fetch);
   });
 
   it("validates discovered endpoints are https x.ai URLs", async () => {

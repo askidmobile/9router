@@ -107,7 +107,7 @@ async function handleImageGenerationCoreWithProxy({
   let requestBody;
 
   try {
-    url = adapter.buildUrl(model, credentials);
+    url = adapter.buildUrl(model, credentials, body);
     requestBody = await adapter.buildBody(model, body);
     responseMetadata.observe({ model: adapter.getResponseModel
       ? adapter.getResponseModel(model, requestBody, credentials)
@@ -157,7 +157,7 @@ async function handleImageGenerationCoreWithProxy({
           ? adapter.getResponseModel(model, retryBody, credentials)
           : retryBody?.model || model });
         const retryHeaders = adapter.buildHeaders(credentials, retryBody, model, body);
-        const retryUrl = adapter.buildUrl(model, credentials);
+        const retryUrl = adapter.buildUrl(model, credentials, body);
         providerResponse = await fetch(retryUrl, {
           method: "POST",
           headers: retryHeaders,

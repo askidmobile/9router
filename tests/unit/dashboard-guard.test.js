@@ -267,6 +267,19 @@ describe("dashboard guard always-protected auto-import routes", () => {
 
     expect([401, 403]).toContain(response.status);
   });
+
+  it.each([false, true])("blocks remote CommandCode key import when requireLogin=%s", async (requireLogin) => {
+    mocks.getSettings.mockResolvedValue({ requireLogin });
+    mocks.verifyDashboardAuthToken.mockResolvedValue(true);
+    const response = await proxy(request("/api/oauth/commandcode/auto-import", { host: "router.example.com" }));
+    expect(response.status).toBe(403);
+  });
+
+  it("allows local CommandCode import with login disabled", async () => {
+    expect(await proxy(localRequest("/api/oauth/commandcode/auto-import", {
+      host: "localhost:20128", origin: "http://localhost:20128",
+    }))).toBe(mocks.nextResponse);
+  });
 });
 
 describe("dashboard guard local-only access", () => {

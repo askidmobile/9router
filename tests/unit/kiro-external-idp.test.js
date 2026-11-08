@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
+const transport = vi.hoisted(() => ({ fetch: vi.fn() }));
+vi.mock("undici", async (importOriginal) => ({ ...await importOriginal(), fetch: transport.fetch }));
+
 const originalFetch = global.fetch;
 const TEST_CLIENT_ID = "00000000-0000-4000-8000-000000000000";
 const TEST_SCOPE = `api://${TEST_CLIENT_ID}/codewhisperer:conversations offline_access`;
@@ -34,6 +37,7 @@ describe("Kiro external_idp (CLIProxyAPI) import and refresh", () => {
       }),
     });
     global.fetch = fetchMock;
+    transport.fetch.mockImplementation(fetchMock);
 
     const { refreshKiroToken } = await import("../../open-sse/services/tokenRefresh.js");
     const result = await refreshKiroToken("old-refresh-token", {
@@ -80,6 +84,7 @@ describe("Kiro external_idp (CLIProxyAPI) import and refresh", () => {
     const { refreshKiroToken } = await import("../../open-sse/services/tokenRefresh.js");
     const fetchMock = vi.fn();
     global.fetch = fetchMock;
+    transport.fetch.mockImplementation(fetchMock);
 
     const result = await refreshKiroToken("old-refresh-token", {
       authMethod: "external_idp",

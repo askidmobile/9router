@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const pools = vi.hoisted(() => []);
 vi.mock("undici", () => ({
+  fetch: (...args) => fetchMock(...args),
   Agent: class { constructor(options) { this.options = options; this.dispatch = vi.fn(); pools.push(this); } },
   ProxyAgent: class { constructor(options) { this.options = options; this.dispatch = vi.fn(); pools.push(this); } },
 }));

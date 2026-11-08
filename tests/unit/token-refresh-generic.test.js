@@ -8,6 +8,9 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
+const transport = vi.hoisted(() => ({ fetch: vi.fn() }));
+vi.mock("undici", async (importOriginal) => ({ ...await importOriginal(), fetch: transport.fetch }));
+
 const originalFetch = global.fetch;
 
 function mockFetchOnce(payload, { ok = true, status = 200 } = {}) {
@@ -18,6 +21,7 @@ function mockFetchOnce(payload, { ok = true, status = 200 } = {}) {
     text: () => Promise.resolve(JSON.stringify(payload)),
   });
   global.fetch = fn;
+  transport.fetch.mockImplementation(fn);
   return fn;
 }
 

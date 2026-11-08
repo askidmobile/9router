@@ -115,7 +115,7 @@ export class DefaultExecutor extends BaseExecutor {
   }
 
   transformRequest(model, body, stream, credentials) {
-    const transformed = this.applyAutoToolRouting(model, this.applyJsonSchemaFallback(this.applyNousAttribution(model, body, stream, credentials)));
+    let transformed = this.applyAutoToolRouting(model, this.applyJsonSchemaFallback(this.applyNousAttribution(model, body, stream, credentials)));
 
     if (transformed && typeof transformed === "object") {
       // A native Responses passthrough skips the request translator, so tool
@@ -125,6 +125,12 @@ export class DefaultExecutor extends BaseExecutor {
       // Responses-capable provider must keep its Chat tool shape for the translator.
       if (wireFormat === "openai-responses" && transformed.input !== undefined && !Array.isArray(transformed.messages)) {
         normalizeResponsesToolBody(transformed);
+      }
+      // OpenAI-compatible upstreams (NVIDIA NIM, DeepSeek) reject `stream_options` on
+      // non-streaming requests with 400 "Stream options can only be defined when stream=True".
+      if (stream !== true && transformed.stream_options !== undefined && transformed.stream !== true) {
+        if (transformed === body) transformed = { ...transformed };
+        delete transformed.stream_options;
       }
       // quirk: some openai-compatible providers reject Anthropic's client_metadata field
       if (this.config.quirks?.dropClientMetadata) {

@@ -3,6 +3,9 @@
 // actually charged on the key and does not list every aggregator at all.
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
+const transport = vi.hoisted(() => ({ fetch: vi.fn() }));
+vi.mock("undici", async (importOriginal) => ({ ...await importOriginal(), fetch: transport.fetch }));
+
 const mocks = vi.hoisted(() => ({
   fetch: vi.fn(),
   updatePricing: vi.fn(async () => ({})),
@@ -63,6 +66,7 @@ beforeEach(() => {
     providerSpecificData: {},
   }];
   globalThis.fetch = mocks.fetch;
+  transport.fetch.mockImplementation(mocks.fetch);
 });
 
 describe("catalogMetadata", () => {

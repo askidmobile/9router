@@ -24,10 +24,39 @@ export class CodeBuddyIntlExecutor extends DefaultExecutor {
       transformed.reasoning_summary = "auto";
     }
 
+    // Tencent WAF flags third-party CLI agent identity strings (Claude Code, Cursor, etc.)
+    // as unauthorized tooling / prompt injection and rejects/bans the account.
+    // Neutralize only matching agent markers while preserving user system prompts.
+
     // CodeBuddy rejects plain OpenAI shape (11101 invalid request): needs a
     // leading system prompt + user content as typed blocks, not a bare string.
     const source = Array.isArray(transformed.messages) ? transformed.messages : [];
-    transformed.messages = [{ role: "system", content: "You are CodeBuddy Code." }];
+    const clientSystemPrompts = source
+      .filter((m) => m && ["system", "developer"].includes(m.role))
+      .map((m) => {
+        const text =
+          typeof m.content === "string"
+            ? m.content
+            : Array.isArray(m.content)
+              ? m.content.map((c) => c?.text || "").join("\n")
+              : "";
+        // Replace identity markers in place: the same block can carry access and safety rules.
+        return text
+          .replace(/\bClaude[ -]?Code\b|\bAnthropic\b|\bAnxthxropic\b|\bOhMyOpenCode\b/gi, "CodeBuddy")
+          .replace(/\byou are (?:cursor|windsurf|cline|aider|continue|copilot|cody)\b/gi, "You are CodeBuddy")
+          .replace(/\byou are an? (?:ai )?(?:coding |code )?agent\b/gi, "You are an AI assistant")
+          .replace(/\borchestration capabilities\b/gi, "coordination capabilities")
+          .replace(/cc_entrypoint\s*=\s*(?:cli|vscode|jetbrains|gui)\b/gi, "client_surface=codebuddy")
+          .replace(/(<\/?)(?:agent-identity|Role|Behavior_Instructions)(>)/gi, "$1assistant-context$2");
+      })
+      .filter(Boolean);
+
+    const systemPromptText =
+      clientSystemPrompts.length > 0
+        ? clientSystemPrompts.join("\n\n")
+        : "You are CodeBuddy Code.";
+
+    transformed.messages = [{ role: "system", content: systemPromptText }];
     for (const message of source) {
       if (!message || typeof message !== "object" || ["system", "developer"].includes(message.role)) continue;
       if (message.role === "user" && typeof message.content === "string") {

@@ -3,6 +3,7 @@
 // never hardcoded per-model here. See .docs/thinking/plan.md MATRIX VI-A.
 
 import { getCapabilitiesForModel } from "../../providers/capabilities.js";
+import { isDeepSeekModel } from "../../providers/models/helpers.js";
 import { getThinkingLevels } from "../../providers/thinkingLevels.js";
 import { PROVIDERS } from "../../providers/index.js";
 import { LEVEL_TO_BUDGET, budgetToLevel, effortToBudget, effortToThinkingLevel } from "./thinking.js";
@@ -136,6 +137,10 @@ export function applyProviderThinking(body, mode) {
   return { ...body, reasoning_effort: mode };
 }
 
+// Self-hosted gateways (vLLM/SGLang) validate thinking.budget_tokens; first-party
+// DeepSeek ignores it. Only dynamic compat nodes opt into the passthrough.
+const isOpenAICompatibleNode = (provider) => String(provider || "").startsWith("openai-compatible-");
+
 function resolveFormat(targetFormat, model, provider) {
   if (targetFormat === "commandcode") return "commandcode";
   // A multi-endpoint provider can declare, per transports[] entry, the thinking shape that
@@ -146,8 +151,8 @@ function resolveFormat(targetFormat, model, provider) {
     ? PROVIDERS[provider]?.transports?.find((t) => t.format === targetFormat)?.thinkingFormat
     : null;
   if (transportFmt) return transportFmt;
-  // OpenAI-compatible nodes reject provider-native thinking fields.
-  if (typeof provider === "string" && provider.startsWith("openai-compatible-")) return "openai";
+  // DeepSeek-compatible hosts validate native thinking budgets; other compat nodes use OpenAI effort.
+  if (isOpenAICompatibleNode(provider) && (targetFormat !== "openai" || !isDeepSeekModel(model))) return "openai";
   const providerFmt = provider ? PROVIDERS[provider]?.thinkingFormat : null;
   if (providerFmt) return providerFmt;
   const caps = getCapabilitiesForModel(provider, model);
@@ -270,7 +275,7 @@ function stripAll(body) {
 }
 
 // Apply unified thinking config to body in the resolved provider-native format.
-function applyFormat(fmt, body, cfg, caps, supportedLevels, display, model = "") {
+function applyFormat(fmt, body, cfg, caps, supportedLevels, display, model = "", budgetPassthrough = false) {
   const none = cfg.mode === "none";
   const canDisable = caps.thinkingCanDisable !== false;
   // Model cannot disable thinking → clamp "none" to minimal effort instead.
@@ -366,7 +371,11 @@ function applyFormat(fmt, body, cfg, caps, supportedLevels, display, model = "")
     }
     case "deepseek": {
       if (none && canDisable) { body.thinking = { type: "disabled" }; break; }
-      body.thinking = { type: "enabled" };
+      // Keep an explicit budget captured before translation/stripAll; strict
+      // DeepSeek-compatible hosts validate it when thinking is enabled.
+      body.thinking = budgetPassthrough && cfg.mode === "budget" && Number.isFinite(cfg.budget) && cfg.budget > 0
+        ? { type: "enabled", budget_tokens: cfg.budget }
+        : { type: "enabled" };
       // DeepSeek's own API collapses low/medium→high and xhigh/max→max, so the wire
       // stays on {high,max} for it. The declared levels win where they disagree:
       // zen's free deepseek-v4.1-flash publishes low|high|max and its upstream takes
@@ -434,8 +443,14 @@ function applyFormat(fmt, body, cfg, caps, supportedLevels, display, model = "")
         delete body.params.reasoning_effort;
         break;
       }
-      const level = toLevel(eff);
-      if (level) body.params.reasoning_effort = level;
+      const rawLevel = toLevel(eff);
+      const level = rawLevel === "auto" ? "high"
+        : rawLevel === "minimal" ? "low"
+        : rawLevel;
+      const validLevels = ["off", "low", "medium", "high", "xhigh", "max"];
+      if (level && validLevels.includes(level)) {
+        body.params.reasoning_effort = level;
+      }
       break;
     }
     default:
@@ -468,6 +483,6 @@ export function applyThinking(targetFormat, model, body, provider = null, intent
   // An OpenAI-shaped client's ask arrives via the captured intent instead.
   const display = typeof body.thinking?.display === "string" ? body.thinking.display : intent?.display;
   stripAll(body);
-  applyFormat(fmt, body, cfg, caps, supportedLevels, display, cleanModel);
+  applyFormat(fmt, body, cfg, caps, supportedLevels, display, cleanModel, isOpenAICompatibleNode(provider));
   return body;
 }

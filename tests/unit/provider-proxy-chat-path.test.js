@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ settings: {}, pools: [], fetch: vi.fn() }));
+vi.mock("undici", async (importOriginal) => ({ ...await importOriginal(), fetch: mocks.fetch }));
 vi.mock("@/lib/localDb", () => ({
   getSettings: async () => mocks.settings,
   getProviderConnections: async () => [{ id: "paid", name: "Paid account", isActive: true, apiKey: "fixture-key", providerSpecificData: {} }],

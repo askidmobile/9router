@@ -2,6 +2,10 @@ import { afterAll, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ dispatch: vi.fn(() => true) }));
 vi.mock("undici", () => ({
+  fetch: async (_url, options) => {
+    options.dispatcher.dispatch({ origin: "https://example.com", path: "/", method: "GET" }, {});
+    return new Response("ok");
+  },
   Agent: class { dispatch(...args) { return mocks.dispatch(...args); } },
   ProxyAgent: class { dispatch(...args) { return mocks.dispatch(...args); } },
 }));

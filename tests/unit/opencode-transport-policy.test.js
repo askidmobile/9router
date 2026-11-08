@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const { loadRuntimeDep, tlsFetch } = vi.hoisted(() => ({ loadRuntimeDep: vi.fn(), tlsFetch: vi.fn() }));
 vi.mock("../../open-sse/services/lazyRuntime.js", () => ({ loadRuntimeDep }));
 vi.mock("undici", () => ({
+  fetch: (...args) => nativeFetch(...args),
   Agent: class { constructor(options) { this.options = options; } },
   ProxyAgent: class { constructor(options) { this.options = options; } },
 }));

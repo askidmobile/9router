@@ -10,6 +10,9 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
+const transport = vi.hoisted(() => ({ fetch: vi.fn() }));
+vi.mock("undici", async (importOriginal) => ({ ...await importOriginal(), fetch: transport.fetch }));
+
 // ─── DefaultExecutor.buildHeaders() ──────────────────────────────────────────
 
 describe("DefaultExecutor.buildHeaders() — claude provider", () => {
@@ -286,6 +289,7 @@ describe("proxyAwareFetch — api.anthropic.com routing", () => {
     globalThis.fetch = nativeFetch;
 
     vi.resetModules();
+    transport.fetch.mockImplementation(globalThis.fetch);
     const { proxyAwareFetch } = await import("open-sse/utils/proxyFetch.js");
 
     const res = await proxyAwareFetch("https://api.anthropic.com/v1/messages", {
@@ -322,6 +326,7 @@ describe("proxyAwareFetch — api.anthropic.com routing", () => {
     });
 
     vi.resetModules();
+    transport.fetch.mockImplementation(globalThis.fetch);
     const { proxyAwareFetch } = await import("open-sse/utils/proxyFetch.js");
 
     const res = await proxyAwareFetch("https://api.anthropic.com/v1/messages", {
@@ -349,6 +354,7 @@ describe("proxyAwareFetch — api.anthropic.com routing", () => {
     });
 
     vi.resetModules();
+    transport.fetch.mockImplementation(globalThis.fetch);
     const { proxyAwareFetch } = await import("open-sse/utils/proxyFetch.js");
 
     await proxyAwareFetch("https://openrouter.ai/api/v1/chat/completions", {

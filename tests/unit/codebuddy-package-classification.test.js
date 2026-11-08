@@ -8,10 +8,12 @@
 // The classification now keys off the package itself: Tencent names bonus
 // grants `*_bonus_pack` / `*_bonus`.
 //
-// The usage handler reaches the network through proxyAwareFetch, which captures
-// globalThis.fetch at import time — so the stub has to be installed with
-// vi.stubGlobal BEFORE the module is imported (hence the dynamic import).
+// Stub undici.fetch at the proxyAwareFetch boundary; keep global fetch stubbed
+// as well for higher-level usage callers.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+
+const transport = vi.hoisted(() => ({ fetch: vi.fn() }));
+vi.mock("undici", async (importOriginal) => ({ ...await importOriginal(), fetch: transport.fetch }));
 
 // Trimmed but structurally faithful copy of a live
 // /v2/billing/meter/get-user-resource response (personal Pro account).
@@ -75,7 +77,7 @@ beforeEach(async () => {
     json: async () => LIVE_PAYLOAD,
     text: async () => JSON.stringify(LIVE_PAYLOAD),
   }));
-  // Re-import with the stub already in place so proxyFetch captures it.
+  transport.fetch.mockImplementation(globalThis.fetch);
   vi.resetModules();
   ({ getCodeBuddyIntlUsage } = await import("../../open-sse/services/usage/codebuddy-cn.js"));
 });

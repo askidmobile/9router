@@ -20,11 +20,11 @@ export default {
   category: "apikey",
   transport: {
     baseUrl: "https://api.commandcode.ai/provider/v1/chat/completions",
-    // Static identity headers of command-code@1.88.0 buildCommandAuthHeaders().
+    // Static identity headers of command-code@1.88.5 buildCommandAuthHeaders().
     // Dynamic project/session ids are added by shared/commandCodeHeaders.js.
     headers: {
       "User-Agent": "cli",
-      "x-command-code-version": "1.88.0",
+      "x-command-code-version": "1.88.5",
       "x-cli-environment": "production",
       "x-cli-surface": "cli",
       "x-taste-learning": "false",
@@ -55,6 +55,7 @@ export default {
     { id: "stepfun/Step-3.5-Flash", name: "Step 3.5 Flash" },
     { id: "nvidia/nemotron-3-ultra-550b-a55b", name: "Nemotron 3 Ultra" },
   ],
+  passthroughModels: true,
   features: {
     usage: true,
     usageApikey: true,

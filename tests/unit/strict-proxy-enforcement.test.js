@@ -21,6 +21,8 @@ vi.mock("@/models", () => ({
 
 const { getProxyPoolById } = await import("@/models");
 const { resolveConnectionProxyConfig } = await import("../../src/lib/network/connectionProxy.js");
+const transport = vi.hoisted(() => ({ fetch: vi.fn().mockRejectedValue(new Error("fixture network failure")) }));
+vi.mock("undici", async (importOriginal) => ({ ...await importOriginal(), fetch: transport.fetch }));
 const savedFetch = globalThis.fetch;
 globalThis.fetch = vi.fn().mockRejectedValue(new Error("fixture network failure"));
 const { proxyAwareFetch } = await import("../../open-sse/utils/proxyFetch.js");

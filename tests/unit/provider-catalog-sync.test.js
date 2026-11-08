@@ -2,6 +2,9 @@
 // isolated, and the import path writes prices, limits and the model list.
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
+const transport = vi.hoisted(() => ({ fetch: vi.fn() }));
+vi.mock("undici", async (importOriginal) => ({ ...await importOriginal(), fetch: transport.fetch }));
+
 const mocks = vi.hoisted(() => ({
   fetch: vi.fn(),
   settings: { catalogSyncProviders: [] },
@@ -55,6 +58,7 @@ beforeEach(() => {
   mocks.settings = { catalogSyncProviders: [] };
   mocks.connections = [{ id: "c1", provider: "cheaper", isActive: true, apiKey: "k", providerSpecificData: {} }];
   globalThis.fetch = mocks.fetch;
+  transport.fetch.mockImplementation(mocks.fetch);
 });
 
 describe("scheduled provider catalog sync", () => {

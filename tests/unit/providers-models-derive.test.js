@@ -62,7 +62,7 @@ describe("deriveModelsEndpoint", () => {
 
   it("derives endpoints for real registry entries (opencode-go, venice, glm)", () => {
     expect(deriveModelsEndpoint(getRegistryEntry("opencode-go")))
-      .toEqual({ url: "https://opencode.ai/zen/go/v1/models", style: "openai" });
+      .toEqual({ url: "https://opencode.ai/inference/go/v1/models", style: "openai" });
     expect(deriveModelsEndpoint(getRegistryEntry("venice")))
       .toEqual({ url: "https://api.venice.ai/api/v1/models", style: "openai" });
     expect(deriveModelsEndpoint(getRegistryEntry("glm")))

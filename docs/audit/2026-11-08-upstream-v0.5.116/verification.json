@@ -1,0 +1,82 @@
+{
+  "date": "2026-11-08",
+  "fork_before": "21f51357",
+  "upstream": "1339107e624d1ab150c6a0c2c2ee22caa7e9db2f",
+  "backup_branch": "codex/backup-before-v0.5.116-20261108-21f51357",
+  "baseline": {
+    "total": 5836,
+    "passed": 5718,
+    "failed": 7,
+    "expected_fail": 14,
+    "skipped": 96,
+    "todo": 1
+  },
+  "final": {
+    "total": 6036,
+    "passed": 5919,
+    "failed": 7,
+    "expected_fail": 13,
+    "skipped": 96,
+    "todo": 1,
+    "files": 559
+  },
+  "new_failures": [],
+  "preexisting_failures": [
+    {
+      "file": "unit/combo-credit-fallback.test.js",
+      "test": "combo credit fallback routes a 400 response correctly: Bad request"
+    },
+    {
+      "file": "unit/headroom-responses-format.test.js",
+      "test": "compressWithHeadroom openai-responses format (#1998) skips Responses tool/reasoning history instead of collapsing it into a message (#2132)"
+    },
+    {
+      "file": "unit/models-custom-bulk.test.js",
+      "test": "POST /api/models/custom/bulk normalizes Google resource names before saving and deduplicates canonical IDs"
+    },
+    {
+      "file": "unit/models-custom-bulk.test.js",
+      "test": "POST /api/models/custom/bulk passes a non-default type through"
+    },
+    {
+      "file": "unit/models-custom-bulk.test.js",
+      "test": "POST /api/models/custom/bulk preserves other providers' model namespaces"
+    },
+    {
+      "file": "unit/models-custom-bulk.test.js",
+      "test": "POST /api/models/custom/bulk trims, dedupes and forwards ids to the repo"
+    },
+    {
+      "file": "unit/security-audit.test.js",
+      "test": "AUDIT-002: API key masking byApiKey object keys should use masked key, not raw key"
+    }
+  ],
+  "checks": {
+    "providers": 110,
+    "aliases": 148,
+    "oauth_urls": "unchanged",
+    "build": "passed",
+    "standalone_undici": "8.12.4",
+    "loopback_transport": "passed",
+    "chatgpt_disposable_integration": "passed",
+    "standalone_smoke": {
+      "/api/health": "ok",
+      "/api/models/catalog": "ok",
+      "/api/models/caps": "ok",
+      "remoteCommandCodeGuards": 4,
+      "dashboard": "ok",
+      "assets": 3,
+      "publicVoices": "ok"
+    },
+    "eslint_new_errors": 0,
+    "eslint_preexisting_errors": 1
+  },
+  "not_run": [
+    "push",
+    "Docker build",
+    "deployment",
+    "live paid inference",
+    "external Codex CLI",
+    "npm publication"
+  ]
+}

@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const transport = vi.hoisted(() => ({ fetch: vi.fn() }));
+vi.mock("undici", async (importOriginal) => ({ ...await importOriginal(), fetch: transport.fetch }));
+
 const mocks = vi.hoisted(() => ({
   updateProviderConnection: vi.fn(),
   getProviderConnectionById: vi.fn(),
@@ -38,6 +41,7 @@ function mockRefresh(tokens = {}) {
     data: { accessToken: "new-access", refreshToken: "rotated-refresh", expiresAt: EXPIRES_AT, ...tokens },
   }), { status: 200 }));
   vi.stubGlobal("fetch", fetchMock);
+  transport.fetch.mockImplementation(fetchMock);
   return fetchMock;
 }
 
