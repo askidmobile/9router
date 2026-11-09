@@ -1,5 +1,6 @@
 import { ACCOUNT_QUOTA_URLS, KENARI_QUOTA_URL } from "../../config/quotaTracking.js";
 import { creditBalance, fetchWithTimeout, parseResetTime, toFiniteNumber } from "./shared.js";
+import { parseRateLimitHeaders } from "./rateLimits.js";
 
 async function readAccountJson(url, headers, proxyOptions) {
   const response = await fetchWithTimeout(url, { headers, redirect: "error" }, 10000, proxyOptions);
@@ -8,7 +9,7 @@ async function readAccountJson(url, headers, proxyOptions) {
   if (!response.ok) throw new Error(`Quota API unavailable (HTTP ${response.status}).`);
   const data = await response.json();
   if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error("Quota data unavailable.");
-  return data;
+  return { data, headers: response.headers };
 }
 
 export async function getAccountUsage(connection, proxyOptions = null) {
@@ -23,7 +24,7 @@ export async function getAccountUsage(connection, proxyOptions = null) {
   if (jina) { url.searchParams.set("api_key", token.trim()); delete headers.Authorization; }
 
   try {
-    const data = await readAccountJson(url.toString(), headers, proxyOptions);
+    const { data, headers: responseHeaders } = await readAccountJson(url.toString(), headers, proxyOptions);
     const quotas = {};
     let notice;
     if (provider === "apinex" || provider === "cheaper") {
@@ -43,6 +44,10 @@ export async function getAccountUsage(connection, proxyOptions = null) {
       const total = toFiniteNumber(data.monthly_limit, null);
       if (used === null || total === null || total < 0) throw new Error("Monthly budget data unavailable.");
       quotas["Monthly key spend (USD)"] = { used, total, unit: "USD", unlimited: total === 0, remainingPercentage: total > 0 ? Math.max(0, Math.round((total - used) / total * 100)) : undefined };
+    } else if (provider === "qubax") {
+      if (data.currency !== "USD") throw new Error("Balance currency unavailable.");
+      quotas["Balance (USD)"] = creditBalance(data.balance_usd, "USD");
+      Object.assign(quotas, parseRateLimitHeaders(provider, responseHeaders));
     } else if (provider === "kilocode") {
       quotas["Balance (USD)"] = creditBalance(data.balance, "USD");
     } else if (provider === "unorouter") {
@@ -88,7 +93,7 @@ export async function getAccountUsage(connection, proxyOptions = null) {
       const reserved = toFiniteNumber(data.reserved_micro_idr, null);
       if (reserved !== null) quotas["Available (IDR)"].detail = `Reserved: ${(reserved / 1000000).toFixed(2)} IDR`;
       try {
-        const quota = await readAccountJson(KENARI_QUOTA_URL, headers, proxyOptions);
+        const { data: quota } = await readAccountJson(KENARI_QUOTA_URL, headers, proxyOptions);
         const names = { five_hour: "Session (5h)", week: "Weekly", month: "Monthly" };
         for (const [key, window] of Object.entries(quota.plan?.windows || {})) {
           const total = toFiniteNumber(window.budget_rp, null);

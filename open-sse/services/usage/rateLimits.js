@@ -42,7 +42,7 @@ export function parseRateLimitHeaders(provider, headers, now = Date.now()) {
       const suffix = `${resource}-${period}`;
       add(`${resource}/${period}`, headers.get(`x-ratelimit-limit-${suffix}`), headers.get(`x-ratelimit-remaining-${suffix}`), headers.get(`x-ratelimit-reset-${suffix}`), resource);
     }
-  } else if (provider === "groq" || provider === "nebius") {
+  } else if (provider === "groq" || provider === "nebius" || provider === "qubax") {
     for (const resource of ["requests", "tokens"]) {
       const period = provider === "groq" && resource === "requests" ? "day" : "min";
       add(`${resource}/${period}`, headers.get(`x-ratelimit-limit-${resource}`), headers.get(`x-ratelimit-remaining-${resource}`), headers.get(`x-ratelimit-reset-${resource}`), resource);

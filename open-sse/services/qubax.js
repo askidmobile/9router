@@ -1,4 +1,4 @@
-import { QUBAX_BASE_URL, QUBAX_MODELS_URL, QUBAX_VALIDATION_MODEL } from "../config/qubax.js";
+import { QUBAX_MODELS_URL, QUBAX_BALANCE_URL } from "../config/qubax.js";
 
 export function normalizeQubaxModels(payload) {
   const models = Array.isArray(payload) ? payload : payload?.data;
@@ -43,12 +43,12 @@ export async function resolveQubaxModels(connection = {}) {
   return { models: normalizeQubaxModels(await response.json()) };
 }
 
-// /models is public, so only successful inference verifies a credential.
+// /models is public; the authenticated balance endpoint verifies keys without inference.
 export async function probeQubaxApiKey(apiKey, fetchImpl = fetch) {
-  const response = await fetchImpl(`${QUBAX_BASE_URL}/chat/completions`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ model: QUBAX_VALIDATION_MODEL, messages: [{ role: "user", content: "ping" }], max_tokens: 1, stream: false }),
+  const response = await fetchImpl(QUBAX_BALANCE_URL, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" },
+    redirect: "error",
     signal: AbortSignal.timeout(15000),
   });
   return {

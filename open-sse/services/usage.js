@@ -50,6 +50,7 @@ const USAGE_HANDLERS = {
   cerebras: (c) => getObservedUsage(c.provider, c.connectionId),
   apinex: (c) => getAccountUsage(c, c.proxyOptions),
   requesty: (c) => getAccountUsage(c, c.proxyOptions),
+  qubax: (c) => getAccountUsage(c, c.proxyOptions),
   cheaper: (c) => getAccountUsage(c, c.proxyOptions),
   kilocode: (c) => getAccountUsage(c, c.proxyOptions),
   unorouter: (c) => getAccountUsage(c, c.proxyOptions),

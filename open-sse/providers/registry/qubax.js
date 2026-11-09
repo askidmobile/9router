@@ -1,4 +1,4 @@
-import { QUBAX_BASE_URL, QUBAX_MODELS_URL } from "../../config/qubax.js";
+import { QUBAX_BASE_URL, QUBAX_MODELS_URL, QUBAX_BALANCE_URL } from "../../config/qubax.js";
 import { ANTHROPIC_API_VERSION } from "../shared.js";
 
 export default {
@@ -7,6 +7,7 @@ export default {
   aliases: ["qubaxai"],
   category: "apikey",
   authType: "apikey",
+  features: { usage: true, usageApikey: true },
   display: {
     name: "Qubax AI",
     icon: "hub",
@@ -20,6 +21,7 @@ export default {
   },
   transport: {
     baseUrl: `${QUBAX_BASE_URL}/chat/completions`,
+    validateUrl: QUBAX_BALANCE_URL,
   },
   transports: [
     { format: "openai", baseUrl: `${QUBAX_BASE_URL}/chat/completions` },

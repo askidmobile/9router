@@ -4,11 +4,12 @@ import { getExecutor } from "../../open-sse/executors/index.js";
 import { parseModel } from "../../open-sse/services/model.js";
 import { resolveTransport } from "../../open-sse/services/provider.js";
 import { normalizeQubaxModels, probeQubaxApiKey } from "../../open-sse/services/qubax.js";
-import { QUBAX_BASE_URL, QUBAX_MODELS_URL } from "../../open-sse/config/qubax.js";
+import { QUBAX_BASE_URL, QUBAX_MODELS_URL, QUBAX_BALANCE_URL } from "../../open-sse/config/qubax.js";
 import { catalogMetadata } from "../../src/lib/providerCatalog/metadata.js";
 import { deriveModelsEndpoint } from "../../src/lib/providerModels/deriveModelsEndpoint.js";
 import { APIKEY_PROVIDERS, getProviderByAlias } from "../../src/shared/constants/providers.js";
 import { FILTERS } from "../../src/app/api/providers/suggested-models/filters.js";
+import { isUsageEligible } from "../../src/shared/utils/providerQuota.js";
 
 const mocks = vi.hoisted(() => ({
   connection: { id: "conn-qubax", provider: "qubax", authType: "apikey", apiKey: "test-key", providerSpecificData: {} },
@@ -56,6 +57,7 @@ afterEach(() => vi.unstubAllGlobals());
 describe("Qubax native provider", () => {
   it("is discoverable in the dashboard and routes aliases and future model IDs", () => {
     expect(APIKEY_PROVIDERS.qubax.name).toBe("Qubax AI");
+    expect(isUsageEligible(mocks.connection)).toBe(true);
     expect(getProviderByAlias("qubaxai").id).toBe("qubax");
     expect(parseModel("qubaxai/future-model")).toMatchObject({ provider: "qubax", model: "future-model" });
     const entry = REGISTRY.find(entry => entry.id === "qubax");
@@ -103,16 +105,18 @@ describe("Qubax native provider", () => {
     expect(fetch).toHaveBeenCalledWith(QUBAX_MODELS_URL, expect.objectContaining({ headers: expect.objectContaining({ Authorization: "Bearer test-key" }) }));
   });
 
-  it("validates new and saved keys with authenticated inference, never the public catalog", async () => {
-    fetch.mockImplementation(async () => json({ choices: [] }));
+  it("validates new and saved keys through billing without public catalog or paid inference", async () => {
+    fetch.mockImplementation(async () => json({ balance_usd: 1, currency: "USD" }));
     const response = await validate(new Request("http://localhost/api/providers/validate", { method: "POST", body: JSON.stringify({ provider: "qubax", apiKey: "test-key" }) }));
     expect(await response.json()).toEqual({ valid: true, error: null });
     expect((await testSingleConnection("conn-qubax")).valid).toBe(true);
     expect(fetch).toHaveBeenCalledTimes(2);
     for (const [url, options] of fetch.mock.calls) {
-      expect(url).toBe(`${QUBAX_BASE_URL}/chat/completions`);
+      expect(url).toBe(QUBAX_BALANCE_URL);
       expect(options.headers.Authorization).toBe("Bearer test-key");
-      expect(JSON.parse(options.body)).toMatchObject({ model: "gpt-4o-mini", max_tokens: 1, stream: false });
+      expect(options.method).toBe("GET");
+      expect(options.body).toBeUndefined();
+      expect(options.redirect).toBe("error");
     }
   });
 

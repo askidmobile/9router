@@ -1,4 +1,7 @@
+import { QUBAX_BALANCE_URL } from "./qubax.js";
+
 export const ACCOUNT_QUOTA_URLS = {
+  qubax: QUBAX_BALANCE_URL,
   apinex: "https://api.apinex.bond/v1/balance",
   requesty: "https://api-v2.requesty.ai/v1/manage/apikey/self",
   cheaper: "https://api.cheaperinference.com/v1/account/balance",

@@ -43,6 +43,8 @@ describe("account quotas through dispatch and dashboard normalization", () => {
     ["apinex", { balance_usd: 2.8, reserved_usd: 0.3, rpm: 30 }, "Available (USD)", 2.5, "USD"],
     ["cheaper", { balance_usd: 10, available_usd: 8, reserved_usd: 2 }, "Available (USD)", 8, "USD"],
     ["kilocode", { balance: 12.5, isDepleted: false }, "Balance (USD)", 12.5, "USD"],
+    ["qubax", { balance_micros: 7250000, balance_usd: 7.25, currency: "USD" }, "Balance (USD)", 7.25, "USD"],
+    ["qubax", { balance_micros: 0, balance_usd: 0, currency: "USD" }, "Balance (USD)", 0, "USD"],
     ["jina-ai", { wallet: { total_balance: 12345, trial_balance: 12345, regular_balance: 0 }, email: "private@example.test", api_key: "DO_NOT_RETURN" }, "Balance (tokens)", 12345, "tokens"],
     ["jina-reader", { wallet: { total_balance: 0, trial_balance: 0, regular_balance: 0 } }, "Balance (tokens)", 0, "tokens"],
   ])("maps %s balance without leaking account data", async (provider, data, name, total, currency) => {
@@ -58,6 +60,26 @@ describe("account quotas through dispatch and dashboard normalization", () => {
     const usage = await getUsageForProvider({ provider: "requesty", apiKey: "fixture" });
     expect(proxyAwareFetch.mock.calls[0][0]).toBe("https://api-v2.requesty.ai/v1/manage/apikey/self");
     expect(parseQuotaData("requesty", usage)[0]).toMatchObject({ used: 20.83, unlimited: true, unit: "USD" });
+  });
+
+  it("reads Qubax balance and current RPM headers through the configured proxy", async () => {
+    proxyAwareFetch.mockResolvedValueOnce(new Response(JSON.stringify({ balance_usd: 7.25, currency: "USD" }), { headers: {
+      "content-type": "application/json", "x-ratelimit-limit-requests": "200", "x-ratelimit-remaining-requests": "198", "x-ratelimit-reset-requests": "21s",
+    } }));
+    const proxy = { connectionProxyEnabled: true, connectionProxyUrl: "http://proxy.test" };
+    const usage = await getUsageForProvider({ provider: "qubax", apiKey: "fixture" }, proxy);
+    expect(usage.quotas["requests/min"]).toMatchObject({ total: 200, used: 2, remainingPercentage: 99 });
+    expect(Date.parse(usage.quotas["requests/min"].resetAt)).toBeGreaterThan(Date.now());
+    expect(usage.quotas["tokens/min"]).toBeUndefined();
+    expect(proxyAwareFetch).toHaveBeenCalledWith("https://api.qubax.ai/v1/billing/balance", expect.objectContaining({ headers: expect.objectContaining({ Authorization: "Bearer fixture" }), redirect: "error" }), proxy);
+    expect(parseQuotaData("qubax", usage).map(row => row.name)).toContain("Balance (USD)");
+  });
+
+  it.each([{ balance_usd: null, currency: "USD" }, { balance_usd: "bad", currency: "USD" }, { balance_usd: 1, currency: "EUR" }])("rejects malformed Qubax balances instead of showing zero", async data => {
+    proxyAwareFetch.mockResolvedValueOnce(json(data));
+    const usage = await getUsageForProvider({ provider: "qubax", apiKey: "fixture" });
+    expect(usage.quotas).toBeUndefined();
+    expect(usage.message).toMatch(/unavailable/);
   });
 
   it("uses the fixed Kenari endpoints for an existing custom connection", async () => {
