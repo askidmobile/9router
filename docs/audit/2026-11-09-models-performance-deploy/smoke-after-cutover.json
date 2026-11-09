@@ -1,0 +1,123 @@
+{
+  "local": {
+    "passed": true,
+    "checks": [
+      {
+        "path": "/api/health",
+        "ok": true
+      },
+      {
+        "path": "/api/settings",
+        "ok": true
+      },
+      {
+        "path": "/api/providers",
+        "ok": true
+      },
+      {
+        "path": "/api/combos",
+        "ok": true
+      },
+      {
+        "path": "/api/keys",
+        "ok": true
+      },
+      {
+        "path": "/api/models",
+        "ok": true
+      },
+      {
+        "path": "/api/models/caps?summary=1",
+        "ok": true
+      },
+      {
+        "path": "/api/usage/stats?period=today",
+        "ok": true
+      },
+      {
+        "path": "/dashboard/models",
+        "ok": true
+      },
+      {
+        "path": "dashboard JS/CSS",
+        "assets": 18,
+        "ok": true
+      },
+      {
+        "path": "/dashboard/combos",
+        "ok": true
+      },
+      {
+        "path": "/dashboard/cli-tools",
+        "ok": true
+      },
+      {
+        "path": "/providers/nous.png",
+        "ok": true
+      }
+    ]
+  },
+  "public": {
+    "passed": true,
+    "checks": [
+      {
+        "path": "/api/health",
+        "ok": true
+      },
+      {
+        "path": "/api/settings",
+        "ok": true
+      },
+      {
+        "path": "/api/providers",
+        "ok": true
+      },
+      {
+        "path": "/api/combos",
+        "ok": true
+      },
+      {
+        "path": "/api/keys",
+        "ok": true
+      },
+      {
+        "path": "/api/models",
+        "ok": true
+      },
+      {
+        "path": "/api/models/caps?summary=1",
+        "ok": true
+      },
+      {
+        "path": "/api/usage/stats?period=today",
+        "ok": true
+      },
+      {
+        "path": "/dashboard/models",
+        "ok": true
+      },
+      {
+        "path": "dashboard JS/CSS",
+        "assets": 18,
+        "ok": true
+      },
+      {
+        "path": "/dashboard/combos",
+        "ok": true
+      },
+      {
+        "path": "/dashboard/cli-tools",
+        "ok": true
+      },
+      {
+        "path": "/providers/nous.png",
+        "ok": true
+      },
+      {
+        "path": "public CommandCode key import guard",
+        "requests": 2,
+        "ok": true
+      }
+    ]
+  }
+}

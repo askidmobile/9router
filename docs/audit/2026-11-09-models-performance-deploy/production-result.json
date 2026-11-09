@@ -1,0 +1,25 @@
+{
+  "passed": true,
+  "image": "sha256:40a6b525e65ec97f28aac9b9899a9fcace1a6a35368afece95d31325283e00d3",
+  "revision": "14d4372e2e122b69a7d54b9f90aa657520aa5034",
+  "version": {
+    "app": "0.5.116",
+    "node": "v22.23.4",
+    "next": "16.4.5",
+    "undici": "8.12.4"
+  },
+  "restarts": 0,
+  "sqlite": "quick_check=ok",
+  "connections": 55,
+  "keys": 17,
+  "combos": 13,
+  "environmentUnchanged": true,
+  "hostConfigUnchanged": true,
+  "mountsUnchanged": true,
+  "protectedConfigurationUnchanged": true,
+  "fatalLogMarkers": 0,
+  "localHealth": true,
+  "publicHealth": true,
+  "rollbackReady": true,
+  "startedAt": "2026-11-09T11:17:36.899099477Z"
+}

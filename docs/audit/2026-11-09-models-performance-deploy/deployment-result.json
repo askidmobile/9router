@@ -1,0 +1,15 @@
+{
+  "deployed": true,
+  "revision": "14d4372e2e122b69a7d54b9f90aa657520aa5034",
+  "image": "sha256:40a6b525e65ec97f28aac9b9899a9fcace1a6a35368afece95d31325283e00d3",
+  "paidSettingsUnchanged": true,
+  "protectedConnections": 55,
+  "healthRestoredSeconds": 10.07,
+  "drain": {
+    "active": 0,
+    "pending": 0
+  },
+  "rollbackContainer": "9router-before-models-performance-20261109-14d4372e",
+  "sqliteBackup": "ok",
+  "backup": "/root/9router-releases/models-performance-20261109-14d4372e/backup"
+}
