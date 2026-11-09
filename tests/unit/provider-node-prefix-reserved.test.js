@@ -15,10 +15,13 @@ import { isReservedProviderPrefix } from "../../src/sse/services/model.js";
 const NODE_PREFIXES_IN_USE = [
   "experientiallabs",
   "kenari",
-  "qubax",
 ];
 
 describe("registry aliases vs provider-node prefixes", () => {
+  it("reserves Qubax prefixes now that the custom node has a native replacement", () => {
+    expect(isReservedProviderPrefix("qubax")).toBe(true);
+    expect(isReservedProviderPrefix("qubaxai")).toBe(true);
+  });
   it("leaves every prefix a provider node may own unreserved", () => {
     for (const prefix of NODE_PREFIXES_IN_USE) {
       expect(isReservedProviderPrefix(prefix)).toBe(false);

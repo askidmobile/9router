@@ -22,6 +22,7 @@ import { ORCAROUTER_MODELS_URL } from "open-sse/config/orcarouter.js";
 import { normalizeOrcaRouterModels } from "open-sse/services/orcarouter.js";
 import { resolveRespanModels } from "open-sse/services/respan.js";
 import { resolveUnorouterModels } from "open-sse/services/unorouter.js";
+import { resolveQubaxModels } from "open-sse/services/qubax.js";
 import { resolveRefuselessModels } from "open-sse/services/refuseless.js";
 import { withLiveCache } from "@/lib/providerModels/liveCache.js";
 import codexProvider from "open-sse/providers/registry/codex.js";
@@ -195,6 +196,17 @@ function buildQoderModelsResolver(providerId) {
 
 // Provider models endpoints configuration
 const PROVIDER_MODELS_CONFIG = {
+  qubax: {
+    customResolver: async connection => {
+      try {
+        const result = await resolveQubaxModels(connection);
+        if (result.models.length) return result;
+      } catch (error) {
+        return { models: getStaticProviderModels("qubax"), warning: `Failed to fetch Qubax AI models: ${error.message}` };
+      }
+      return { models: getStaticProviderModels("qubax"), warning: "Qubax AI returned no live models; falling back to static catalog." };
+    },
+  },
   "muse": {
     url: "https://api.meta.ai/v1/models",
     method: "GET",

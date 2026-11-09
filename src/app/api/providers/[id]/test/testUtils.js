@@ -33,6 +33,7 @@ import {
 } from "@/lib/oauth/constants/oauth";
 import { buildClineCredentialHeaders } from "@/shared/utils/clineAuth";
 import { hasWebIdentityProbe, fetchWebIdentity } from "open-sse/services/webIdentity.js";
+import { probeQubaxApiKey } from "open-sse/services/qubax.js";
 
 // OAuth provider test endpoints
 const OAUTH_TEST_CONFIG = {
@@ -793,6 +794,8 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
         const res = await fetchWithConnectionProxy("https://api.hyperbolic.xyz/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
         return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
       }
+      case "qubax":
+        return await probeQubaxApiKey(connection.apiKey, (url, options) => fetchWithConnectionProxy(url, options, effectiveProxy));
       case "tokenharbor":
       case "dahl":
       case "atria":

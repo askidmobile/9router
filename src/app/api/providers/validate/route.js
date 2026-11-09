@@ -12,6 +12,7 @@ import {
   isNousApiKeyAccepted,
 } from "open-sse/services/nous.js";
 import { normalizeProviderId } from "@/lib/providerNormalization";
+import { probeQubaxApiKey } from "open-sse/services/qubax.js";
 
 // Probe a webSearch/webFetch provider using its searchConfig/fetchConfig.
 // Returns true if API key is accepted (status !== 401 && !== 403).
@@ -316,6 +317,12 @@ export async function POST(request) {
           break;
 
 
+        case "qubax": {
+          const result = await probeQubaxApiKey(apiKey);
+          isValid = result.valid;
+          error = result.error;
+          break;
+        }
         case "nous": {
           // Nous exposes /models publicly, so a models request cannot validate
           // the Portal key. Use the smallest authenticated inference instead.

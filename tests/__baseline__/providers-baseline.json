@@ -1446,5 +1446,31 @@
       "503": 2
     },
     "format": "openai"
+  },
+  "qubax": {
+    "baseUrl": "https://api.qubax.ai/v1/chat/completions",
+    "format": "openai",
+    "transports": [
+      {
+        "format": "openai",
+        "baseUrl": "https://api.qubax.ai/v1/chat/completions"
+      },
+      {
+        "format": "openai-responses",
+        "baseUrl": "https://api.qubax.ai/v1/responses"
+      },
+      {
+        "format": "claude",
+        "baseUrl": "https://api.qubax.ai/v1/messages",
+        "auth": {
+          "combined": true,
+          "header": "x-api-key",
+          "scheme": "raw"
+        },
+        "headers": {
+          "anthropic-version": "2023-06-01"
+        }
+      }
+    ]
   }
 }
