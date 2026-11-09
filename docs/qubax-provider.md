@@ -44,7 +44,38 @@ DB_PATH=/path/to/db/data.sqlite node scripts/migrate-qubax-to-native.mjs --apply
 
 ## Проверка 2026-11-09
 
-75 тестов по провайдерам, API-маршрутам, импорту и SQLite-переносу прошли;
-production-сборка и provider baseline также прошли. Разбор живого публичного
-каталога выделил 249 чат-моделей из 432 записей. Inference с действующим ключом,
-перенос рабочего подключения и деплой в рамках этой правки не выполнялись.
+После объединения с коммитами второй сессии прошли 130 тестов по провайдерам,
+API-маршрутам, импорту, SQLite-переносу, Refuseless и streaming speed.
+Provider baseline: 111 провайдеров. Серверная production-сборка прошла.
+Точный образ проверен без внешней сети на согласованной копии production SQLite:
+перенос, сохранение конфигурации, management API, dashboard assets и Qubax logo.
+
+## Production 2026-11-09
+
+`a79314fc8225f99f05520448f361222c2083cdf4` опубликован в `origin/master` и
+развёрнут на omni-fr поверх исправлений второй сессии. Образ:
+`sha256:7ad23aea10ac0832588ee9aba53bfef78316dba5448b66dc5d3ef20559c851d9`.
+
+Custom Qubax перенесён во встроенный `qubax`. Сохранены ID и ключ подключения,
+шесть выбранных моделей, proxy, overrides, provenance и ограничения доступа.
+После переноса: 55 подключений, 17 API keys, 13 Combo; custom nodes стало 1 вместо
+2. Настройки других провайдеров, environment, mounts и HostConfig сохранены.
+
+Перед остановкой было `active=0, pending=0`; health восстановился за 10,52 с.
+Локальные и публичные health/API/UI/assets прошли, `quick_check=ok`, рестартов и
+fatal log markers — 0. Живой каталог вернул 249 чат-моделей без fallback.
+Запрос через production `/v1/chat/completions` к `qubax/glm-5.3-flash`
+завершился HTTP 200 с provider-reported usage: 2016 input / 16 output tokens.
+Внешний inference Responses и Anthropic Messages отдельно не запускался.
+
+Rollback container: `9router-before-qubax-20261109-a79314fc`.
+Согласованная резервная копия SQLite и исходная конфигурация контейнера:
+`/root/9router-releases/qubax-20261109-a79314fc/backup` на сервере.
+Откат требует вернуть и предыдущий контейнер, и SQLite backup: старый образ
+ожидает custom Qubax, а не native provider. База и секреты в Git не копировались.
+
+Подтверждения: [deployment](audit/2026-11-09-qubax-deploy/deployment-result.json),
+[production](audit/2026-11-09-qubax-deploy/production-result.json),
+[migration](audit/2026-11-09-qubax-deploy/migration-production-check.json),
+[offline QA](audit/2026-11-09-qubax-deploy/qa-result.json),
+[live smoke](audit/2026-11-09-qubax-deploy/live-smoke.json).

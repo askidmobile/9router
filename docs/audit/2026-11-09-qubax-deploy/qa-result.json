@@ -1,0 +1,86 @@
+{
+  "passed": true,
+  "image": "sha256:7ad23aea10ac0832588ee9aba53bfef78316dba5448b66dc5d3ef20559c851d9",
+  "network": "none",
+  "checks": {
+    "qa-migration-check": {
+      "passed": true,
+      "connections": 55,
+      "keys": 17,
+      "combos": 13,
+      "nodes": 1,
+      "selectedModels": 6,
+      "credentialsPreserved": true,
+      "settingsPreserved": true,
+      "overridesPreserved": true,
+      "accessPreserved": true
+    },
+    "qa-smoke": {
+      "passed": true,
+      "checks": [
+        {
+          "path": "/api/health",
+          "ok": true
+        },
+        {
+          "path": "/api/settings",
+          "ok": true
+        },
+        {
+          "path": "/api/providers",
+          "ok": true
+        },
+        {
+          "path": "/api/combos",
+          "ok": true
+        },
+        {
+          "path": "/api/keys",
+          "ok": true
+        },
+        {
+          "path": "/api/models",
+          "ok": true
+        },
+        {
+          "path": "/api/models/caps?summary=1",
+          "ok": true
+        },
+        {
+          "path": "/api/usage/stats?period=today",
+          "ok": true
+        },
+        {
+          "path": "/dashboard/models",
+          "ok": true
+        },
+        {
+          "path": "dashboard JS/CSS",
+          "assets": 18,
+          "ok": true
+        },
+        {
+          "path": "/dashboard/combos",
+          "ok": true
+        },
+        {
+          "path": "/dashboard/cli-tools",
+          "ok": true
+        },
+        {
+          "path": "/providers/nous.png",
+          "ok": true
+        }
+      ]
+    },
+    "qa-qubax": {
+      "passed": true,
+      "nativeConnections": 1,
+      "selectedModels": 6,
+      "customModels": 6,
+      "catalogModels": 5,
+      "usedFallback": true,
+      "logoVerified": true
+    }
+  }
+}

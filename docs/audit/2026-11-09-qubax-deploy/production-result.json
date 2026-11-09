@@ -1,0 +1,30 @@
+{
+  "passed": true,
+  "revision": "a79314fc8225f99f05520448f361222c2083cdf4",
+  "image": "sha256:7ad23aea10ac0832588ee9aba53bfef78316dba5448b66dc5d3ef20559c851d9",
+  "restarts": 0,
+  "sqlite": "quick_check=ok",
+  "counts": {
+    "providerConnections": 55,
+    "providerNodes": 1,
+    "apiKeys": 17,
+    "combos": 13
+  },
+  "runtimeConfigurationPreserved": {
+    "HostConfig": true,
+    "Mounts": true,
+    "environment": true
+  },
+  "nativeQubax": {
+    "passed": true,
+    "nativeConnections": 1,
+    "selectedModels": 6,
+    "customModels": 6,
+    "catalogModels": 249,
+    "usedFallback": false,
+    "logoVerified": true
+  },
+  "fatalLogMarkers": 0,
+  "rollbackReady": true,
+  "startedAt": "2026-11-09T11:39:25.733452202Z"
+}

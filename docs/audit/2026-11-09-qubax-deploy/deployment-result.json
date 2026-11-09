@@ -1,0 +1,16 @@
+{
+  "deployed": true,
+  "revision": "a79314fc8225f99f05520448f361222c2083cdf4",
+  "image": "sha256:7ad23aea10ac0832588ee9aba53bfef78316dba5448b66dc5d3ef20559c851d9",
+  "unrelatedConfigurationPreserved": true,
+  "nativeQubaxMigrated": true,
+  "protectedConnections": 55,
+  "healthRestoredSeconds": 10.52,
+  "drain": {
+    "active": 0,
+    "pending": 0
+  },
+  "rollbackContainer": "9router-before-qubax-20261109-a79314fc",
+  "sqliteBackup": "ok",
+  "backup": "/root/9router-releases/qubax-20261109-a79314fc/backup"
+}
