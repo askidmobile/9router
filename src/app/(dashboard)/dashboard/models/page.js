@@ -16,7 +16,7 @@ import { STATUS_MATCHERS, filterModelGroups, filterProviderGroups } from "./comp
 import { STATUS_RANK, summarizeGroup } from "./compare/summary";
 
 const inputClass =
-  "w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary";
+  "px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary";
 
 const VIEW_OPTIONS = [
   { value: "provider", label: "By provider" },
@@ -64,6 +64,8 @@ function groupSortValue(group, key) {
       return STATUS_RANK[summary.statusState] ?? 0;
     case "requests":
       return summary.requests;
+    case "speed":
+      return summary.tokensPerSecond;
     default:
       return group.name.toLowerCase();
   }
@@ -335,7 +337,7 @@ export default function ModelsPage() {
     setSort((prev) => {
       if (prev.key === key) return { key, dir: prev.dir === "asc" ? "desc" : "asc" };
       // A status column is most useful with the broken things on top.
-      const dir = key === "requests" || key === "status" ? "desc" : "asc";
+      const dir = key === "requests" || key === "status" || key === "speed" ? "desc" : "asc";
       return { key, dir };
     });
   };
@@ -432,15 +434,15 @@ export default function ModelsPage() {
 
       {/* Controls */}
       <div className="flex flex-col gap-2.5">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="flex flex-wrap items-center gap-2">
           <input
             type="text"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Search by model id, name or alias..."
-            className={`${inputClass} flex-1`}
+            className={`${inputClass} w-full min-w-[12rem] flex-1`}
           />
-          <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+          <div className="flex max-w-full flex-wrap items-center gap-1.5">
             <SegmentedControl options={VIEW_OPTIONS} value={view} onChange={setView} size="sm" />
             <SegmentedControl options={SCOPE_OPTIONS} value={scopeFilter} onChange={setScopeFilter} size="sm" />
             {view === "model" && (

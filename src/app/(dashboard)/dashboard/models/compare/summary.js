@@ -15,6 +15,10 @@ function maxDefined(values) {
 
 export function summarizeGroup(group) {
   const providers = group?.providers || [];
+  const fastest = providers.reduce((best, row) => {
+    const speed = row.health?.tokensPerSecond;
+    return typeof speed === "number" && Number.isFinite(speed) && (!best || speed > best.health.tokensPerSecond) ? row : best;
+  }, null);
 
   const pricing = {
     input: minDefined(providers.map((row) => row.pricing?.input)),
@@ -38,6 +42,10 @@ export function summarizeGroup(group) {
     maxOutput: maxDefined(providers.map((row) => row.caps?.maxOutput)),
     statusState,
     requests,
+    tokensPerSecond: fastest?.health.tokensPerSecond ?? null,
+    avgTtft: fastest?.health.avgTtft ?? null,
+    speedSamples: fastest?.health.speedSamples ?? 0,
+    speedProvider: fastest?.providerAlias,
     hasFreeProvider: providers.some((row) => row.pricingSource?.source === "free"),
     missingPrices: providers.filter((row) => !row.pricing || Object.keys(row.pricing).length === 0).length,
   };

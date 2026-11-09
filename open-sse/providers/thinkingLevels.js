@@ -49,6 +49,7 @@ const PROVIDER_THINKING_LEVELS = {
 // the provider overrides the model-native format (same precedence as
 // thinkingUnified.resolveFormat: provider > capability).
 const PROVIDER_FORMAT_LEVELS = {
+  refuseless: ["none", "low", "high", "max"],
   tokenrouter: ["low", "medium", "high", "xhigh", "max"],
 };
 // Opus/Sonnet 4.6 lack xhigh (Anthropic + Kiro docs) — keep the 4-level+max set.

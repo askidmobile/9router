@@ -282,6 +282,14 @@ function applyFormat(fmt, body, cfg, caps, supportedLevels, display, model = "",
   const eff = none && !canDisable ? { mode: "level", level: "minimal" } : cfg;
 
   switch (fmt) {
+    case "refuseless": {
+      if (none && canDisable) { body.reasoning_effort = "off"; break; }
+      const level = toLevel(eff);
+      const mapped = { minimal: "low", medium: "high", xhigh: "max", ultra: "max" }[level] || level;
+      // Refuseless rejects the rest of OpenAI's enum; auto means its catalog default.
+      if (["low", "high", "max"].includes(mapped)) body.reasoning_effort = mapped;
+      break;
+    }
     case "openai": {
       if (none && canDisable) { body.reasoning_effort = "none"; break; }
       const level = toLevel(eff);

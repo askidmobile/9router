@@ -6,6 +6,7 @@ const HEADER = [
   "input_per_1m", "output_per_1m", "cache_read_per_1m", "cache_write_per_1m",
   "price_source", "price_updated", "price_warnings",
   "status", "requests_24h", "error_rate", "avg_latency_ms", "alias", "disabled",
+  "output_tokens_per_second", "time_to_first_output_ms", "speed_samples_24h",
 ];
 
 function cell(value) {
@@ -36,6 +37,9 @@ export function buildCatalogCsv(groups, providers = {}) {
         row.health?.avgLatency,
         row.alias,
         row.disabled ? "yes" : "no",
+        row.health?.tokensPerSecond,
+        row.health?.avgTtft,
+        row.health?.speedSamples,
       ].map(cell).join(","));
     }
   }

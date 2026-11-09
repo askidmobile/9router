@@ -29,7 +29,7 @@ export default {
     // /v1/models is public (it cannot validate a key); the credits endpoint
     // answers 401 for a missing/invalid credential.
     validateUrl: "https://api.refuseless.com/v1/credits",
-    thinkingFormat: "openai",
+    thinkingFormat: "refuseless",
     // 429 model_busy / model_warming carries retry-after (15s / 30s).
     retry: { 429: 2 },
   },

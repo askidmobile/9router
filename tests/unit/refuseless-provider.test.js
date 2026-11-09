@@ -14,10 +14,38 @@ import { normalizeRefuselessModel } from "../../open-sse/services/refuseless.js"
 import { catalogMetadata } from "@/lib/providerCatalog/metadata.js";
 import { getCapabilitiesForModel } from "../../open-sse/providers/capabilities.js";
 import { getPricingForModel, PROVIDER_PRICING } from "../../open-sse/providers/pricing.js";
+import { translateRequest } from "../../open-sse/translator/index.js";
+import { DefaultExecutor } from "../../open-sse/executors/default.js";
+import "../translator/registerAll.js";
 
 const entry = REGISTRY.find((e) => e.id === "refuseless");
 
 describe("Refuseless provider", () => {
+  it.each([
+    ["minimal", "low"], ["low", "low"], ["medium", "high"], ["high", "high"],
+    ["xhigh", "max"], ["max", "max"], ["ultra", "max"], ["none", "off"],
+  ])("normalizes client effort %s to %s on the actual OpenAI dispatch path", (effort, expected) => {
+    const model = "deepseek-v4.1-flash-fast";
+    const translated = translateRequest("openai", "openai", model, {
+      messages: [{ role: "user", content: "ping" }], reasoning_effort: effort,
+    }, true, {}, "refuseless");
+    const body = new DefaultExecutor("refuseless").transformRequest(model, translated, true, {});
+    expect(body.reasoning_effort).toBe(expected);
+    expect(body.thinking).toBeUndefined();
+  });
+
+  it("keeps Claude effort compatible and leaves auto to the provider default", () => {
+    const model = "deepseek-v4.1-flash-fast";
+    expect(translateRequest("claude", "openai", model, {
+      max_tokens: 4096, messages: [{ role: "user", content: "ping" }], output_config: { effort: "xhigh" },
+    }, true, {}, "refuseless").reasoning_effort).toBe("max");
+    expect(translateRequest("openai", "openai", model, {
+      messages: [{ role: "user", content: "ping" }], reasoning_effort: "auto",
+    }, true, {}, "refuseless").reasoning_effort).toBeUndefined();
+    expect(translateRequest("openai", "openai", "glm-5.3-abliterated", {
+      messages: [{ role: "user", content: "ping" }], reasoning_effort: "none",
+    }, true, {}, "refuseless").reasoning_effort).toBe("low");
+  });
   it("is registered as an OpenAI-compatible apikey provider", () => {
     expect(entry).toBeDefined();
     expect(entry.category).toBe("apikey");
@@ -30,7 +58,7 @@ describe("Refuseless provider", () => {
   it("points at the documented endpoints and validates with /v1/credits", () => {
     expect(PROVIDERS.refuseless.baseUrl).toBe("https://api.refuseless.com/v1/chat/completions");
     expect(PROVIDERS.refuseless.format).toBe("openai");
-    expect(PROVIDERS.refuseless.thinkingFormat).toBe("openai");
+    expect(PROVIDERS.refuseless.thinkingFormat).toBe("refuseless");
     // /v1/models is public and accepts any key; only the credits route proves one.
     expect(PROVIDERS.refuseless.validateUrl).toBe("https://api.refuseless.com/v1/credits");
   });

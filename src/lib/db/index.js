@@ -68,7 +68,7 @@ export {
 
 // Rolling per-model health counters
 export {
-  recordModelOutcome, getModelHealth, summarizeHealth, classifyOutcome, clearModelHealth,
+  recordModelOutcome, recordModelPerformance, getModelHealth, summarizeHealth, classifyOutcome, clearModelHealth,
 } from "./repos/modelHealthRepo.js";
 
 // Metadata revision (invalidates in-process caches after any write)

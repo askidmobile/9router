@@ -1,0 +1,87 @@
+{
+  "base": "9201b563",
+  "isolatedWorktree": true,
+  "tests": {
+    "total": 6055,
+    "passed": 5938,
+    "failed": 7,
+    "expectedFail": 13,
+    "skipped": 96,
+    "todo": 1
+  },
+  "newFailures": [],
+  "baselineFailures": [
+    {
+      "file": "unit/combo-credit-fallback.test.js",
+      "test": "combo credit fallback routes a 400 response correctly: Bad request"
+    },
+    {
+      "file": "unit/headroom-responses-format.test.js",
+      "test": "compressWithHeadroom openai-responses format (#1998) skips Responses tool/reasoning history instead of collapsing it into a message (#2132)"
+    },
+    {
+      "file": "unit/models-custom-bulk.test.js",
+      "test": "POST /api/models/custom/bulk normalizes Google resource names before saving and deduplicates canonical IDs"
+    },
+    {
+      "file": "unit/models-custom-bulk.test.js",
+      "test": "POST /api/models/custom/bulk passes a non-default type through"
+    },
+    {
+      "file": "unit/models-custom-bulk.test.js",
+      "test": "POST /api/models/custom/bulk preserves other providers' model namespaces"
+    },
+    {
+      "file": "unit/models-custom-bulk.test.js",
+      "test": "POST /api/models/custom/bulk trims, dedupes and forwards ids to the repo"
+    },
+    {
+      "file": "unit/security-audit.test.js",
+      "test": "AUDIT-002: API key masking byApiKey object keys should use masked key, not raw key"
+    }
+  ],
+  "browser": {
+    "passed": true,
+    "results": [
+      {
+        "width": 1440,
+        "tableWidth": 1070,
+        "containerWidth": 1070,
+        "pageWidth": 1440,
+        "viewport": 1440,
+        "overflow": []
+      },
+      {
+        "width": 1280,
+        "tableWidth": 910,
+        "containerWidth": 910,
+        "pageWidth": 1280,
+        "viewport": 1280,
+        "overflow": []
+      },
+      {
+        "width": 1024,
+        "tableWidth": 900,
+        "containerWidth": 654,
+        "pageWidth": 1024,
+        "viewport": 1024,
+        "overflow": []
+      },
+      {
+        "width": 375,
+        "tableWidth": 900,
+        "containerWidth": 317,
+        "pageWidth": 375,
+        "viewport": 375,
+        "overflow": []
+      }
+    ],
+    "consoleErrors": []
+  },
+  "eslint": "passed",
+  "providers": 110,
+  "aliases": 148,
+  "oauthUrls": "unchanged",
+  "localProductionBuild": "passed",
+  "note": "UI browser screenshots use synthetic fixture data, not production throughput."
+}

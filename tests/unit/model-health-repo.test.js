@@ -55,6 +55,34 @@ describe("classifyOutcome", () => {
 });
 
 describe("recordModelOutcome", () => {
+  it("counts a generic 400 once", () => {
+    health.recordModelOutcome({ provider: "bad", model: "m", status: 400 });
+    const summary = health.summarizeHealth(health.__test__.snapshot()["bad|m"]);
+    expect(summary.requests).toBe(1);
+    expect(summary.err).toBe(1);
+  });
+  it("aggregates measured streaming throughput without counting requests twice", async () => {
+    health.recordModelOutcome({ provider: "speed", model: "m", status: 200 });
+    health.recordModelPerformance({ provider: "speed", model: "m", outputTokens: 100, generationMs: 2000, ttftMs: 500 });
+    health.recordModelPerformance({ provider: "speed", model: "m", outputTokens: 600, generationMs: 3000, ttftMs: 1500 });
+    await health.flushToDatabase();
+    const stored = await health.getModelHealth();
+    const summary = health.summarizeHealth(stored.speed.m);
+    expect(summary.requests).toBe(1);
+    expect(summary.tokensPerSecond).toBe(140);
+    expect(summary.avgTtft).toBe(1000);
+    expect(summary.speedSamples).toBe(2);
+  });
+
+  it("omits missing, estimated and invalid throughput samples", () => {
+    for (const sample of [
+      { outputTokens: 0, generationMs: 1000 }, { outputTokens: 100, generationMs: 0 },
+      { outputTokens: 100, generationMs: -1 }, { outputTokens: 100, generationMs: Infinity },
+      { outputTokens: 100, generationMs: 1000, estimated: true },
+    ]) health.recordModelPerformance({ provider: "invalid-speed", model: "m", ...sample });
+    expect(health.__test__.bufferSize()).toBe(0);
+    expect(health.summarizeHealth({ buckets: { "2026-11-06T10": { ok: 3 } } }).tokensPerSecond).toBeNull();
+  });
   it("counts successes and failures in the same hour bucket", () => {
     health.recordModelOutcome({ provider: "p", model: "m", status: 200, latencyMs: 100 });
     health.recordModelOutcome({ provider: "p", model: "m", status: 200, latencyMs: 300 });

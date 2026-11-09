@@ -21,7 +21,7 @@ const FLUSH_INTERVAL_MS = 5000;
 const COUNTER_FIELDS = [
   "ok", "err", "client",
   "e401", "e402", "e403", "e404", "e408", "e429", "e5xx", "timeout",
-  "latSum", "latCount",
+  "latSum", "latCount", "outputTokens", "generationMs", "speedSamples", "ttftSum", "ttftCount",
 ];
 
 let buffer = new Map(); // "provider|model" -> { provider, model, buckets: Map<hourKey, counters> }
@@ -87,16 +87,8 @@ function pruneBuckets(buckets, now = Date.now()) {
  */
 export function recordModelOutcome(outcome) {
   try {
-    const provider = String(outcome?.provider || "").trim();
-    const model = String(outcome?.model || "").trim();
-    if (!provider || !model) return;
-
-    const key = `${provider}|${model}`;
-    const hour = hourKey();
-    if (!buffer.has(key)) buffer.set(key, { provider, model, buckets: new Map() });
-    const entry = buffer.get(key);
-    if (!entry.buckets.has(hour)) entry.buckets.set(hour, emptyCounters());
-    const counters = entry.buckets.get(hour);
+    const counters = getCounters(outcome?.provider, outcome?.model);
+    if (!counters) return;
 
     const bucket = classifyOutcome(outcome.status, {
       timeout: outcome.timeout === true,
@@ -104,7 +96,7 @@ export function recordModelOutcome(outcome) {
     });
     counters[bucket] = (counters[bucket] || 0) + 1;
     if (bucket !== "ok" && bucket !== "client") {
-      counters.err = (counters.err || 0) + 1;
+      if (bucket !== "err") counters.err = (counters.err || 0) + 1;
       if (outcome.error) {
         counters.lastError = String(outcome.error).slice(0, 400);
         counters.lastErrorAt = new Date().toISOString();
@@ -120,6 +112,35 @@ export function recordModelOutcome(outcome) {
   } catch {
     // Health accounting must never break a request.
   }
+}
+
+function getCounters(provider, model) {
+  provider = String(provider || "").trim();
+  model = String(model || "").trim();
+  if (!provider || !model) return null;
+  const key = `${provider}|${model}`;
+  const hour = hourKey();
+  if (!buffer.has(key)) buffer.set(key, { provider, model, buckets: new Map() });
+  const entry = buffer.get(key);
+  if (!entry.buckets.has(hour)) entry.buckets.set(hour, emptyCounters());
+  return entry.buckets.get(hour);
+}
+
+// Usage arrives after lifecycle accounting; this must not increment request counts again.
+export function recordModelPerformance({ provider, model, outputTokens, generationMs, ttftMs, estimated } = {}) {
+  try {
+    const tokens = Number(outputTokens);
+    const duration = Number(generationMs);
+    if (estimated || !Number.isFinite(tokens) || tokens <= 0 || !Number.isFinite(duration) || duration <= 0) return;
+    const counters = getCounters(provider, model);
+    if (!counters) return;
+    counters.outputTokens += tokens;
+    counters.generationMs += duration;
+    counters.speedSamples++;
+    const ttft = Number(ttftMs);
+    if (Number.isFinite(ttft) && ttft >= 0) { counters.ttftSum += ttft; counters.ttftCount++; }
+    scheduleFlush();
+  } catch { /* telemetry must never fail a request */ }
 }
 
 function scheduleFlush() {
@@ -212,6 +233,9 @@ export function summarizeHealth(entry, options = {}) {
     err: total.err,
     errorRate: requests > 0 ? total.err / requests : null,
     avgLatency: total.latCount > 0 ? Math.round(total.latSum / total.latCount) : null,
+    tokensPerSecond: total.generationMs > 0 ? Math.round(total.outputTokens * 10000 / total.generationMs) / 10 : null,
+    avgTtft: total.ttftCount > 0 ? Math.round(total.ttftSum / total.ttftCount) : null,
+    speedSamples: total.speedSamples,
     rateLimited: total.e429,
     serverErrors: total.e5xx,
     timeouts: total.timeout,

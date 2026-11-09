@@ -1431,7 +1431,7 @@
   "refuseless": {
     "baseUrl": "https://api.refuseless.com/v1/chat/completions",
     "validateUrl": "https://api.refuseless.com/v1/credits",
-    "thinkingFormat": "openai",
+    "thinkingFormat": "refuseless",
     "retry": {
       "429": 2
     },

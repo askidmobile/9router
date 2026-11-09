@@ -89,6 +89,20 @@ export function createSSEStream(options = {}) {
   let accumulatedContent = "";
   let accumulatedThinking = "";
   let ttftAt = null;
+  let firstOutputAt = null;
+  let performanceFailed = false;
+  const observeOutput = (parsed) => {
+    if (!parsed || typeof parsed !== "object") return;
+    if (parsed.error || parsed.type === "error" || parsed.type === "response.failed" || parsed.type === "response.incomplete"
+      || parsed.response?.status === "failed" || parsed.response?.status === "incomplete") performanceFailed = true;
+    if (firstOutputAt == null && (totalContentLength > 0
+      || (typeof parsed.delta === "string" && parsed.delta.length > 0)
+      || parsed.delta?.partial_json
+      || (Array.isArray(parsed.choices) && parsed.choices.some(choice => Array.isArray(choice?.delta?.tool_calls)
+        && choice.delta.tool_calls.some(call => call?.function?.arguments))))) {
+      firstOutputAt = Date.now();
+    }
+  };
   let sseLineCount = 0;
   let sseEmittedCount = 0;
   const eventTypeCounts = {};
@@ -146,7 +160,7 @@ export function createSSEStream(options = {}) {
       onStreamComplete({
         content: accumulatedContent,
         thinking: accumulatedThinking
-      }, finalUsage, ttftAt);
+      }, finalUsage, ttftAt, performanceFailed ? null : firstOutputAt);
     }
   };
 
@@ -276,6 +290,7 @@ export function createSSEStream(options = {}) {
           if (trimmed.startsWith("data:") && trimmed.slice(5).trim() !== "[DONE]") {
             try {
               let parsed = JSON.parse(trimmed.slice(5).trim());
+              observeOutput(parsed);
               responseMetadata.observe(parsed);
 
               const idFixed = fixInvalidId(parsed);
@@ -376,6 +391,7 @@ export function createSSEStream(options = {}) {
                 totalContentLength += reasoning.length;
                 accumulatedThinking += reasoning;
               }
+              observeOutput(parsed);
 
               const extracted = extractUsage(parsed);
               if (extracted) {
@@ -451,6 +467,7 @@ export function createSSEStream(options = {}) {
 
         const parsed = parseSSELine(trimmed, targetFormat);
         if (!parsed) continue;
+        observeOutput(parsed);
         responseMetadata.observe(parsed);
 
         // Responses API same-format passthrough: preserve event framing + track terminal state
@@ -477,6 +494,7 @@ export function createSSEStream(options = {}) {
 
           // Synthesize response.failed if the Responses stream never sent a terminal event
           if (keepsOpenAIResponsesFormat && !openAIResponsesTerminalSeen) {
+            performanceFailed = true;
             const failedOutput = formatIncompleteOpenAIResponsesStreamFailure();
             reqLogger?.appendConvertedChunk?.(failedOutput);
             controller.enqueue(sharedEncoder.encode(failedOutput));
@@ -554,6 +572,7 @@ export function createSSEStream(options = {}) {
         // Repetition collapse: the model locked onto one sentence and is emitting it
         // until the output limit. Close the stream with the client's own terminal
         // frame instead of forwarding the remaining thousands of copies.
+        observeOutput(parsed);
         if (loopGuard && deltaText) {
           const hit = loopGuard.push(deltaText);
           if (hit) {
@@ -740,6 +759,7 @@ export function createSSEStream(options = {}) {
         // Synthesize response.failed if a Responses passthrough stream never reached a terminal event
         const keepsOpenAIResponsesFormat = targetFormat === FORMATS.OPENAI_RESPONSES && sourceFormat === FORMATS.OPENAI_RESPONSES;
         if (keepsOpenAIResponsesFormat && !openAIResponsesTerminalSeen) {
+          performanceFailed = true;
           const failedOutput = formatIncompleteOpenAIResponsesStreamFailure();
           reqLogger?.appendConvertedChunk?.(failedOutput);
           controller.enqueue(sharedEncoder.encode(failedOutput));
@@ -763,6 +783,7 @@ export function createSSEStream(options = {}) {
 
         finalizeStream();
       } catch (error) {
+        performanceFailed = true;
         console.log("Error in flush:", error);
         finalizeStream();
       }

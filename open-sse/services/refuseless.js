@@ -9,8 +9,8 @@ import { PROVIDER_PRICING } from "../providers/pricing.js";
 
 const MODELS_URL = "https://api.refuseless.com/v1/models";
 
-// The API accepts "off" (or "none") to disable reasoning; 9router's level enum
-// spells it "none". Leaving "off" in the list would make
+// The API uses "off" to disable reasoning; 9router's level enum spells it
+// "none" and the wire normalizer converts it back. Leaving "off" here would make
 // normalizeReasoningLevels() drop the whole set.
 const LEVEL_ALIASES = { off: "none" };
 

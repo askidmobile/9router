@@ -12,7 +12,7 @@ function pct(rate) {
   return `${(rate * 100).toFixed(rate > 0 && rate < 0.1 ? 1 : 0)}%`;
 }
 
-export default function StatusCell({ row, onClearCooldown }) {
+export default function StatusCell({ row }) {
   const status = row.status || { state: "unknown", label: "No traffic", tone: "default" };
   const health = row.health || {};
   const errorRate = pct(health.errorRate);
@@ -28,36 +28,21 @@ export default function StatusCell({ row, onClearCooldown }) {
     health.lastError ? `“${health.lastError}”` : null,
   ].filter(Boolean).join("\n");
 
-  const canClear = status.state === "cooldown" || status.state === "down";
-
   return (
-    <div className="flex items-center justify-end gap-1.5">
-      <Tooltip text={tooltip}>
+    <div className="flex items-center justify-end">
+      <Tooltip text={tooltip} position="left">
         <span className="inline-flex flex-col items-end gap-0.5">
           <Badge variant={status.tone === "default" ? "default" : status.tone} size="sm" dot>
             {status.label}
           </Badge>
           {health.requests > 0 && (
             <span className="text-[10px] text-text-muted tabular-nums">
-              {errorRate && health.err > 0 ? `${errorRate} err · ` : ""}
-              {health.requests} req
+              {errorRate && health.err > 0 ? `${errorRate} · ` : ""}
+              {health.requests.toLocaleString()}
             </span>
           )}
         </span>
       </Tooltip>
-      {canClear && onClearCooldown && (
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            onClearCooldown(row);
-          }}
-          title="Clear cooldown"
-          className="p-1 rounded text-text-muted hover:text-primary hover:bg-sidebar"
-        >
-          <span className="material-symbols-outlined text-[15px]">restart_alt</span>
-        </button>
-      )}
     </div>
   );
 }
@@ -77,5 +62,4 @@ StatusCell.propTypes = {
       lastErrorAt: PropTypes.string,
     }),
   }).isRequired,
-  onClearCooldown: PropTypes.func,
 };
