@@ -1,0 +1,75 @@
+{
+  "passed": true,
+  "image": "sha256:013b3af332cfa730dba4db742e7a51a0a795776121dc263a99a7b89c9789e70c",
+  "network": "none",
+  "smoke": {
+    "passed": true,
+    "checks": [
+      {
+        "path": "/api/health",
+        "ok": true
+      },
+      {
+        "path": "/api/settings",
+        "ok": true
+      },
+      {
+        "path": "/api/providers",
+        "ok": true
+      },
+      {
+        "path": "/api/combos",
+        "ok": true
+      },
+      {
+        "path": "/api/keys",
+        "ok": true
+      },
+      {
+        "path": "/api/models",
+        "ok": true
+      },
+      {
+        "path": "/api/models/caps?summary=1",
+        "ok": true
+      },
+      {
+        "path": "/api/usage/stats?period=today",
+        "ok": true
+      },
+      {
+        "path": "/dashboard/models",
+        "ok": true
+      },
+      {
+        "path": "dashboard JS/CSS",
+        "assets": 18,
+        "ok": true
+      },
+      {
+        "path": "/dashboard/combos",
+        "ok": true
+      },
+      {
+        "path": "/dashboard/cli-tools",
+        "ok": true
+      },
+      {
+        "path": "/providers/nous.png",
+        "ok": true
+      }
+    ]
+  },
+  "quota": {
+    "passed": true,
+    "balanceLoaded": true,
+    "currency": "USD",
+    "requestsPerMinute": 200,
+    "hasTokenQuota": false,
+    "savedKeyVerified": true,
+    "invalidKeyRejected": true,
+    "quotaPageReachable": true
+  },
+  "billingGetCalls": 3,
+  "paidInferenceCalls": 0
+}

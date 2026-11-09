@@ -1,0 +1,32 @@
+{
+  "passed": true,
+  "revision": "af49c54ba7c1d65c9c79d7613b58870bd1c4905a",
+  "image": "sha256:013b3af332cfa730dba4db742e7a51a0a795776121dc263a99a7b89c9789e70c",
+  "restarts": 0,
+  "sqlite": "quick_check=ok",
+  "counts": {
+    "providerConnections": 55,
+    "providerNodes": 1,
+    "apiKeys": 17,
+    "combos": 13
+  },
+  "runtimeConfigurationPreserved": {
+    "environment": true,
+    "HostConfig": true,
+    "Mounts": true
+  },
+  "quota": {
+    "passed": true,
+    "balanceLoaded": true,
+    "currency": "USD",
+    "requestsPerMinute": 200,
+    "hasTokenQuota": false,
+    "savedKeyVerified": true,
+    "invalidKeyRejected": true,
+    "quotaPageReachable": true
+  },
+  "fatalLogMarkers": 0,
+  "rollbackReady": true,
+  "paidInferenceForVerification": false,
+  "startedAt": "2026-11-09T12:23:31.238014578Z"
+}

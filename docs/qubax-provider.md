@@ -59,7 +59,7 @@ Provider baseline: 111 провайдеров. Серверная production-с�
 Точный образ проверен без внешней сети на согласованной копии production SQLite:
 перенос, сохранение конфигурации, management API, dashboard assets и Qubax logo.
 
-## Production 2026-11-09
+## Первый деплой 2026-11-09
 
 `a79314fc8225f99f05520448f361222c2083cdf4` опубликован в `origin/master` и
 развёрнут на omni-fr поверх исправлений второй сессии. Образ:
@@ -88,3 +88,31 @@ Rollback container: `9router-before-qubax-20261109-a79314fc`.
 [migration](audit/2026-11-09-qubax-deploy/migration-production-check.json),
 [offline QA](audit/2026-11-09-qubax-deploy/qa-result.json),
 [live smoke](audit/2026-11-09-qubax-deploy/live-smoke.json).
+
+## Отслеживание квоты — 2026-11-09
+
+`af49c54ba7c1d65c9c79d7613b58870bd1c4905a` добавил Qubax в список провайдеров
+с quota API, чтение `/v1/billing/balance` и RPM из headers этого ответа.
+Проверка нового/сохранённого ключа переведена на тот же бесплатный GET.
+Прошли 47 профильных тестов, provider baseline и серверная production-сборка.
+
+Образ `sha256:013b3af332cfa730dba4db742e7a51a0a795776121dc263a99a7b89c9789e70c`
+прошёл offline QA на копии production SQLite. Через настоящие management
+routes проверены баланс, RPM, сохранённый ключ и отказ для неверного ключа;
+upstream fixture зафиксировал три GET к billing API и ноль inference-вызовов.
+
+На production подтверждены баланс в USD и RPM 200, доступность страницы квот,
+проверка сохранённого ключа и отказ неверному. TPM в проверенном ответе отсутствовал.
+Платный inference в этом исправлении не запускался. Перед остановкой дождались
+`active=0, pending=0`; health восстановился за 7,51 с. Сохранены 55 подключений,
+17 API keys, 13 Combo, шесть выбранных моделей Qubax и runtime configuration.
+Рестартов и fatal markers — 0, `quick_check=ok`.
+
+Миграция базы не требовалась; пользовательские настройки сохранены. Rollback container:
+`9router-before-qubax-quota-20261109-af49c54b`; backup:
+`/root/9router-releases/qubax-quota-20261109-af49c54b/backup` на сервере.
+Остаток на счёте и секреты в Git не сохранялись.
+
+Подтверждения: [deployment](audit/2026-11-09-qubax-quota-deploy/deployment-result.json),
+[production](audit/2026-11-09-qubax-quota-deploy/production-result.json),
+[offline QA](audit/2026-11-09-qubax-quota-deploy/qa-result.json).

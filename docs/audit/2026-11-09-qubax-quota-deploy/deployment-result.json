@@ -1,0 +1,15 @@
+{
+  "deployed": true,
+  "revision": "af49c54ba7c1d65c9c79d7613b58870bd1c4905a",
+  "image": "sha256:013b3af332cfa730dba4db742e7a51a0a795776121dc263a99a7b89c9789e70c",
+  "paidSettingsUnchanged": true,
+  "protectedConnections": 55,
+  "healthRestoredSeconds": 7.51,
+  "drain": {
+    "active": 0,
+    "pending": 0
+  },
+  "rollbackContainer": "9router-before-qubax-quota-20261109-af49c54b",
+  "sqliteBackup": "ok",
+  "backup": "/root/9router-releases/qubax-quota-20261109-af49c54b/backup"
+}
