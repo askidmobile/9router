@@ -42,7 +42,7 @@ describe("Ollama terminal stream chunks", () => {
       { content: "final", thinking: "final thought" },
       expect.any(Object),
       expect.any(Number),
-      expect.any(Number),
+      expect.objectContaining({ firstOutputAt: expect.any(Number), outputTokens: 1 }),
     );
   });
 });

@@ -19,8 +19,10 @@
 
 ## Проверки
 
-6055 tests: 5938 passed, те же 7 исходных failures, 13 expected fail, 96 skipped, 1 todo. Новых failures нет. Проверены timed OpenAI/Claude/Responses streams, поздний SSE error, cancellation, weighted aggregation/persistence, CSV и wire enum Refuseless.
+6057 tests: 5940 passed, те же 7 исходных failures, 13 expected fail, 96 skipped, 1 todo. Новых failures нет. Проверены timed OpenAI/Claude/Responses streams, поздний SSE error, отдельный usage trailer, cancellation, weighted aggregation/persistence, CSV и wire enum Refuseless.
 
 Providers baseline: 110; aliases: 148; OAuth URLs unchanged. ESLint изменённых production JS прошёл. Production webpack build прошёл. Browser QA использует fixture data: 1440/1280 без горизонтального scroll, 1024/375 с contained table scroll, sorting и edit modal. Параллельные Qubax изменения исключены: итоговая проверка и коммит выполняются в отдельном worktree на базе `9201b563`.
 
 Данные проверки: [verification.json](../audit/2026-11-09-models-performance/verification.json).
+
+Уточнение usage trailer: источник для output speed отделён от временных client estimates. Поздний provider usage используется даже если legacy accounting state сохранил `estimated`; расчёт стоимости и отдаваемые SSE usage поля не изменены.

@@ -21,8 +21,10 @@ describe("streaming throughput through the response handler", () => {
   it.each([
     { sourceFormat: "openai", failed: false }, { sourceFormat: "claude", failed: false },
     { sourceFormat: "openai-responses", failed: false },
+    { sourceFormat: "openai", failed: false, trailer: true },
+    { sourceFormat: "claude", failed: false, trailer: true },
     { sourceFormat: "openai", failed: true },
-  ])("measures first output for a $sourceFormat client, failed=$failed", async ({ sourceFormat, failed }) => {
+  ])("measures first output for a $sourceFormat client, failed=$failed, trailer=$trailer", async ({ sourceFormat, failed, trailer }) => {
     const upstream = new TransformStream();
     const writer = upstream.writable.getWriter();
     const native = sourceFormat === "openai-responses";
@@ -46,7 +48,8 @@ describe("streaming throughput through the response handler", () => {
     await send(14000, native ? { type: "response.reasoning_summary_text.delta", delta: "Thinking" } : { choices: [{ index: 0, delta: { reasoning_content: "Thinking" } }] });
     await send(15000, native ? { type: "response.output_text.delta", delta: "Done" } : { choices: [{ index: 0, delta: { content: "Done" } }] });
     if (failed) await send(15500, { error: { message: "fixture upstream failure" } });
-    await send(16000, native ? { type: "response.completed", response: { id: "resp_fixture", status: "completed", output: [], usage: { input_tokens: 4, output_tokens: 100, total_tokens: 104 } } } : { choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage: { prompt_tokens: 4, completion_tokens: 100, total_tokens: 104 } });
+    if (trailer) await send(16000, { choices: [{ index: 0, delta: {}, finish_reason: "stop" }] });
+    await send(16000, native ? { type: "response.completed", response: { id: "resp_fixture", status: "completed", output: [], usage: { input_tokens: 4, output_tokens: 100, total_tokens: 104 } } } : { choices: trailer ? [] : [{ index: 0, delta: {}, finish_reason: "stop" }], usage: { prompt_tokens: 4, completion_tokens: 100, total_tokens: 104 } });
     await writer.write(new TextEncoder().encode("data: [DONE]\n\n"));
     await writer.close();
     expect(await reading).toContain("Done");
@@ -59,7 +62,7 @@ describe("streaming throughput through the response handler", () => {
   it("does not measure a cancelled response", () => {
     const controller = new AbortController(); controller.abort();
     buildOnStreamComplete({ provider: "p", model: "m", requestStartTime: 1000, body: {}, signal: controller.signal })
-      .onStreamComplete({}, { completion_tokens: 20 }, 5000, 5000);
+      .onStreamComplete({}, { completion_tokens: 20 }, 5000, { firstOutputAt: 5000, outputTokens: 20 });
     expect(telemetry.performance).not.toHaveBeenCalled();
   });
 });

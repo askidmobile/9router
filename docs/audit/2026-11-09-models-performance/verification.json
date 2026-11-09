@@ -2,8 +2,8 @@
   "base": "9201b563",
   "isolatedWorktree": true,
   "tests": {
-    "total": 6055,
-    "passed": 5938,
+    "total": 6057,
+    "passed": 5940,
     "failed": 7,
     "expectedFail": 13,
     "skipped": 96,
@@ -83,5 +83,6 @@
   "aliases": 148,
   "oauthUrls": "unchanged",
   "localProductionBuild": "passed",
-  "note": "UI browser screenshots use synthetic fixture data, not production throughput."
+  "note": "UI browser screenshots use synthetic fixture data, not production throughput.",
+  "separateUsageTrailer": "OpenAI and Claude actual streaming handlers passed"
 }

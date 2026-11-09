@@ -87,7 +87,7 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
   }
 
   const responseMetadata = await prepareResponseMetadata({ provider, model, translatedBody, finalBody });
-  const completeWithCost = (content, usage, ttft, firstOutputAt) => onStreamComplete?.(content, usage ? { ...usage, ...responseMetadata.cost() } : usage, ttft, firstOutputAt);
+  const completeWithCost = (content, usage, ttft, streamMetrics) => onStreamComplete?.(content, usage ? { ...usage, ...responseMetadata.cost() } : usage, ttft, streamMetrics);
 
   // Репитишн-коллапс: transform уже закрыл клиентский поток терминальным
   // кадром и вызвал terminate(). Остаётся отменить чтение апстрима — у части
@@ -141,7 +141,7 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
 export function buildOnStreamComplete({ provider, model, connectionId, apiKey, requestStartTime, body, stream, finalBody, translatedBody, clientRawRequest, pxpipe, reqTag, log, signal }) {
   const streamDetailId = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 
-  const onStreamComplete = (contentObj, usage, ttftAt, firstOutputAt) => {
+  const onStreamComplete = (contentObj, usage, ttftAt, streamMetrics) => {
     const latency = {
       ttft: ttftAt ? ttftAt - requestStartTime : Date.now() - requestStartTime,
       total: Date.now() - requestStartTime
@@ -149,12 +149,13 @@ export function buildOnStreamComplete({ provider, model, connectionId, apiKey, r
     const safeContent = contentObj?.content || "[Empty streaming response]";
     const safeThinking = contentObj?.thinking || null;
 
+    const firstOutputAt = streamMetrics?.firstOutputAt;
     if (firstOutputAt != null && !signal?.aborted) {
       try {
         recordModelPerformance({
-          provider, model, outputTokens: usage?.completion_tokens ?? usage?.output_tokens,
+          provider, model, outputTokens: streamMetrics.outputTokens ?? usage?.completion_tokens ?? usage?.output_tokens,
           generationMs: Date.now() - firstOutputAt, ttftMs: firstOutputAt - requestStartTime,
-          estimated: usage?.estimated === true,
+          estimated: streamMetrics.outputTokens == null && usage?.estimated === true,
         });
       } catch { /* optional telemetry */ }
     }

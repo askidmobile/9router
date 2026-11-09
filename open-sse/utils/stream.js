@@ -90,6 +90,14 @@ export function createSSEStream(options = {}) {
   let accumulatedThinking = "";
   let ttftAt = null;
   let firstOutputAt = null;
+  let reportedOutputTokens = null;
+  const observeUsage = (reported) => {
+    if (!reported || reported.estimated) return;
+    const output = Number(reported?.completion_tokens ?? reported?.output_tokens);
+    if (Number.isFinite(output) && output > 0) {
+      reportedOutputTokens = Math.max(reportedOutputTokens || 0, output);
+    }
+  };
   let performanceFailed = false;
   const observeOutput = (parsed) => {
     if (!parsed || typeof parsed !== "object") return;
@@ -160,7 +168,7 @@ export function createSSEStream(options = {}) {
       onStreamComplete({
         content: accumulatedContent,
         thinking: accumulatedThinking
-      }, finalUsage, ttftAt, performanceFailed ? null : firstOutputAt);
+      }, finalUsage, ttftAt, performanceFailed ? null : { firstOutputAt, outputTokens: reportedOutputTokens });
     }
   };
 
@@ -394,6 +402,7 @@ export function createSSEStream(options = {}) {
               observeOutput(parsed);
 
               const extracted = extractUsage(parsed);
+              observeUsage(extracted);
               if (extracted) {
                 usage = mergeUsage(usage, extracted);
               }
@@ -583,6 +592,7 @@ export function createSSEStream(options = {}) {
 
         // Extract usage
         const extracted = extractUsage(parsed);
+        observeUsage(extracted);
         if (extracted) state.usage = mergeUsage(state.usage, extracted); // Keep original usage for logging
 
         // Responses same-format passthrough: re-emit with original event framing
@@ -714,6 +724,7 @@ export function createSSEStream(options = {}) {
             // Same accumulation the transform loop does, so finalizeStream() can
             // log a tail chunk's tokens instead of falling back to null.
             const extracted = extractUsage(parsed);
+            observeUsage(extracted);
             if (extracted) state.usage = mergeUsage(state.usage, extracted);
 
             const translated = translateResponse(targetFormat, sourceFormat, parsed, state);
