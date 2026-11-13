@@ -118,6 +118,7 @@ export async function runBackgroundTokenRefreshTick(deps = {}) {
           email: conn?.email || conn?.name || conn?.id,
           provider: conn?.provider,
           error: err?.message ?? String(err),
+          code: err?.cause?.code || err?.code,
         });
       }
 

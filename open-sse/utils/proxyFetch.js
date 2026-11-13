@@ -181,17 +181,24 @@ const bypassAgentByHost = new Map();
 const TLS_ECDH_CURVE = process.env.NINEROUTER_TLS_ECDH_CURVE || "X25519";
 const EYEBALLS_CONNECT = { autoSelectFamily: true, autoSelectFamilyAttemptTimeout: 250 };
 
-async function getDirectAgent(insecure = false, fresh = false) {
+function tlsCurveForUrl(url) {
+  // AWS SSO OIDC rejects X25519-only handshakes; leave the Claude profile alone.
+  return /^https:\/\/oidc\.[a-z]{2}-[a-z]+-\d{1,2}\.amazonaws\.com(?=[:/]|$)/i.test(String(url))
+    ? "X25519:P-256"
+    : TLS_ECDH_CURVE;
+}
+
+async function getDirectAgent(insecure = false, fresh = false, ecdhCurve = TLS_ECDH_CURVE) {
   const timeouts = fresh
     ? { keepAliveTimeout: FRESH_RETRY_KEEPALIVE_TIMEOUT_MS, keepAliveMaxTimeout: FRESH_RETRY_KEEPALIVE_TIMEOUT_MS }
     : resolveKeepAliveTimeouts();
-  const key = `${insecure}:${fresh}:${timeouts.keepAliveTimeout}`;
+  const key = `${insecure}:${fresh}:${timeouts.keepAliveTimeout}:${ecdhCurve}`;
   if (directDispatchers.has(key)) return directDispatchers.get(key);
   const { Agent } = await import("undici");
   const agent = new Agent({
     connections: MAX_CONNECTIONS_PER_ORIGIN,
     ...timeouts,
-    connect: { ...EYEBALLS_CONNECT, ecdhCurve: TLS_ECDH_CURVE, ...(insecure ? { rejectUnauthorized: false } : {}) },
+    connect: { ...EYEBALLS_CONNECT, ecdhCurve, ...(insecure ? { rejectUnauthorized: false } : {}) },
     bodyTimeout: BODY_TIMEOUT,
     headersTimeout: 60_000,
     connectTimeout: CONNECTION_TIMEOUT,
@@ -360,18 +367,18 @@ function resolveConnectionProxyUrl(targetUrl, proxyOptions) {
 /**
  * Create proxy dispatcher lazily (undici-compatible) with connection limits
  */
-async function getDispatcher(proxyUrl, insecure = false, fresh = false) {
+async function getDispatcher(proxyUrl, insecure = false, fresh = false, ecdhCurve = TLS_ECDH_CURVE) {
   const normalized = normalizeProxyUrl(proxyUrl);
-  if (!normalized) return getDirectAgent(insecure, fresh);
+  if (!normalized) return getDirectAgent(insecure, fresh, ecdhCurve);
 
-  const key = `${normalized}::${insecure}::${fresh}`;
+  const key = `${normalized}::${insecure}::${fresh}::${ecdhCurve}`;
   if (!proxyDispatchers.has(key)) {
     // Evict oldest entry if max size reached
     if (proxyDispatchers.size >= MEMORY_CONFIG.proxyDispatchersMaxSize) {
       proxyDispatchers.delete(proxyDispatchers.keys().next().value);
     }
     const { ProxyAgent } = await import("undici");
-    const requestTls = { ecdhCurve: TLS_ECDH_CURVE, ...(insecure ? { rejectUnauthorized: false } : {}) };
+    const requestTls = { ecdhCurve, ...(insecure ? { rejectUnauthorized: false } : {}) };
     const poolOptions = {
       connections: normalized ? PROXY_MAX_CONNECTIONS : MAX_CONNECTIONS_PER_ORIGIN,
       ...(fresh
@@ -391,11 +398,12 @@ async function getDispatcher(proxyUrl, insecure = false, fresh = false) {
 }
 
 async function fetchWithTlsFallback(url, options, proxyUrl, allowInsecure = true, fresh = false) {
+  const ecdhCurve = tlsCurveForUrl(url);
   try {
     // Protocol adapters may need Node's HTTP/1 transport on the direct path.
     // Keep proxy/no-proxy resolution and strict-proxy enforcement here.
     if (!proxyUrl && options.directFetch) return await options.directFetch(url, options);
-    const dispatcher = await getDispatcher(proxyUrl, false, fresh);
+    const dispatcher = await getDispatcher(proxyUrl, false, fresh, ecdhCurve);
     return await fetchWithDispatcher(url, options, dispatcher);
   } catch (err) {
     const allowInsecureTls = allowInsecure && options.strictTls !== true && (process.env.STRICT_SSL === "false" || process.env.STRICT_SSL === "0");
@@ -405,7 +413,7 @@ async function fetchWithTlsFallback(url, options, proxyUrl, allowInsecure = true
       }
       // ponytail: in-memory insecure agent fallback for self-signed MITM corporate/antivirus certs
       console.warn(`[ProxyFetch] TLS cert verification failed (${err.cause?.code || err.code}), retrying with insecure TLS: ${new URL(url).origin}`);
-      const insecureDispatcher = await getDispatcher(proxyUrl, true, fresh);
+      const insecureDispatcher = await getDispatcher(proxyUrl, true, fresh, ecdhCurve);
       return await fetchWithDispatcher(url, options, insecureDispatcher);
     }
     // A failed POST may already be generating/billed. Only replay read-only requests here.
@@ -598,7 +606,7 @@ async function patchedFetch(url, options = {}) {
     } catch {}
   }
 
-  const agent = await getDirectAgent();
+  const agent = await getDirectAgent(false, false, tlsCurveForUrl(targetUrl));
   return fetchWithDispatcher(url, options, agent);
 }
 
