@@ -156,6 +156,7 @@ import p155 from "./unorouter.js";
 import p156 from "./qubax.js";
 import p157 from "./sensenova-intl.js";
 import p158 from "./synthetic.js";
+import p159 from "./numes.js";
 export default [
   p110,
   p0,
@@ -313,4 +314,5 @@ export default [
   p156,
   p157,
   p158,
+  p159,
 ];

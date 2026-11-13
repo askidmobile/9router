@@ -24,6 +24,7 @@ import { resolveRespanModels } from "open-sse/services/respan.js";
 import { resolveUnorouterModels } from "open-sse/services/unorouter.js";
 import { resolveRefuselessModels } from "open-sse/services/refuseless.js";
 import { normalizeQubaxModels } from "open-sse/services/qubax.js";
+import { normalizeNumesModels } from "open-sse/services/numes.js";
 
 export const VALID_TARGETS = ["pricing", "caps"];
 // A runaway catalog must not write tens of thousands of rows in one pass.
@@ -80,6 +81,7 @@ export async function resolveProviderCatalog(connection) {
   if (!res.ok) throw new Error(`Provider /models responded ${res.status}`);
   const data = await res.json();
   const models = connection.provider === "qubax" ? normalizeQubaxModels(data)
+    : connection.provider === "numes" ? normalizeNumesModels(data)
     : connection.provider === "orcarouter" ? normalizeOrcaRouterModels(data) : parseOpenAIStyleModels(data);
   return models.length ? { models, source: "provider" } : null;
 }

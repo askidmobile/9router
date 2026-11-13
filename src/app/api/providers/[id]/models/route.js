@@ -23,6 +23,7 @@ import { normalizeOrcaRouterModels } from "open-sse/services/orcarouter.js";
 import { resolveRespanModels } from "open-sse/services/respan.js";
 import { resolveUnorouterModels } from "open-sse/services/unorouter.js";
 import { resolveQubaxModels } from "open-sse/services/qubax.js";
+import { normalizeNumesModels } from "open-sse/services/numes.js";
 import { resolveRefuselessModels } from "open-sse/services/refuseless.js";
 import { withLiveCache } from "@/lib/providerModels/liveCache.js";
 import { resolveCommandCodeModels } from "open-sse/services/commandcodeModels.js";
@@ -393,6 +394,15 @@ const PROVIDER_MODELS_CONFIG = {
   assemblyai: createOpenAIModelsConfig("https://api.assemblyai.com/v1/models"),
   "vercel-ai-gateway": createOpenAIModelsConfig("https://ai-gateway.vercel.sh/v1/models"),
   // OpenAI-compatible aggregators.
+  numes: {
+    ...createOpenAIModelsConfig(getRegistryEntry("numes").modelsFetcher.url),
+    parseResponse: (data) => normalizeNumesModels(data).map(model => ({
+      ...model,
+      // Basic Chat needs the router prefix; Import Models stores the upstream slug.
+      id: `numes/${model.id}`,
+      upstreamModelId: model.id,
+    })),
+  },
   tokenharbor: createOpenAIModelsConfig("https://tokenharbor.ai/v1/models"),
   dahl: createOpenAIModelsConfig("https://inference.dahl.global/v1/models"),
   atria: createOpenAIModelsConfig("https://api.atria-asi.ai/v1/models"),

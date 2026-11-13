@@ -1502,5 +1502,14 @@
       "url": "https://api.synthetic.new/v2/quotas"
     },
     "format": "openai"
+  },
+  "numes": {
+    "baseUrl": "https://api.numes.ai/api/v1/chat/completions",
+    "validateUrl": "https://api.numes.ai/api/v1/models?output_modalities=text",
+    "thinkingFormat": "openai",
+    "quirks": {
+      "unlabelledCostCurrency": true
+    },
+    "format": "openai"
   }
 }

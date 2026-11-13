@@ -429,6 +429,7 @@ export async function POST(request) {
         case "unorouter":
         case "refuseless":
         case "synthetic":
+        case "numes":
         case "xiaomi-mimo":
         case "xiaomi-tokenplan":
         case "orcarouter":

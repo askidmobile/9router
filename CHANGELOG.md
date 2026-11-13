@@ -1,3 +1,7 @@
+# Unreleased
+
+- **Numes**: add an API-key provider for Chat Completions, streaming, and chat model import. Use `numes/<author>/<model>` in 9router.
+
 # Askid fork (2026-10-20)
 
 - **Repetition guard**: a flash-class model can lock onto one sentence and repeat it until the output limit — one real Codex turn on `experiential/deepseek-v4.1-flash-1017` carried 145 211 characters (11 sensible lines, then the same sentence 1527 times) and another 111 957 characters (846 copies). The streamed answer is now watched for that collapse: once the same visible line repeats `LOOP_GUARD_REPEATS` times (default 16), the stream is closed with the client's own terminal frame — `response.completed` for Codex, `finish_reason: stop` + `[DONE]` for chat, `message_stop` for Claude — the upstream generation is cancelled, and a `LOOP` line records what was cut. Only visible text is counted: thinking, tool-call arguments and lines inside ``` blocks are exempt (a code fence gets a separate, 8× higher threshold so an unclosed fence cannot disable the guard). Thresholds: `LOOP_GUARD`, `LOOP_GUARD_LINE_MIN_CHARS`, `LOOP_GUARD_REPEATS`.

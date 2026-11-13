@@ -153,7 +153,8 @@
     "sensenova-intl": "sensenova-intl",
     "synthetic": "synthetic",
     "syn": "synthetic",
-    "synthetic-new": "synthetic"
+    "synthetic-new": "synthetic",
+    "numes": "numes"
   },
   "idToAlias": {
     "agnes": "agnes",
@@ -249,6 +250,7 @@
     "nanobanana": "nanobanana",
     "nebius": "nebius",
     "nous": "nous",
+    "numes": "numes",
     "nvidia": "nvidia",
     "ollama": "ollama",
     "ollama-local": "ollama-local",

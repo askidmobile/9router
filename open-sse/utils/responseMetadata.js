@@ -20,13 +20,17 @@ function responseEnvelope(payload) {
 export function createResponseMetadata({ provider, model, translatedBody, finalBody, resolvePricing = id => getPricingForModel(provider, id) } = {}) {
   const alias = PROVIDER_ID_TO_ALIAS[provider] || provider;
   const internalModelPrefixes = PROVIDERS[provider]?.quirks?.internalModelPrefixes || [];
+  const unlabelledCostCurrency = PROVIDERS[provider]?.quirks?.unlabelledCostCurrency;
   let actualModel = modelId(finalBody?.model) || modelId(translatedBody?.model)
     || (model ? stripThinkingSuffix(getModelUpstreamId(alias, model)) : null);
   // Prices belong to the configured route (including free/subscription
   // namespaces), even when upstream reports a paid vendor's model revision.
   const pricingModel = model ? stripThinkingSuffix(model) : actualModel;
   let rawUsage = null;
-  const cost = () => calculateResponseCost(rawUsage, resolvePricing(pricingModel) || resolvePricing(actualModel));
+  // A mixed-currency provider's charge and provider-wide price table cannot
+  // establish the USD cost of a call made with an unknown key currency.
+  const cost = () => unlabelledCostCurrency ? calculateResponseCost()
+    : calculateResponseCost(rawUsage, resolvePricing(pricingModel) || resolvePricing(actualModel));
   const assignCost = envelope => {
     const usage = envelope.usage || envelope.usageMetadata;
     // Estimated client counters still need an explicit unavailable price when

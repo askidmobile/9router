@@ -36,6 +36,7 @@ const ALIAS_TOKENS = [
   "unorouter","uno",
   "refuseless","rfl",
   "qubax","qubaxai","sensenova-intl","synthetic","syn","synthetic-new",
+  "numes",
 ];
 
 // Sort idToAlias by key — runtime accesses by key, order is irrelevant (content-based)

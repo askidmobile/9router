@@ -806,6 +806,7 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
       case "unorouter":
       case "refuseless":
       case "muse":
+      case "numes":
       case "synthetic": {
         const cfg = PROVIDERS[connection.provider];
         const res = await fetchWithConnectionProxy(cfg.validateUrl, { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
