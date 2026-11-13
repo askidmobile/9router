@@ -3,6 +3,11 @@ export async function register() {
     const { initConsoleLogCapture } = await import("@/lib/consoleLogBuffer");
     initConsoleLogCapture();
 
+    // Bundle the scheduler into the Node startup hook so idle standalone
+    // servers refresh credentials even when no dashboard route is loaded.
+    const { startBackgroundTokenRefresh } = await import("@/sse/services/backgroundTokenRefresh.js");
+    startBackgroundTokenRefresh();
+
     // Server-only: lets capabilities.js read the synced catalog without pulling
     // node:fs into the dashboard's browser bundle.
     const { installCatalogSource } = await import("open-sse/providers/catalogOverride.js");
