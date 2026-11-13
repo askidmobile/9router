@@ -25,6 +25,7 @@ import { resolveUnorouterModels } from "open-sse/services/unorouter.js";
 import { resolveQubaxModels } from "open-sse/services/qubax.js";
 import { resolveRefuselessModels } from "open-sse/services/refuseless.js";
 import { withLiveCache } from "@/lib/providerModels/liveCache.js";
+import { resolveCommandCodeModels } from "open-sse/services/commandcodeModels.js";
 import codexProvider from "open-sse/providers/registry/codex.js";
 
 // A vendor that never answers must not hold the dashboard open. Resolvers get
@@ -215,15 +216,19 @@ const PROVIDER_MODELS_CONFIG = {
     authPrefix: "Bearer ",
     parseResponse: (data) => data.data || [],
   },
+  // OAuth (sk-ant-oat) token: Bearer + oauth beta header. Live list lets new
+  // Claude models show up without waiting for a 9router release.
   claude: {
-    url: "https://api.anthropic.com/v1/models",
+    url: "https://api.anthropic.com/v1/models?limit=1000",
     method: "GET",
     headers: {
       "Anthropic-Version": "2023-06-01",
+      "Anthropic-Beta": "oauth-2025-04-20",
       "Content-Type": "application/json"
     },
-    authHeader: "x-api-key",
-    parseResponse: (data) => data.data || []
+    authHeader: "Authorization",
+    authPrefix: "Bearer ",
+    parseResponse: (data) => (data.data || []).map((m) => ({ id: m.id, name: m.display_name || m.id }))
   },
   gemini: {
     customResolver: resolveGeminiModels,
@@ -315,6 +320,18 @@ const PROVIDER_MODELS_CONFIG = {
     ...createOpenAIModelsConfig(NOUS_MODELS_URL),
     parseResponse: normalizeRoutedNousModels,
   },
+  // CommandCode's catalog URL needs no auth, but the route's token guard above
+  // still requires a configured connection, so an empty key cannot enumerate it.
+  commandcode: {
+    customResolver: async () => {
+      const result = await resolveCommandCodeModels();
+      if (result?.models?.length) return { models: result.models };
+      return {
+        models: getStaticProviderModels("commandcode"),
+        warning: "CommandCode returned no live models; falling back to static catalog.",
+      };
+    },
+  },
   anthropic: {
     url: "https://api.anthropic.com/v1/models",
     method: "GET",
@@ -372,6 +389,7 @@ const PROVIDER_MODELS_CONFIG = {
   nanobanana: createOpenAIModelsConfig("https://api.nanobananaapi.ai/v1/models"),
   chutes: createOpenAIModelsConfig("https://llm.chutes.ai/v1/models"),
   nvidia: createOpenAIModelsConfig("https://integrate.api.nvidia.com/v1/models"),
+  synthetic: createOpenAIModelsConfig("https://api.synthetic.new/openai/v1/models"),
   assemblyai: createOpenAIModelsConfig("https://api.assemblyai.com/v1/models"),
   "vercel-ai-gateway": createOpenAIModelsConfig("https://ai-gateway.vercel.sh/v1/models"),
   // OpenAI-compatible aggregators.

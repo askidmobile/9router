@@ -49,6 +49,10 @@ export default {
     { id: "gemini-3.8-flash-medium", name: "Gemini 3.8 Flash (Medium)", upstreamModelId: "gemini-3.8-flash-medium(medium)" },
     { id: "gemini-3.8-flash-low", name: "Gemini 3.8 Flash (Low)", upstreamModelId: "gemini-3.8-flash-low(low)" },
     { id: "gemini-3.8-flash", name: "Gemini 3.8 Flash", upstreamModelId: "gemini-3.8-flash-medium(medium)" },
+    { id: "gemini-4-carbon-high", name: "Gemini 4 Carbon (High)", upstreamModelId: "gemini-4-carbon-high(high)" },
+    { id: "gemini-4-carbon-medium", name: "Gemini 4 Carbon (Medium)", upstreamModelId: "gemini-4-carbon-medium(medium)" },
+    { id: "gemini-4-carbon-low", name: "Gemini 4 Carbon (Low)", upstreamModelId: "gemini-4-carbon-low(low)" },
+    { id: "gemini-4-carbon", name: "Gemini 4 Carbon", upstreamModelId: "gemini-4-carbon-medium(medium)" },
     // The catalog exposes only tiered IDs; leave client thinking controls intact on the base alias.
     { id: "gemini-4-argon", name: "Gemini 4 Argon", upstreamModelId: "gemini-4-argon-high" },
     { id: "gemini-4-argon-high", name: "Gemini 4 Argon (High)", upstreamModelId: "gemini-4-argon-high(high)" },

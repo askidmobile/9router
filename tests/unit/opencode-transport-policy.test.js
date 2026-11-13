@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { loadRuntimeDep, tlsFetch } = vi.hoisted(() => ({ loadRuntimeDep: vi.fn(), tlsFetch: vi.fn() }));
+const { loadRuntimeDep, tlsFetch, createSession } = vi.hoisted(() => ({ loadRuntimeDep: vi.fn(), tlsFetch: vi.fn(), createSession: vi.fn() }));
 vi.mock("../../open-sse/services/lazyRuntime.js", () => ({ loadRuntimeDep }));
 vi.mock("undici", () => ({
   fetch: (...args) => nativeFetch(...args),
@@ -14,7 +14,8 @@ beforeEach(() => {
   nativeFetch = vi.fn(async () => new Response("{}"));
   vi.stubGlobal("fetch", nativeFetch);
   tlsFetch.mockReset().mockImplementation(async () => new Response("{}"));
-  loadRuntimeDep.mockReset().mockResolvedValue({ createSession: async () => ({ fetch: tlsFetch }) });
+  createSession.mockReset().mockResolvedValue({ fetch: tlsFetch });
+  loadRuntimeDep.mockReset().mockResolvedValue({ createSession });
 });
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
@@ -32,10 +33,11 @@ describe("OpenCode transport through the real executor and proxy policy", () => 
     expect(tlsFetch).toHaveBeenCalledOnce();
     expect(nativeFetch).not.toHaveBeenCalled();
   });
-  it("keeps a selected proxy ahead of the direct TLS adapter", async () => {
+  it("uses the selected proxy inside the TLS adapter", async () => {
     expect((await execute({ enabled: true, url: "http://127.0.0.1:3128", strictProxy: true })).response.status).toBe(200);
-    expect(nativeFetch.mock.calls[0][1].dispatcher.options.uri).toBe("http://127.0.0.1:3128");
-    expect(tlsFetch).not.toHaveBeenCalled();
+    expect(createSession).toHaveBeenCalledWith(expect.objectContaining({ proxy: "http://127.0.0.1:3128" }));
+    expect(tlsFetch).toHaveBeenCalledOnce();
+    expect(nativeFetch).not.toHaveBeenCalled();
   });
   it("refuses an unavailable required proxy before loading TLS", async () => {
     await expect(execute({ proxyRequired: true })).rejects.toThrow("direct connection is disabled");

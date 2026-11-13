@@ -87,7 +87,11 @@ export async function getModelInfo(modelStr) {
     return { provider: null, model: parsed.model };
   }
 
-  return getModelInfoCore(modelStr, getModelAliases);
+  const aliases = await getModelAliases();
+  const alias = resolveModelAliasFromMap(modelStr, aliases);
+  if (alias) return alias;
+  const info = await getModelInfoCore(modelStr, aliases);
+  return /^claude-/i.test(modelStr) ? fallbackToClaudeOAuth(info) : info;
 }
 
 /**
@@ -141,4 +145,17 @@ async function buildComboMemberFilter() {
     if (keys.some((k) => offProviders.has(k))) return false;
     return !keys.some((k) => Array.isArray(disabled[k]) && disabled[k].includes(model));
   };
+}
+
+// A bare `claude-*` id infers provider "anthropic" (API key). When no anthropic
+// connection is active but a Claude OAuth connection is, use "claude" instead of
+// failing with "No active credentials for provider: anthropic" (same idea as the
+// Codex-only gpt-* rules in open-sse/services/model.js).
+async function fallbackToClaudeOAuth(info) {
+  if (info?.provider !== "anthropic") return info;
+  const hasActive = async (provider) =>
+    (await getProviderConnections({ provider, isActive: true })).length > 0;
+  if (await hasActive("anthropic")) return info;
+  if (!(await hasActive("claude"))) return info;
+  return { ...info, provider: "claude" };
 }

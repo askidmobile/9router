@@ -17,6 +17,8 @@ export function isUsageEligible(connection) {
   const apiKeyAuth = connection.authType === "apikey" || connection.authType === "api_key";
   const custom = provider !== connection.provider;
   return (custom || USAGE_SUPPORTED_PROVIDERS.includes(provider)) && (
-    connection.authType === "oauth" || (apiKeyAuth && (custom || USAGE_APIKEY_PROVIDERS.includes(provider)))
+    connection.authType === "oauth"
+    || (connection.authType === "mcode-lease" && (provider === "minimax-code" || provider === "minimax-code-global"))
+    || (apiKeyAuth && (custom || USAGE_APIKEY_PROVIDERS.includes(provider)))
   );
 }

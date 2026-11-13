@@ -44,6 +44,11 @@ const stripQoderPrefix = (id) => id.replace(/^qoder(-cn)?\//, "");
 
 const MCODE_LEASE_PROVIDERS = new Set(["minimax-code", "minimax-code-global"]);
 
+// Providers whose registry list is only an offline fallback: the dashboard
+// renders the live per-connection catalog from GET /api/providers/[id]/models
+// when one resolves, and falls back to the static rows otherwise.
+const LIVE_MODEL_CATALOG_PROVIDERS = new Set(["cursor", "zed", "qoder", "qoder-cn", "claude", "commandcode"]);
+
 const AUTO_PING_SETTINGS_KEYS = {
   claude: "claudeAutoPing",
   codex: "codexAutoPing",
@@ -187,7 +192,7 @@ export default function ProviderDetailPage() {
   // Prefer the live catalog where the static registry would advertise models
   // this account cannot route (Qoder omits plan-gated keys from /model/list and
   // the chat endpoint rejects them with 400).
-  const usesLiveCatalog = providerId === "cursor" || providerId === "zed" || isQoderProvider;
+  const usesLiveCatalog = LIVE_MODEL_CATALOG_PROVIDERS.has(providerId);
   const models = ((usesLiveCatalog && liveModels.length > 0)
     ? liveModels
     : staticModels).map((model) => {
@@ -570,7 +575,7 @@ export default function ProviderDetailPage() {
   // live catalog for the active connection. Fires only when the provider id or
   // connection list changes — no polling, no loop.
   useEffect(() => {
-    const isLiveCatalog = providerId === "cursor" || providerId === "zed" || isQoderProvider;
+    const isLiveCatalog = LIVE_MODEL_CATALOG_PROVIDERS.has(providerId);
     if (!isLiveCatalog) {
       setLiveModels([]);
       return;
@@ -1993,10 +1998,8 @@ export default function ProviderDetailPage() {
           isOpen={showAddCustomModel}
           providerAlias={providerStorageAlias}
           providerDisplayAlias={providerDisplayAlias}
-          onSave={async (modelId, caps, transport) => {
-            // caps.stt is a UI-only flag; the API accepts transports only on
-            // type "stt" records, so the save derives the type from it.
-            await handleAddCustomModel(modelId, caps?.stt ? "stt" : "llm", providerStorageAlias, caps, transport);
+          onSave={async (modelId, type, caps, transport) => {
+            await handleAddCustomModel(modelId, type, providerStorageAlias, caps, transport);
             setShowAddCustomModel(false);
           }}
           onClose={() => setShowAddCustomModel(false)}

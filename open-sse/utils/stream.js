@@ -676,7 +676,12 @@ export function createSSEStream(options = {}) {
         if (remaining) buffer += remaining;
 
         if (mode === STREAM_MODE.PASSTHROUGH) {
-          if (buffer) {
+          // An unterminated trailing "data: [DONE]" is the upstream sentinel: don't
+          // forward it raw (it would glue onto the properly framed one appended
+          // below, #5592).
+          const tail = buffer.trim();
+          const tailIsDone = tail.startsWith("data:") && tail.slice(5).trim() === "[DONE]";
+          if (!tailIsDone && buffer) {
             let output = buffer;
             const parsed = parseSSELine(buffer.trim());
             if (parsed && !parsed.done) {

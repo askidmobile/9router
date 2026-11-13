@@ -90,10 +90,7 @@ describe("media response identity", () => {
   });
 
   it.each([false, true])("uses the Codex image tool model for generation/edit output (stream=%s)", async streamToClient => {
-    fetch.mockResolvedValueOnce(new Response([
-      'event: response.created\ndata: {"response":{"model":"controller-model"}}\n\n',
-      `event: response.output_item.done\ndata: ${JSON.stringify({ item: { type: "image_generation_call", result: b64 } })}\n\n`,
-    ].join(""), { headers: { "content-type": "text/event-stream" } }));
+    fetch.mockResolvedValueOnce(Response.json({ data: [{ b64_json: b64 }] }));
     const result = await handleImageGenerationCore({
       body: { prompt: "Make it blue", image: `data:image/png;base64,${b64}` },
       modelInfo: { provider: "codex", model: "gpt-image-2" }, credentials: { accessToken: "test-token" }, streamToClient,
@@ -101,7 +98,8 @@ describe("media response identity", () => {
     expect(result.success).toBe(true);
     expectHeaders(result.response, "codex", "gpt-image-2");
     const sent = JSON.parse(fetch.mock.calls[0][1].body);
-    expect(sent.tools[0]).toMatchObject({ type: "image_generation", model: "gpt-image-2", action: "edit" });
+    expect(fetch.mock.calls[0][0]).toBe("https://chatgpt.com/backend-api/codex/images/edits");
+    expect(sent.model).toBe("gpt-image-2");
     if (streamToClient) {
       const events = (await result.response.text()).split("\n").filter(line => line.startsWith("data:")).map(line => JSON.parse(line.slice(5)));
       expect(events.length).toBeGreaterThan(0);

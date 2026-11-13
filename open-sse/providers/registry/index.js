@@ -154,6 +154,8 @@ import p149 from "./experiential.js";
 import p154 from "./refuseless.js";
 import p155 from "./unorouter.js";
 import p156 from "./qubax.js";
+import p157 from "./sensenova-intl.js";
+import p158 from "./synthetic.js";
 export default [
   p110,
   p0,
@@ -309,4 +311,6 @@ export default [
   p154,
   p155,
   p156,
+  p157,
+  p158,
 ];

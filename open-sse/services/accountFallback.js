@@ -19,7 +19,7 @@ export function getQuotaCooldown(backoffLevel = 0) {
  * @param {string} errorText - Error message text
  * @param {number} backoffLevel - Current backoff level for exponential backoff
  * @param {{ modelFallback?: boolean, provider?: string }|string} options - Provider id or Combo options.
- * @returns {{ shouldFallback: boolean, cooldownMs: number, newBackoffLevel?: number, requestScoped?: boolean }}
+ * @returns {{ shouldFallback: boolean, cooldownMs: number, newBackoffLevel?: number, requestScoped?: boolean, modelScoped?: boolean }}
  *
  * `shouldFallback` answers "is the CREDENTIAL at fault?" (account rotation).
  * `requestScoped` answers "is the REQUEST itself what this member rejected?"
@@ -48,7 +48,7 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, options 
       const newLevel = Math.min(backoffLevel + 1, BACKOFF_CONFIG.maxLevel);
       return { shouldFallback: true, cooldownMs: getQuotaCooldown(newLevel), newBackoffLevel: newLevel };
     }
-    return { shouldFallback: true, cooldownMs: rule.cooldownMs };
+    return { shouldFallback: true, cooldownMs: rule.cooldownMs, ...(rule.modelScoped ? { modelScoped: true } : {}) };
   }
 
   // Request-scoped client errors that matched no rule above: a 400 caused by the

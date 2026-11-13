@@ -31,11 +31,18 @@ describe("opencode-go claude-haiku-5-5 thinking shape", () => {
     expect(body.output_config?.effort).toBeTruthy();
   });
 
-  it("older Haiku models keep the budget shape", () => {
-    const body = applyThinking("claude", "claude-haiku-4-5-20251001", claudeWireBody(), "claude");
+  it("Claude OAuth also sends Haiku 5.5 adaptive thinking", () => {
+    const body = applyThinking("claude", "claude-haiku-5-5", claudeWireBody(), "claude");
 
+    expect(body.thinking?.type).toBe("adaptive");
+    expect(body.thinking).not.toHaveProperty("budget_tokens");
+    expect(body.output_config?.effort).toBeTruthy();
+  });
+
+  it("older Haiku models keep the budget shape", () => {
+    const model = "claude-haiku-4-5-20251001";
+    const body = applyThinking("claude", model, { ...claudeWireBody(), model }, "claude");
     expect(body.thinking?.type).toBe("enabled");
     expect(body.thinking?.budget_tokens).toBeGreaterThan(0);
-    expect(body.output_config).toBeUndefined();
   });
 });

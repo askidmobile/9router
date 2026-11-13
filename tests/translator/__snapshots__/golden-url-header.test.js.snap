@@ -1068,7 +1068,7 @@ exports[`GOLDEN buildHeaders (default executor providers) > kimi → headers (ap
     "X-Msh-Device-Model": "macOS arm64",
     "X-Msh-Device-Name": "<VOLATILE>",
     "X-Msh-Platform": "9router",
-    "X-Msh-Version": "0.5.116",
+    "X-Msh-Version": "0.5.119",
     "x-api-key": "<CRED>",
   },
   "nonStream": {
@@ -1079,7 +1079,7 @@ exports[`GOLDEN buildHeaders (default executor providers) > kimi → headers (ap
     "X-Msh-Device-Model": "macOS arm64",
     "X-Msh-Device-Name": "<VOLATILE>",
     "X-Msh-Platform": "9router",
-    "X-Msh-Version": "0.5.116",
+    "X-Msh-Version": "0.5.119",
     "x-api-key": "<CRED>",
   },
   "oauth": {
@@ -1091,7 +1091,7 @@ exports[`GOLDEN buildHeaders (default executor providers) > kimi → headers (ap
     "X-Msh-Device-Model": "macOS arm64",
     "X-Msh-Device-Name": "<VOLATILE>",
     "X-Msh-Platform": "9router",
-    "X-Msh-Version": "0.5.116",
+    "X-Msh-Version": "0.5.119",
     "x-api-key": "<CRED>",
   },
 }
@@ -1589,6 +1589,25 @@ exports[`GOLDEN buildHeaders (default executor providers) > qoder-cn → headers
 }
 `;
 
+exports[`GOLDEN buildHeaders (default executor providers) > qubax → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
 exports[`GOLDEN buildHeaders (default executor providers) > refuseless → headers (apiKey / oauth) 1`] = `
 {
   "apiKey": {
@@ -1703,7 +1722,45 @@ exports[`GOLDEN buildHeaders (default executor providers) > sensenova → header
 }
 `;
 
+exports[`GOLDEN buildHeaders (default executor providers) > sensenova-intl → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
 exports[`GOLDEN buildHeaders (default executor providers) > siliconflow → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
+exports[`GOLDEN buildHeaders (default executor providers) > synthetic → headers (apiKey / oauth) 1`] = `
 {
   "apiKey": {
     "Accept": "text/event-stream",
@@ -2475,6 +2532,13 @@ exports[`GOLDEN buildUrl (default executor providers) > qoder-cn → url (stream
 }
 `;
 
+exports[`GOLDEN buildUrl (default executor providers) > qubax → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://api.qubax.ai/v1/chat/completions",
+  "stream": "https://api.qubax.ai/v1/chat/completions",
+}
+`;
+
 exports[`GOLDEN buildUrl (default executor providers) > refuseless → url (stream + non-stream) 1`] = `
 {
   "nonStream": "https://api.refuseless.com/v1/chat/completions",
@@ -2517,10 +2581,24 @@ exports[`GOLDEN buildUrl (default executor providers) > sensenova → url (strea
 }
 `;
 
+exports[`GOLDEN buildUrl (default executor providers) > sensenova-intl → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://token.sensenova.ai/v1/chat/completions",
+  "stream": "https://token.sensenova.ai/v1/chat/completions",
+}
+`;
+
 exports[`GOLDEN buildUrl (default executor providers) > siliconflow → url (stream + non-stream) 1`] = `
 {
   "nonStream": "https://api.siliconflow.com/v1/chat/completions",
   "stream": "https://api.siliconflow.com/v1/chat/completions",
+}
+`;
+
+exports[`GOLDEN buildUrl (default executor providers) > synthetic → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://api.synthetic.new/openai/v1/chat/completions",
+  "stream": "https://api.synthetic.new/openai/v1/chat/completions",
 }
 `;
 

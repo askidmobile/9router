@@ -259,8 +259,7 @@ async function fetchQoderCatalogRaw(credentials, signal, proxyOptions = null, re
     const key = entry.key;
     if (!key) continue;
 
-    // Always cache the config — chat needs model_config even for UI-hidden
-    // models (enable:false). Upstream still accepts chat for these keys.
+    // enable:false 的模型仍可在 IDE 使用，保留其配置并展示上游名称。
     rawConfigs.set(key, entry);
 
     // Keep `enable:false` entries in the model list too. Qoder flags a key as

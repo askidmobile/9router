@@ -21,10 +21,12 @@ import { resolveClinepassModels, resolveClineModels } from "open-sse/services/cl
 import { resolveGrokCliModels } from "open-sse/services/grokCliModels.js";
 import { resolveCursorModels } from "open-sse/services/cursorModels.js";
 import { resolveZedModels } from "open-sse/shared/zedAuth.js";
+import { resolveCommandCodeModels } from "open-sse/services/commandcodeModels.js";
 import { updateProviderCredentials } from "@/sse/services/tokenRefresh";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { capabilitiesFromServiceKind, getCapabilitiesForModel, getConservativeComboCapabilities } from "open-sse/providers/capabilities.js";
 import { applyComboCapOverrides } from "@/shared/utils/comboHealth";
+import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
 
 // Qoder shares one live resolver across intl (qoder) and CN (qoder-cn); the
 // credentials carry the provider id so qoderModels picks the right region's
@@ -154,6 +156,13 @@ const LIVE_MODEL_RESOLVERS = {
           capabilities: m.supportsTools ? { tools: true } : undefined,
         })),
     };
+  },
+  // CommandCode's catalog is public and account-independent, so no per-connection
+  // credentials are needed — the connection only has to exist and be active.
+  commandcode: async () => {
+    const result = await resolveCommandCodeModels();
+    if (!result?.models?.length) return null;
+    return { models: result.models.map(({ id, name }) => ({ id, name })) };
   },
 };
 
@@ -450,6 +459,8 @@ export async function buildModelsList(kindFilter, options = {}) {
         if (staticCaps.contextWindow) entry.context_length = staticCaps.contextWindow;
         if (staticCaps.maxOutput) entry.max_completion_tokens = staticCaps.maxOutput;
         entry.capabilities = staticCaps;
+        const thinkingLevels = getThinkingLevels(providerId, model.id, staticCaps);
+        if (thinkingLevels?.length) entry.thinking_levels = thinkingLevels;
         models.push(entry);
       }
     }
@@ -528,10 +539,10 @@ export async function buildModelsList(kindFilter, options = {}) {
         rawModelIds = await withProxyContext(proxy, () => fetchCompatibleModelIds(conn));
       }
 
-      // Config-driven live catalog override for providers that have no static list (or explicit enabledModels).
-      // If provider has static or custom models configured in UI, do not override with upstream live catalog.
+      // CommandCode's static models are its offline fallback. For other providers
+      // keep the existing static/custom catalog precedence.
       const liveResolver = LIVE_MODEL_RESOLVERS[providerId];
-      if (liveResolver && !hasExplicitEnabledModels && providerModels.length === 0 && customModelIds.length === 0) {
+      if (liveResolver && !hasExplicitEnabledModels && (providerId === "commandcode" || (providerModels.length === 0 && customModelIds.length === 0))) {
         try {
           const proxy = await resolveConnectionProxyConfig(conn.providerSpecificData || {}, providerId);
           const live = await withProxyContext(proxy, () => liveResolver(conn));
@@ -637,6 +648,11 @@ export async function buildModelsList(kindFilter, options = {}) {
           }
           if (Number.isFinite(contextWindow)) model.context_length = contextWindow;
           if (Number.isFinite(maxOutput)) model.max_completion_tokens = maxOutput;
+          // Selectable reasoning levels (the set the dashboard picker shows) so clients
+          // can build their effort selector from the gateway instead of keeping a
+          // per-model table. Omitted when the model has no reasoning.
+          const thinkingLevels = getThinkingLevels(providerId, modelId, caps);
+          if (Array.isArray(thinkingLevels) && thinkingLevels.length > 0) model.thinking_levels = thinkingLevels;
         }
         models.push(model);
       }
