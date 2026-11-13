@@ -32,6 +32,13 @@ Import Models и предложения моделей читают `/v1/models`
 [Qubax billing](https://qubax.ai/docs/pricing) и
 [Rate limits](https://qubax.ai/docs/rate-limits).
 
+В Chat Completions флаги OpenRouter `provider.allow_fallbacks: true` и
+`provider.require_parameters: true` не пересылаются в Qubax, если других
+настроек в объекте нет. Qubax применяет политику своего ключа; параметры запроса,
+включая tools и JSON schema, остаются. Явное ограничение на продавца или запрет
+fallback 9router не снимает. Для Qubax используйте нативную строку или массив
+строк в `provider`; следующий участник Combo получает исходный запрос.
+
 ## Перенос существующего custom-провайдера
 
 После обновления приложения используйте Node.js с `node:sqlite`:

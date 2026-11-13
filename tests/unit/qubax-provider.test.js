@@ -75,6 +75,27 @@ describe("Qubax native provider", () => {
     if (format === "claude") expect(executor.buildHeaders(credentials)["anthropic-version"]).toBe("2023-06-01");
   });
 
+  it("drops only generic OpenRouter flags for Qubax Chat Completions without mutating Combo input", () => {
+    const executor = getExecutor("qubax");
+    const request = {
+      model: model.id,
+      messages: [{ role: "user", content: "hi" }],
+      tools: [{ type: "function", function: { name: "ping" } }],
+      provider: { allow_fallbacks: true, require_parameters: true },
+    };
+    const creds = (format) => ({ runtimeTransport: resolveTransport("qubax", format) });
+    expect(executor.transformRequest(model.id, request, false, creds("openai"))).toEqual({
+      model: request.model, messages: request.messages, tools: request.tools,
+    });
+    expect(request.provider).toEqual({ allow_fallbacks: true, require_parameters: true });
+    expect(getExecutor("openrouter").transformRequest(model.id, request, false, {})).toHaveProperty("provider", request.provider);
+    expect(executor.transformRequest(model.id, request, false, creds("openai-responses"))).toHaveProperty("provider", request.provider);
+    for (const selection of ["seller-a", ["seller-a"], { only: ["seller-a"] }, { allow_fallbacks: false }]) {
+      expect(executor.transformRequest(model.id, { ...request, provider: selection }, false, creds("openai")))
+        .toHaveProperty("provider", selection);
+    }
+  });
+
   it("normalizes only chat models, current offer prices, limits and declared reasoning levels", () => {
     const models = normalizeQubaxModels(payload);
     expect(models).toHaveLength(1);

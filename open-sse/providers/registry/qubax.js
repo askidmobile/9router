@@ -22,6 +22,7 @@ export default {
   transport: {
     baseUrl: `${QUBAX_BASE_URL}/chat/completions`,
     validateUrl: QUBAX_BALANCE_URL,
+    quirks: { dropOpenRouterRoutingFlags: true },
   },
   transports: [
     { format: "openai", baseUrl: `${QUBAX_BASE_URL}/chat/completions` },

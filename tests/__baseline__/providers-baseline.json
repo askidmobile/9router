@@ -1460,6 +1460,9 @@
   "qubax": {
     "baseUrl": "https://api.qubax.ai/v1/chat/completions",
     "validateUrl": "https://api.qubax.ai/v1/billing/balance",
+    "quirks": {
+      "dropOpenRouterRoutingFlags": true
+    },
     "format": "openai",
     "transports": [
       {

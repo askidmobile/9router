@@ -121,6 +121,15 @@ export class DefaultExecutor extends BaseExecutor {
       // A native Responses passthrough skips the request translator, so tool
       // schemas must be made wire-compatible here for every Responses endpoint.
       const wireFormat = credentials?.runtimeTransport?.format || this.config?.format;
+      // Qubax routes by key policy; OpenRouter's generic flags are not seller pins.
+      const routing = transformed.provider;
+      if (this.config.quirks?.dropOpenRouterRoutingFlags
+        && (wireFormat || "openai") === "openai"
+        && routing && typeof routing === "object" && !Array.isArray(routing)
+        && Object.keys(routing).every((key) => ["allow_fallbacks", "require_parameters"].includes(key) && routing[key] === true)) {
+        transformed = { ...transformed };
+        delete transformed.provider;
+      }
       // Only Responses-shaped bodies: a Chat body that happens to be sent to a
       // Responses-capable provider must keep its Chat tool shape for the translator.
       if (wireFormat === "openai-responses" && transformed.input !== undefined && !Array.isArray(transformed.messages)) {
