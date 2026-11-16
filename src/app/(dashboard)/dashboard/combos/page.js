@@ -10,6 +10,15 @@ import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { getConservativeComboCapabilities } from "open-sse/providers/capabilities.js";
 import { buildComboProviderMap, getComboMemberCircuit, applyComboCapOverrides } from "@/shared/utils/comboHealth";
+import {
+  countActiveSchedules,
+  isSlotScheduleActive,
+  nextScheduleBoundary,
+  normalizeSlotSchedule,
+  stripOrphanSchedules,
+  transferSlotSchedules,
+} from "@/shared/services/comboTimePriority.js";
+import SlotScheduleModal from "./SlotScheduleModal.js";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, getProviderAlias, resolveProviderId, AI_PROVIDERS, ALIAS_TO_ID } from "@/shared/constants/providers";
 
 // Validate combo name: only a-z, A-Z, 0-9, -, _
@@ -176,6 +185,7 @@ export default function CombosPage() {
     return m;
   }, [combos, getCaps]);
   const [comboStrategies, setComboStrategies] = useState({});
+  const [serverMeta, setServerMeta] = useState(null);
   const [globalComboStrategy, setGlobalComboStrategy] = useState("fallback");
   const [capacityAdapter, setCapacityAdapter] = useState(EMPTY_CAPACITY_ADAPTER);
   const [confirmState, setConfirmState] = useState(null);
@@ -339,6 +349,7 @@ export default function CombosPage() {
         setActiveProviders(providersData.connections || []);
       }
       setComboStrategies(settingsData.comboStrategies || {});
+      if (settingsData.serverMeta) setServerMeta({ ...settingsData.serverMeta, fetchedAt: Date.now() });
       setGlobalComboStrategy(settingsData.comboStrategy || "fallback");
       const rawAdapter = settingsData.capacityAdapter || {};
       const normalized = {};
@@ -366,22 +377,34 @@ export default function CombosPage() {
     }
   };
 
-  // Per-Combo extras (currently the CTX OUT cap) live in settings.comboStrategies.
-  const persistComboExtras = async (name, { contextWindow, maxOutput } = {}) => {
-    const updated = { ...comboStrategies };
+  // Server wall-clock for slot-schedule badges — "local" resolves on the server.
+  // Derived purely from the polled `now` clock plus the settings snapshot
+  // offset, so the render stays side-effect free.
+  const serverTz = serverMeta?.timezone || "UTC";
+  const serverNowMs = now + (serverMeta ? serverMeta.nowMs - serverMeta.fetchedAt : 0);
+
+  // Per-Combo extras (CTX OUT cap, slot schedules) live in settings.comboStrategies.
+  const persistComboExtras = async (name, { contextWindow, maxOutput, timePriority, prevName } = {}) => {
+    let updated = { ...comboStrategies };
+    // Slot schedules follow a renamed combo; other extras keep today's rename behaviour.
+    if (prevName && prevName !== name) updated = transferSlotSchedules(updated, prevName, name).strategies;
     const next = { ...(updated[name] || {}) };
     if (Number.isSafeInteger(contextWindow) && contextWindow > 0) next.contextWindow = contextWindow;
     else delete next.contextWindow;
     if (Number.isSafeInteger(maxOutput) && maxOutput > 0) next.maxOutput = maxOutput;
     else delete next.maxOutput;
+    if (timePriority !== undefined) {
+      if (timePriority && Object.keys(timePriority).length > 0) next.timePriority = timePriority;
+      else delete next.timePriority;
+    }
     const extras = Object.keys(next).filter((key) => key !== "fallbackStrategy");
     if (!next.fallbackStrategy && extras.length === 0) delete updated[name];
     else updated[name] = next;
-    await persistComboStrategies(updated);
+    return persistComboStrategies(updated);
   };
 
   const handleCreate = async (data) => {
-    const { contextWindow, maxOutput, ...comboData } = data || {};
+    const { contextWindow, maxOutput, timePriority, prevName, ...comboData } = data || {};
     try {
       const res = await fetch("/api/combos", {
         method: "POST",
@@ -389,7 +412,8 @@ export default function CombosPage() {
         body: JSON.stringify(comboData),
       });
       if (res.ok) {
-        await persistComboExtras(comboData.name, { contextWindow, maxOutput });
+        const extrasOk = await persistComboExtras(comboData.name, { contextWindow, maxOutput, timePriority, prevName });
+        if (!extrasOk) alert("Combo saved, but slot schedules failed to save — edit the combo to retry.");
         await fetchData();
         setShowCreateModal(false);
       } else {
@@ -402,7 +426,7 @@ export default function CombosPage() {
   };
 
   const handleUpdate = async (id, data) => {
-    const { contextWindow, maxOutput, ...comboData } = data || {};
+    const { contextWindow, maxOutput, timePriority, prevName, ...comboData } = data || {};
     try {
       const res = await fetch(`/api/combos/${id}`, {
         method: "PUT",
@@ -410,7 +434,12 @@ export default function CombosPage() {
         body: JSON.stringify(comboData),
       });
       if (res.ok) {
-        await persistComboExtras(comboData.name, { contextWindow, maxOutput });
+        const extrasOk = await persistComboExtras(comboData.name, { contextWindow, maxOutput, timePriority, prevName });
+        if (!extrasOk) {
+          // Keep the modal open — the combo itself is saved and the retry is idempotent.
+          alert("Combo saved, but slot schedules failed to save — Save again to retry.");
+          return;
+        }
         await fetchData();
         setEditingCombo(null);
       } else {
@@ -429,12 +458,19 @@ export default function CombosPage() {
   };
 
   const persistComboStrategies = async (updated) => {
-    await fetch("/api/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ comboStrategies: updated }),
-    });
-    setComboStrategies(updated);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ comboStrategies: updated }),
+      });
+      if (!res.ok) return false;
+      setComboStrategies(updated);
+      return true;
+    } catch (error) {
+      console.log("Error persisting combo strategies:", error);
+      return false;
+    }
   };
 
   const handleDelete = async (id) => {
@@ -743,6 +779,7 @@ export default function CombosPage() {
               strategy={comboStrategies[combo.name] || {}}
               onSetStrategy={(patch) => handleSetComboStrategy(combo.name, patch)}
               globalStrategy={globalComboStrategy}
+              timeCounts={countActiveSchedules(comboStrategies[combo.name]?.timePriority, combo.models, serverNowMs, { localTz: serverTz })}
               selected={selectedIds.includes(combo.id)}
               onToggleSelect={() => toggleSelect(combo.id)}
             />
@@ -773,6 +810,8 @@ export default function CombosPage() {
           modelCaps={modelCaps}
           aliasCandidates={aliasCandidates}
           allCombos={combos}
+          serverNowMs={serverNowMs}
+          serverTz={serverTz}
         />
       )}
 
@@ -790,6 +829,8 @@ export default function CombosPage() {
           modelCaps={modelCaps}
           aliasCandidates={aliasCandidates}
           allCombos={combos}
+          serverNowMs={serverNowMs}
+          serverTz={serverTz}
         />
       )}
 
@@ -830,7 +871,7 @@ function getRouterModelStatus(routerModel, activeProviders) {
   return { ready: false, label: "Not configured", providerId };
 }
 
-function ComboCard({ combo, getCaps, capsOverrides = {}, allCombos = [], aliasCandidates = null, modelCaps = null, availability = [], comboCircuits = [], comboProviders = new Map(), now = 0, activeProviders = [], isMemberOff = null, copied, onCopy, onEdit, onDelete, strategy = {}, onSetStrategy, globalStrategy = "fallback", selected = false, onToggleSelect }) {
+function ComboCard({ combo, getCaps, capsOverrides = {}, allCombos = [], aliasCandidates = null, modelCaps = null, availability = [], comboCircuits = [], comboProviders = new Map(), now = 0, activeProviders = [], isMemberOff = null, copied, onCopy, onEdit, onDelete, strategy = {}, onSetStrategy, globalStrategy = "fallback", selected = false, onToggleSelect, timeCounts = null }) {
   const [showJudgeSelect, setShowJudgeSelect] = useState(false);
   const [showRouterSelect, setShowRouterSelect] = useState(false);
   const [showPolicyModal, setShowPolicyModal] = useState(false);
@@ -1076,6 +1117,17 @@ function ComboCard({ combo, getCaps, capsOverrides = {}, allCombos = [], aliasCa
 
         {/* Actions */}
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-3 sm:shrink-0">
+          {/* Slot schedules badge — server-time active count */}
+          {timeCounts && timeCounts.total > 0 && (
+            <span
+              onClick={onEdit}
+              className="inline-flex w-fit cursor-pointer items-center gap-1 rounded border border-black/10 px-1.5 py-0.5 text-[10px] text-text-muted transition-colors hover:border-primary/50 hover:text-primary dark:border-white/10"
+              title={`Slot schedules (server time): ${timeCounts.active} of ${timeCounts.total} active`}
+            >
+              <span className={`material-symbols-outlined text-[13px] ${timeCounts.active > 0 ? "text-primary" : ""}`}>schedule</span>
+              {timeCounts.active}/{timeCounts.total}
+            </span>
+          )}
           {/* Strategy selector — always visible */}
           <div className="w-full sm:w-[200px]">
             <Select
@@ -1370,7 +1422,7 @@ function CapacityAdapterCap({ cap, entry, onChange, activeProviders, getCaps }) 
   );
 }
 
-function ModelItem({ id, index, model, isFirst, isLast, onEdit, onMoveUp, onMoveDown, onRemove }) {
+function ModelItem({ id, index, model, isFirst, isLast, onEdit, onMoveUp, onMoveDown, onRemove, schedule, onSchedule }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useSortable({ id });
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -1436,7 +1488,7 @@ function ModelItem({ id, index, model, isFirst, isLast, onEdit, onMoveUp, onMove
         </div>
       )}
 
-      {/* Priority arrows */}
+      {/* Priority arrows + slot schedule */}
       <div className="flex shrink-0 items-center gap-0.5">
         <button
           onClick={onMoveUp}
@@ -1454,6 +1506,15 @@ function ModelItem({ id, index, model, isFirst, isLast, onEdit, onMoveUp, onMove
         >
           <span className="material-symbols-outlined text-[12px]">arrow_downward</span>
         </button>
+        <button
+          onClick={onSchedule}
+          className={`p-0.5 rounded transition-colors ${schedule?.active ? "text-primary" : schedule?.configured ? "text-amber-500 hover:text-primary" : "text-text-muted/40 hover:text-primary"}`}
+          title={schedule?.configured
+            ? `Slot schedule ${schedule.active ? "active" : "configured"}${schedule.hint ? ` (${schedule.hint})` : ""}`
+            : "Add time-based schedule"}
+        >
+          <span className="material-symbols-outlined text-[12px]">schedule</span>
+        </button>
       </div>
 
       {/* Remove */}
@@ -1468,7 +1529,7 @@ function ModelItem({ id, index, model, isFirst, isLast, onEdit, onMoveUp, onMove
   );
 }
 
-function ComboFormModal({ isOpen, combo, strategy = {}, onClose, onSave, activeProviders, kindFilter = null, getCaps = null, capsOverrides = {}, modelCaps = null, aliasCandidates = null, allCombos = [] }) {
+function ComboFormModal({ isOpen, combo, strategy = {}, onClose, onSave, activeProviders, kindFilter = null, getCaps = null, capsOverrides = {}, modelCaps = null, aliasCandidates = null, allCombos = [], serverNowMs, serverTz = "UTC" }) {
   // Initialize state with combo values - key prop on parent handles reset on remount
   const [name, setName] = useState(combo?.name || "");
   const [models, setModels] = useState(combo?.models || []);
@@ -1481,6 +1542,30 @@ function ComboFormModal({ isOpen, combo, strategy = {}, onClose, onSave, activeP
   const [contextWindowError, setContextWindowError] = useState("");
   const [maxOutputError, setMaxOutputError] = useState("");
   const [modelAliases, setModelAliases] = useState({});
+  const [timePriority, setTimePriority] = useState(strategy?.timePriority ? { ...strategy.timePriority } : {});
+  const [scheduleFor, setScheduleFor] = useState(null);
+
+  // Slot schedules resolve against the server's wall clock ("local" = server zone).
+  const nowMs = serverNowMs;
+  const scheduleTz = serverTz || "UTC";
+  const formatBoundary = (boundary, tzLabel) => {
+    if (boundary === null) return null;
+    try {
+      return new Intl.DateTimeFormat("en-GB", { timeZone: tzLabel, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(boundary));
+    } catch {
+      return null;
+    }
+  };
+  const slotScheduleState = (modelStr) => {
+    const schedule = timePriority[modelStr];
+    if (!schedule) return { configured: false, active: false, hint: null };
+    const opts = { localTz: scheduleTz };
+    const active = isSlotScheduleActive(schedule, nowMs, opts);
+    const boundary = nextScheduleBoundary(schedule, nowMs, opts);
+    const tzLabel = schedule.tz === "local" ? scheduleTz : schedule.tz;
+    const hhmm = formatBoundary(boundary, tzLabel);
+    return { configured: true, active, hint: hhmm ? `${active ? "until" : "from"} ${hhmm} ${tzLabel}` : null };
+  };
 
   // The members' own ceilings bound this Combo cap, so the UI hints the limit
   // using exactly the conservative caps the cards display.
@@ -1611,7 +1696,16 @@ function ComboFormModal({ isOpen, combo, strategy = {}, onClose, onSave, activeP
     setContextWindowError("");
     setMaxOutputError("");
     setSaving(true);
-    await onSave({ name: name.trim(), models, contextWindow: parsedContextWindow, maxOutput: parsedMaxOutput });
+    // Orphaned schedule keys (slots removed while editing) are stripped here,
+    // against the final member list (FR-008).
+    await onSave({
+      name: name.trim(),
+      models,
+      contextWindow: parsedContextWindow,
+      maxOutput: parsedMaxOutput,
+      timePriority: stripOrphanSchedules(timePriority, models),
+      prevName: combo?.name || undefined,
+    });
     setSaving(false);
   };
 
@@ -1716,6 +1810,8 @@ function ComboFormModal({ isOpen, combo, strategy = {}, onClose, onSave, activeP
                       model={model}
                       isFirst={index === 0}
                       isLast={index === modelItems.length - 1}
+                      schedule={slotScheduleState(model)}
+                      onSchedule={() => setScheduleFor(model)}
                       onEdit={(newVal) => {
                         const updated = [...models];
                         updated[index] = newVal;
@@ -1776,6 +1872,28 @@ function ComboFormModal({ isOpen, combo, strategy = {}, onClose, onSave, activeP
           kindFilter={kindFilter}
           addedModelValues={models}
           closeOnSelect={false}
+        />
+      )}
+
+      {/* Slot Schedule Modal */}
+      {scheduleFor && (
+        <SlotScheduleModal
+          key={`schedule-${scheduleFor}-${timePriority[scheduleFor] ? "existing" : "new"}`}
+          isOpen={!!scheduleFor}
+          onClose={() => setScheduleFor(null)}
+          model={scheduleFor}
+          initialSchedule={timePriority[scheduleFor]}
+          serverNowMs={nowMs}
+          serverTz={scheduleTz}
+          onSave={(schedule) => {
+            setTimePriority((prev) => {
+              const next = { ...prev };
+              if (schedule && normalizeSlotSchedule(schedule)) next[scheduleFor] = schedule;
+              else delete next[scheduleFor];
+              return next;
+            });
+            setScheduleFor(null);
+          }}
         />
       )}
     </>

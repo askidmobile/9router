@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getSettings, updateSettings } from "@/lib/localDb";
 import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
 import { resetComboRotation } from "open-sse/services/combo.js";
+import { normalizeTimePriorityMap } from "@/shared/services/comboTimePriority.js";
+import { getLocalTimezone } from "@/shared/services/quotaPingSchedule.js";
 import bcrypt from "bcryptjs";
 
 export const dynamic = "force-dynamic";
@@ -23,11 +25,14 @@ export async function GET() {
     const enableRequestLogs = process.env.ENABLE_REQUEST_LOGS === "true";
     const enableTranslator = process.env.ENABLE_TRANSLATOR === "true";
     
-    return NextResponse.json({ 
-      ...safeSettings, 
+    return NextResponse.json({
+      ...safeSettings,
       enableRequestLogs,
       enableTranslator,
-      hasPassword: !!password
+      hasPassword: !!password,
+      // Server clock snapshot for UI features that must reason about the
+      // server's wall-clock (combo slot schedules resolve "local" in this tz).
+      serverMeta: { nowMs: Date.now(), timezone: getLocalTimezone() },
     }, { headers: SETTINGS_RESPONSE_HEADERS });
   } catch (error) {
     console.log("Error getting settings:", error);
@@ -41,6 +46,22 @@ export async function PATCH(request) {
 
     // Strip protected secrets before any internal handling sets them
     for (const key of PROTECTED_SETTING_KEYS) delete body[key];
+
+    // Normalize combo slot schedules defensively: invalid windows/schedules are
+    // dropped (with a server-side warn) instead of silently affecting routing.
+    if (body.comboStrategies && typeof body.comboStrategies === "object") {
+      for (const comboName of Object.keys(body.comboStrategies)) {
+        const cfg = body.comboStrategies[comboName];
+        if (!cfg || typeof cfg !== "object" || !("timePriority" in cfg)) continue;
+        const normalized = normalizeTimePriorityMap(cfg.timePriority);
+        if (Object.keys(normalized).length > 0) {
+          body.comboStrategies[comboName] = { ...cfg, timePriority: normalized };
+        } else {
+          const { timePriority, ...rest } = cfg;
+          body.comboStrategies[comboName] = rest;
+        }
+      }
+    }
 
     // If updating password, hash it
     if (body.newPassword) {

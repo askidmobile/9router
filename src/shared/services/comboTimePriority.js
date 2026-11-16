@@ -257,3 +257,25 @@ export function nextScheduleBoundary(rawSchedule, nowMs = Date.now(), opts = und
   }
   return null;
 }
+
+// Move a combo's slot schedules to a renamed combo, leaving the old entry's
+// other strategy fields untouched and dropping the entry if it empties out.
+// Other extras (ctx/out, judge, …) intentionally keep their existing rename
+// behaviour; this only owns timePriority.
+export function transferSlotSchedules(strategies, fromName, toName) {
+  if (!strategies || typeof strategies !== "object" || !fromName || !toName || fromName === toName) {
+    return { strategies, moved: false };
+  }
+  const from = strategies[fromName];
+  if (!from || typeof from !== "object" || !from.timePriority) return { strategies, moved: false };
+
+  const next = { ...strategies };
+  const stripped = { ...from };
+  delete stripped.timePriority;
+  const strippedExtras = Object.keys(stripped).filter((key) => key !== "fallbackStrategy");
+  if (!stripped.fallbackStrategy && strippedExtras.length === 0) delete next[fromName];
+  else next[fromName] = stripped;
+
+  next[toName] = { ...(next[toName] || {}), timePriority: from.timePriority };
+  return { strategies: next, moved: true };
+}
