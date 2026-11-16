@@ -16,6 +16,7 @@ import {
   clearStickyComboSession,
   orderModelsByChoice,
 } from "./systemoneRouter.js";
+import { reorderByTimePriority } from "@/shared/services/comboTimePriority.js";
 
 // Peek a 2xx combo response for real content. Returns null for non-SSE responses (leave
 // them untouched). For SSE, returns { outcome: "content"|"empty", finishReason, response }
@@ -382,7 +383,14 @@ export async function handleComboChat({
   sessionSticky = true,
   confidenceThreshold = 0.8,
   resolveSmartChoice = null,
+  timePriority = null,
+  nowMs = null,
 }) {
+  // One time snapshot for the whole combo decision: taken before the smart
+  // router's async call so a request that started at 03:59:59 does not cross
+  // a schedule boundary while waiting for the router (and before the same
+  // snapshot is handed down to nested combos).
+  const requestNowMs = Number.isFinite(nowMs) ? nowMs : Date.now();
   let rotatedModels = models;
   let activeStickyModel = null;
 
@@ -466,6 +474,17 @@ export async function handleComboChat({
   } else {
     // Apply rotation strategy if enabled
     rotatedModels = getRotatedModels(models, comboName, comboStrategy, comboStickyLimit);
+  }
+
+  // Slot schedules: float time-windowed members (provider off-peak pricing) to
+  // the front, or sink them to the back. Runs after the strategy step so an
+  // active window overrides smart/sticky/rotation, and before the capability
+  // tier sort — that sort is stable, so correctness still beats price inside
+  // each tier.
+  const timeReordered = reorderByTimePriority(rotatedModels, timePriority, requestNowMs);
+  if (timeReordered !== rotatedModels) {
+    log.info("COMBO", `time-priority active → [${timeReordered.join(", ")}]`);
+    rotatedModels = timeReordered;
   }
 
   // Auto-switch: float models that satisfy the request's required capabilities to the front.
@@ -954,9 +973,9 @@ function collectPanel(calls, { minPanel, stragglerGraceMs, panelHardTimeoutMs, s
  * @param {Object} [options.tuning] - Override FUSION_DEFAULTS (minPanel, grace, timeout)
  * @returns {Promise<Response>}
  */
-export async function handleFusionChat({ body, models, handleSingleModel, log, comboName, judgeModel, tuning, signal }) {
+export async function handleFusionChat({ body, models, handleSingleModel, log, comboName, judgeModel, tuning, signal, timePriority = null, nowMs = null }) {
   if (signal?.aborted) return errorResponse(499, "Request aborted");
-  const panel = Array.isArray(models) ? models.filter(Boolean) : [];
+  let panel = Array.isArray(models) ? models.filter(Boolean) : [];
   if (panel.length === 0) {
     return new Response(
       JSON.stringify({ error: { message: "Fusion combo has no models" } }),
@@ -967,6 +986,16 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
   // A single-model fusion has nothing to fuse — just answer directly.
   if (panel.length === 1) {
     return handleSingleModel(body, panel[0], undefined, { signal });
+  }
+
+  // Slot schedules reorder the panel before the judge default is taken, so an
+  // active window also promotes its slot to judge unless an explicit judgeModel
+  // is configured.
+  const fusionNowMs = Number.isFinite(nowMs) ? nowMs : Date.now();
+  const reorderedPanel = reorderByTimePriority(panel, timePriority, fusionNowMs);
+  if (reorderedPanel !== panel) {
+    log.info("FUSION", `time-priority reordered panel → [${reorderedPanel.join(", ")}]`);
+    panel = reorderedPanel;
   }
 
   const cfg = { ...FUSION_DEFAULTS, ...(tuning || {}) };

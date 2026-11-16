@@ -89,6 +89,7 @@ export async function handleImageGeneration(request) {
       comboName: modelStr,
       comboStrategy,
       comboStickyLimit,
+      timePriority: comboStrategies[modelStr]?.timePriority,
     });
   }
 

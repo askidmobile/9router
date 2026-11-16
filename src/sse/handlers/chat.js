@@ -118,6 +118,10 @@ export async function handleChat(request, clientRawRequest = null, requestOption
     && requestOptions.comboRequestTimeoutFloorMs > 0
     ? { comboRequestTimeoutFloorMs: requestOptions.comboRequestTimeoutFloorMs } : {};
 
+  // Time-of-day slot schedules evaluate against one snapshot taken at request
+  // entry, so smart-router latency cannot flip a schedule boundary mid-request.
+  const requestNowMs = Date.now();
+
   // Check if model is a combo (has multiple models with fallback)
   const comboModels = await getComboModels(modelStr);
   if (comboModels) {
@@ -142,12 +146,15 @@ export async function handleChat(request, clientRawRequest = null, requestOption
           }
           return handleSingleModelChat(b, m, cleanRawReq, request, apiKey, {
             ...rootExecution, ...execution, combo: true, visitedCombos: [modelStr],
+            comboNowMs: requestNowMs,
           });
         },
         log,
         comboName: modelStr,
         judgeModel: comboStrategies[modelStr]?.judgeModel,
         tuning: comboStrategies[modelStr]?.fusionTuning,
+        timePriority: comboStrategies[modelStr]?.timePriority,
+        nowMs: requestNowMs,
       });
     }
 
@@ -163,6 +170,7 @@ export async function handleChat(request, clientRawRequest = null, requestOption
         (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, {
           ...rootExecution, combo: true, visitedCombos: [modelStr],
           comboMaxOutput: comboStrategies[modelStr]?.maxOutput,
+          comboNowMs: requestNowMs,
         }),
         adapterAdded
       ),
@@ -182,6 +190,8 @@ export async function handleChat(request, clientRawRequest = null, requestOption
             log,
           })
         : null,
+      timePriority: comboStrategies[modelStr]?.timePriority,
+      nowMs: requestNowMs,
     });
   }
 
@@ -260,6 +270,8 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           comboName: modelStr,
           judgeModel: comboStrategies[modelStr]?.judgeModel,
           tuning: comboStrategies[modelStr]?.fusionTuning,
+          timePriority: comboStrategies[modelStr]?.timePriority,
+          nowMs: nestedExecution.comboNowMs,
         });
       }
 
@@ -293,6 +305,8 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
               log,
             })
           : null,
+        timePriority: comboStrategies[modelStr]?.timePriority,
+        nowMs: nestedExecution.comboNowMs,
       });
     }
     log.warn("CHAT", "Invalid model format", { model: modelStr });

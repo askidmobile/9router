@@ -90,7 +90,8 @@ export async function handleSearch(request) {
       log,
       comboName: providerInput,
       comboStrategy,
-      comboStickyLimit
+      comboStickyLimit,
+      timePriority: comboStrategies[providerInput]?.timePriority,
     });
   }
 

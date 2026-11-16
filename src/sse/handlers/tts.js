@@ -65,6 +65,7 @@ export async function handleTts(request) {
       comboName: modelStr,
       comboStrategy,
       comboStickyLimit,
+      timePriority: comboStrategies[modelStr]?.timePriority,
     });
   }
 
