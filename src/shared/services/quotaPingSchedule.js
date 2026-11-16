@@ -26,7 +26,7 @@ export const SLOT_GRACE_MS = 30 * 60 * 1000;
 const HOUR_MS = 3600000;
 const DAY_MS = 86400000;
 
-function isValidTimezone(timezone) {
+export function isValidTimezone(timezone) {
   if (!timezone || typeof timezone !== "string") return false;
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: timezone });
@@ -70,7 +70,7 @@ export function normalizePingSchedule(raw) {
   return { enabled: true, anchor, timezone, windowHours, slotsPerDay };
 }
 
-function zonedParts(utcMs, timezone) {
+export function zonedParts(utcMs, timezone) {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: timezone,
     hourCycle: "h23",
