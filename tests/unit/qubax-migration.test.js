@@ -2,15 +2,19 @@ import { DatabaseSync } from "node:sqlite";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { TABLES, buildCreateTableSql } from "../../src/lib/db/schema.js";
 
 let dir, db, dbPath;
 const nodeId = "openai-compatible-chat-qubax-test";
+// Resolve from the test file, not cwd: vitest here runs from tests/, while
+// upstream CI runs the same file from the repo root.
+const migrateScript = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "scripts", "migrate-qubax-to-native.mjs");
 const key = (scope, key) => JSON.parse(db.prepare("SELECT value FROM kv WHERE scope=? AND key=?").get(scope, key)?.value || "null");
 const put = (scope, key, value) => db.prepare("INSERT INTO kv VALUES(?,?,?)").run(scope, key, JSON.stringify(value));
-const run = (apply = false) => JSON.parse(execFileSync(process.execPath, [resolve("scripts/migrate-qubax-to-native.mjs"), ...(apply ? ["--apply"] : [])], {
+const run = (apply = false) => JSON.parse(execFileSync(process.execPath, [migrateScript, ...(apply ? ["--apply"] : [])], {
   env: { ...process.env, DB_PATH: dbPath }, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
 }));
 
