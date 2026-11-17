@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { EventEmitter } from "node:events";
 import { Readable } from "node:stream";
-import { fetchNativeCatalog, nativeCatalog, mergeCatalog } from "../../public/9router-codex.mjs";
+import { fetchNativeCatalog, nativeCatalog, mergeCatalog, usesNativeDiscovery } from "../../public/9router-codex.mjs";
 
 const oldModel = { slug: "gpt-5.6-sol", visibility: "list", priority: 0 };
 const newModel = { slug: "gpt-6.1-sol", display_name: "GPT-6.1-Sol", visibility: "list", supported_reasoning_levels: [{ effort: "high" }] };
@@ -9,6 +9,34 @@ const auth = { auth_mode: "chatgpt", tokens: { access_token: "native-secret", ac
 const cached = { client_version: "0.154.0", models: [oldModel] };
 const run = vi.fn(async () => ({ stdout: "codex-cli 0.155.0-alpha.16\n" }));
 const read = async filename => structuredClone(filename.endsWith("auth.json") ? auth : cached);
+
+describe("native discovery login compatibility", () => {
+  it.each([
+    [auth, true],
+    [{ auth_mode: "apikey", OPENAI_API_KEY: "api-secret" }, false],
+  ])("uses the saved login type without starting another client", async (login, expected) => {
+    const run = vi.fn();
+    expect(await usesNativeDiscovery("/custom-codex", { read: async () => login, run })).toBe(expected);
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["Logged in using ChatGPT", true],
+    ["Logged in using an API key - api-secret", false],
+  ])("detects keyring login %s without assuming it is ChatGPT", async (status, expected) => {
+    const run = vi.fn(async () => ({ stdout: "", stderr: status }));
+    expect(await usesNativeDiscovery("/custom-codex", { read: async () => null, run })).toBe(expected);
+    expect(run).toHaveBeenCalledOnce();
+    expect(run).toHaveBeenCalledWith(expect.any(String), ["login", "status"], expect.objectContaining({
+      env: expect.objectContaining({ CODEX_HOME: "/custom-codex" }),
+    }));
+  });
+
+  it("retains static catalogs when the login type cannot be established", async () => {
+    const run = vi.fn(async () => { throw new Error("unavailable"); });
+    expect(await usesNativeDiscovery("/custom-codex", { read: async () => { throw new Error("keyring-only"); }, run })).toBe(false);
+  });
+});
 
 describe("generated native model context windows", () => {
   it("uses each model's maximum context without changing other metadata or the source catalog", () => {

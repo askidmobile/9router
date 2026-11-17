@@ -41,16 +41,22 @@ After changing the model selection, save it in the dashboard, then run:
 node "$HOME/.codex/9router-chatgpt/bridge.mjs" sync
 ```
 
-Restart Codex after syncing; the model catalog is loaded at startup.
+With a ChatGPT login, Codex uses its normal model discovery and cache refresh.
+The helper adds saved 9router selections to each successful native `/models`
+response, so new subscription models appear on Codex's next catalog refresh.
+This does not require restarting Codex for each model release. The request uses
+the running client's version, account and refreshed credentials. An unreadable
+router manifest does not block the native catalog.
 
-The running helper also refreshes native OpenAI models at bridge startup and
-every five minutes, using the installed desktop Codex version. This refresh is
-independent of the remote router and preserves the saved router entries. New
-native models become selectable when Codex next loads its catalog; an already
-running Codex app still needs to be restarted. If the account is offline or its
-login has expired, the helper retains the last working combined catalog and
-retries automatically. Re-run `enable` with an updated installer to update an
-older installed helper.
+The helper also refreshes its fallback catalog and router metadata at bridge
+startup and every five minutes. Offline accounts retain their cached models.
+API-key logins still use a static catalog because Codex does not perform native
+model discovery in that mode; restart Codex after syncing those installations.
+
+To upgrade an older helper, re-run `enable` with the updated installer, then
+restart Codex **once** to apply the configuration change. This removes the old
+`model_catalog_json` override for ChatGPT logins. Running `sync` alone does not
+upgrade the helper or migrate the configuration.
 
 Each manifest refresh keeps the saved model IDs but recalculates image input and
 context metadata from the current `/v1/models` catalog. Combo edits, provider
@@ -84,9 +90,10 @@ Codex → local 127.0.0.1 helper
 The remote router receives only its own API key. The helper constructs fresh
 headers for that route. Native Authorization and ChatGPT-Account-ID headers go
 only to the fixed OpenAI endpoints, and redirects are not followed. Incoming
-cookies are discarded. Catalog refresh reads the existing native token from
-`auth.json` only to contact the fixed OpenAI endpoint. The helper never writes
-`auth.json`; Codex remains responsible for refreshing the login.
+cookies are discarded. Native model discovery forwards the client's credentials
+only to the fixed OpenAI catalog endpoint. The separate fallback refresh reads
+the existing native token from `auth.json` for that same endpoint. The helper
+never writes `auth.json`; Codex remains responsible for refreshing the login.
 
 `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY` and their lowercase counterparts are
 captured when enabling the helper, so it can use the same explicit HTTP proxies
@@ -114,8 +121,10 @@ body. Only Responses requests with a selected `9router/` model go to the router.
 
 The helper changes root `model_provider`, `openai_base_url`, and
 `model_catalog_json` in Codex's `config.toml`. It sets the built-in provider to
-`openai`, retains a valid native default model, and writes a merged catalog under
-`9router-chatgpt/`. It does not replace the whole TOML document.
+`openai`, retains a valid native default model, and removes `model_catalog_json`
+for ChatGPT logins to preserve automatic discovery. API-key logins keep that
+override. A merged fallback catalog is written under `9router-chatgpt/` in both
+modes. The helper does not replace the whole TOML document.
 
 That directory has mode 0700; its state, catalog, helper and backup files have
 mode 0600. `state.json` stores the 9router key, proxy settings, original config
@@ -220,9 +229,12 @@ explicitly declaring no tool support cannot be selected. Unknown context limits
 use a conservative 32,768-token catalog entry; known limits come from `/v1/models`.
 
 Native catalog entries remain intact, including reasoning levels and service
-tiers. Catalog refresh reads the current native Codex catalog independently of
-the merged integration catalog, so newly available native models are discovered
-without freezing the picker at the installation-time list. Added entries expose the provider's supported reasoning levels; Combos
+tiers. The local `GET /models` route combines the current OpenAI response with
+the saved router manifest. It replaces the native ETag with a hash of the merged
+response and removes upstream conditional cache headers so a native 304 cannot
+hide changed router selections. Native errors remain errors, allowing Codex to
+retain its last good cache. Newly available native models are discovered without
+freezing the picker at the installation-time list. Added entries expose the provider's supported reasoning levels; Combos
 use the intersection across all members, including nested Combos and aliases.
 Added entries advertise Codex's hosted search tool. When a model invokes it,
 the ChatGPT Responses adapter replaces the nameless hosted declaration with a

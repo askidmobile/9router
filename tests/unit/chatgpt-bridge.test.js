@@ -31,6 +31,22 @@ describe("Codex config restoration", () => {
     const restored = rootSettings(disableConfig(second.text, second));
     for (const [key, value] of Object.entries(rootSettings(input))) expect(restored[key].raw).toBe(value.raw);
   });
+  it("migrates an installed static catalog to native discovery and retains the original backup", () => {
+    const input = 'model = "native-codex"\nmodel_catalog_json = "/before-9router.json"\n';
+    const legacy = enableConfig(input, endpoint, "/tmp/catalog.json", native, null, { liveCatalog: false });
+    expect(rootSettings(legacy.text).model_catalog_json.raw).toContain("/tmp/catalog.json");
+    const upgraded = enableConfig(legacy.text, endpoint, "/tmp/catalog.json", native, { ...legacy, active: true });
+    expect(rootSettings(upgraded.text).model_catalog_json).toBeUndefined();
+    expect(upgraded.applied.model_catalog_json).toBeNull();
+    expect(upgraded.original).toEqual(legacy.original);
+    expect(rootSettings(disableConfig(upgraded.text, upgraded)).model_catalog_json.raw).toContain("/before-9router.json");
+    expect(() => disableConfig('model_catalog_json = "/other-app.json"\n' + upgraded.text, upgraded)).toThrow("changed by another app");
+  });
+  it("retains a static catalog for API-key logins that do not use native discovery", () => {
+    const result = enableConfig(original, endpoint, "/tmp/catalog.json", native, null, { liveCatalog: false });
+    expect(rootSettings(result.text).model_catalog_json.raw).toContain("/tmp/catalog.json");
+    expect(disableConfig(result.text, result)).toBe(original);
+  });
   it("keeps the native model chosen after enable and recovers from a router model on disable", () => {
     const result = enableConfig(original, endpoint, "/tmp/catalog.json", native);
     const otherNative = result.text.replace('model = "native-codex"', 'model = "native-other"');
@@ -130,7 +146,7 @@ describe("bridge on real HTTP sockets", () => {
   const servers = [];
   afterEach(async () => { await Promise.all(servers.splice(0).map(server => new Promise(resolve => { server.closeAllConnections(); server.close(resolve); }))); });
   async function listen(server) { servers.push(server); server.listen(0, "127.0.0.1"); await once(server, "listening"); return `http://127.0.0.1:${server.address().port}`; }
-  async function setup(upstreamHandler) {
+  async function setup(upstreamHandler, options = {}) {
     const captured = [];
     const upstream = await listen(http.createServer(upstreamHandler));
     const bridge = createBridge({ token: "local-token", routerUrl: `${upstream}/api/chatgpt/v1`, apiKey: "router-key" }, {
@@ -139,11 +155,77 @@ describe("bridge on real HTTP sockets", () => {
         captured.push({ url: url.href, ...init });
         return http.request(`${upstream}${url.pathname}`, init, callback);
       },
+      ...options,
     });
     const origin = await listen(bridge);
     return { origin, url: `${origin}/local-token/v1`, captured };
   }
   const nativeHeaders = { authorization: "Bearer native-secret", "chatgpt-account-id": "native-account", cookie: "private-cookie", "x-codex-session-id": "session", "content-type": "application/json" };
+  it("discovers new native models through Codex's normal models refresh alongside router selections", async () => {
+    let models = native;
+    const { url, captured } = await setup((req, res) => {
+      if (req.headers["if-none-match"] || req.headers["if-modified-since"]) {
+        res.writeHead(304); return res.end();
+      }
+      const body = zlib.gzipSync(JSON.stringify({ models, native_metadata: "preserve" }));
+      res.writeHead(200, { "content-type": "application/json", "content-encoding": "gzip", etag: '"native-etag"', "set-cookie": "private-cookie" });
+      res.end(body);
+    });
+    const first = await fetch(`${url}/models?client_version=0.169.0`, { headers: nativeHeaders });
+    const firstCatalog = await first.json();
+    expect(firstCatalog).toEqual({ ...mergeCatalog(native, manifest), native_metadata: "preserve" });
+    expect(first.headers.get("content-encoding")).toBeNull();
+    expect(first.headers.get("set-cookie")).toBeNull();
+    expect(first.headers.get("etag")).not.toBe('"native-etag"');
+    models = [{ ...native[0], slug: "gpt-6.2-sol" }, { ...native[0], slug: "gpt-6.2-astra" }];
+    const second = await fetch(`${url}/models?client_version=0.169.0`, { headers: {
+      ...nativeHeaders, "if-none-match": first.headers.get("etag"), "if-modified-since": new Date().toUTCString(),
+    } });
+    expect(second.status).toBe(200);
+    expect((await second.json()).models.map(model => model.slug)).toEqual(["9router/Coding", "gpt-6.2-sol", "gpt-6.2-astra"]);
+    expect(second.headers.get("etag")).not.toBe(first.headers.get("etag"));
+    for (const request of captured) {
+      expect(request.url).toBe("https://chatgpt.com/backend-api/codex/models?client_version=0.169.0");
+      expect(request.headers.authorization).toBe("Bearer native-secret");
+      expect(request.headers["chatgpt-account-id"]).toBe("native-account");
+      expect(request.headers["if-none-match"]).toBeUndefined();
+      expect(request.headers["if-modified-since"]).toBeUndefined();
+      expect(request.headers.cookie).toBeUndefined();
+    }
+  });
+  it("keeps native discovery available when the saved router manifest is unreadable", async () => {
+    const warn = vi.fn();
+    const { url } = await setup((_req, res) => {
+      res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ models: native }));
+    }, { getManifest: async () => { throw new Error("router-secret"); }, warn });
+    const response = await fetch(`${url}/models`, { headers: nativeHeaders });
+    expect(response.status).toBe(200);
+    expect((await response.json()).models).toEqual(native);
+    expect(warn.mock.calls.flat().join()).not.toContain("router-secret");
+  });
+  it("passes native catalog errors through and rejects malformed successful catalogs", async () => {
+    let status = 503;
+    const { url } = await setup((_req, res) => {
+      res.writeHead(status, { "content-type": "application/json" }); res.end('{"error":"catalog unavailable"}');
+    });
+    const failed = await fetch(`${url}/models`, { headers: nativeHeaders });
+    expect(failed.status).toBe(503);
+    expect(await failed.json()).toEqual({ error: "catalog unavailable" });
+    status = 200;
+    const malformed = await fetch(`${url}/models`, { headers: nativeHeaders });
+    expect(malformed.status).toBe(502);
+    expect(await malformed.json()).toEqual({ error: { message: "Invalid native model catalog." } });
+  });
+  it("leaves the OpenAI API-key models endpoint unchanged", async () => {
+    const data = { object: "list", data: [{ id: "api-model", object: "model" }] };
+    const getManifest = vi.fn();
+    const { url, captured } = await setup((_req, res) => {
+      res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify(data));
+    }, { getManifest });
+    expect(await (await fetch(`${url}/models`, { headers: { authorization: "Bearer api-key" } })).json()).toEqual(data);
+    expect(captured[0].url).toBe("https://api.openai.com/v1/models");
+    expect(getManifest).not.toHaveBeenCalled();
+  });
   it.each(["/tools/search?client_version=0.154", "/alpha/search"])("preserves native search endpoint %s independently of router models", async suffix => {
     let received;
     const payload = zlib.gzipSync(JSON.stringify({ model: "9router/Coding", commands: { search_query: [{ q: "test" }] } }));

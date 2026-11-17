@@ -22,6 +22,7 @@ For an action request that needs tools, include an actual tool call in the same 
 Do not end a turn with only an intention such as "I will check", "I will fix", or "I will create" while an authorized next action is available. Use the provided structured tool interface; writing a tool name or command in prose does not execute it.
 Text-only answers are appropriate for completed work, questions that need no tools, or a necessary clarification or approval. Respect the user's scope, sandbox, and permission rules.`;
 const MAX_BODY = 64 * 1024 * 1024;
+const MAX_CATALOG_BODY = 16 * 1024 * 1024;
 const OWNED = ["model_provider", "openai_base_url", "model_catalog_json"];
 const json = value => `${JSON.stringify(value, null, 2)}\n`;
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -88,7 +89,7 @@ export function replaceRoot(text, updates) {
   return Object.values(updates).filter(Boolean).map(line => line.endsWith("\n") ? line : `${line}\n`).join("") + text;
 }
 
-export function enableConfig(text, endpoint, catalog, nativeModels, previous = null) {
+export function enableConfig(text, endpoint, catalog, nativeModels, previous = null, { liveCatalog = true } = {}) {
   const roots = rootSettings(text);
   const model = scalar(roots.model);
   if (previous?.active) assertOwnership(text, previous);
@@ -96,7 +97,10 @@ export function enableConfig(text, endpoint, catalog, nativeModels, previous = n
   const applied = {
     model_provider: 'model_provider = "openai"\n',
     openai_base_url: `openai_base_url = ${JSON.stringify(endpoint)}\n`,
-    model_catalog_json: `model_catalog_json = ${JSON.stringify(catalog)}\n`,
+    // Let ChatGPT logins use Codex's normal /models refresh through the bridge.
+    // A static override prevents a running client from discovering new models.
+    // API-key logins do not fetch that catalog and still need the file fallback.
+    model_catalog_json: liveCatalog ? null : `model_catalog_json = ${JSON.stringify(catalog)}\n`,
   };
   const nativeDefault = nativeModels.find(m => m.visibility === "list")?.slug || nativeModels[0]?.slug;
   if (!nativeDefault) throw new Error("No native Codex models found. Open Codex with your subscription first.");
@@ -110,7 +114,7 @@ export function enableConfig(text, endpoint, catalog, nativeModels, previous = n
 function assertOwnership(text, state) {
   const roots = rootSettings(text);
   for (const key of OWNED) {
-    if (scalar(roots[key]) !== scalar(rootSettings(state.applied[key])[key])) {
+    if (scalar(roots[key]) !== scalar(rootSettings(state.applied[key] || "")[key])) {
       throw new Error(`${key} was changed by another app. Restore the 9router value before disabling, or restore this key manually from ${state.directory}/state.json.`);
     }
   }
@@ -217,10 +221,29 @@ const CODEX_EXECUTABLES = [
   "codex",
 ];
 
-// A custom model_catalog_json stops Codex refreshing models_cache.json. Read
-// the signed-in account's catalog directly instead of freezing native models
-// at the date the integration was enabled. Credentials never reach 9router,
-// redirects are not followed, and Codex remains responsible for token refresh.
+export async function usesNativeDiscovery(codexHome, { read = optionalJson, run = exec } = {}) {
+  const auth = await read(path.join(codexHome, "auth.json")).catch(() => null);
+  if (auth?.auth_mode === "apikey" || auth?.OPENAI_API_KEY) return false;
+  if (auth?.auth_mode === "chatgpt" || auth?.tokens?.access_token) return true;
+  // Keyring credentials need not have an auth.json. Ask Codex for the login
+  // type without printing its output, which can contain a masked API key.
+  for (const executable of CODEX_EXECUTABLES) {
+    try {
+      const { stdout, stderr } = await run(executable, ["login", "status"], {
+        timeout: 5000, cwd: os.tmpdir(), env: { ...process.env, CODEX_HOME: codexHome },
+      });
+      const status = `${stdout || ""}\n${stderr || ""}`;
+      if (/Logged in using ChatGPT/i.test(status)) return true;
+      if (/Logged in using an API key/i.test(status)) return false;
+    } catch { /* Try the next installed Codex distribution. */ }
+  }
+  // An unknown login must retain the existing static catalog behavior.
+  return false;
+}
+
+// Keep a fallback catalog for setup, API-key logins and history transfer.
+// ChatGPT clients discover models with their own refreshed credentials through
+// the bridge's /models route. Credentials never reach the remote 9router host.
 export async function fetchNativeCatalog(auth, clientVersion, { proxyEnv = {}, get = https.get } = {}) {
   const target = new URL("https://chatgpt.com/backend-api/codex/models");
   target.searchParams.set("client_version", clientVersion);
@@ -240,7 +263,7 @@ export async function fetchNativeCatalog(auth, clientVersion, { proxyEnv = {}, g
           let size = 0; const chunks = [];
           for await (const chunk of response) {
             size += chunk.length;
-            if (size > 16 * 1024 * 1024) throw new Error("Native catalog is too large.");
+            if (size > MAX_CATALOG_BODY) throw new Error("Native catalog is too large.");
             chunks.push(Buffer.from(chunk));
           }
           resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")));
@@ -272,8 +295,8 @@ export async function nativeCatalog(codexHome, { proxyEnv = {}, run = exec, read
     } catch { /* An expired login or offline account must not destroy the existing catalog. */ }
     warn("Could not refresh native Codex models from OpenAI; using the local catalog. Sign in to Codex and run sync again.");
   }
-  // Codex stops updating its own cache while model_catalog_json is configured.
-  // Our last successful refresh can therefore be much newer than that cache.
+  // Older installations used model_catalog_json and stopped Codex's own cache
+  // refresh. Our last successful refresh can be much newer than that cache.
   const previous = await read(path.join(codexHome, "9router-chatgpt", "catalog.json")).catch(() => null);
   for (const data of [previous, cached]) {
     const models = onlyNative(data);
@@ -401,6 +424,10 @@ export async function refreshRouterCatalog(state, { getManifest = fetchManifest 
   }, { skipIfLocked: true });
 }
 
+function catalogRefreshHint(state) {
+  return state.applied?.model_catalog_json ? "Restart Codex to refresh its model picker." : "Codex refreshes its model picker automatically.";
+}
+
 export function serveIntegration(state, { refresh = refreshNativeCatalog, refreshIntervalMs = 5 * 60 * 1000,
   refreshRouter = refreshRouterCatalog, warn = console.warn, log = console.log, ...bridgeOptions } = {}) {
   const server = createBridge(state, bridgeOptions);
@@ -410,13 +437,13 @@ export function serveIntegration(state, { refresh = refreshNativeCatalog, refres
     refreshing = true;
     try {
       const result = await refresh(state);
-      if (result?.changed) log(`Refreshed ${result.nativeModelCount} native Codex models. Restart Codex to refresh its model picker.`);
+      if (result?.changed) log(`Refreshed ${result.nativeModelCount} native Codex models. ${catalogRefreshHint(state)}`);
     } catch {
       warn("Could not refresh native Codex models; the existing catalog is unchanged. The bridge will retry automatically.");
     }
     try {
       const result = await refreshRouter(state);
-      if (result?.changed) log("Updated 9router model settings in the Codex catalog. Restart Codex to refresh its model picker.");
+      if (result?.changed) log(`Updated 9router model settings in the Codex catalog. ${catalogRefreshHint(state)}`);
     } catch {
       warn("Could not refresh 9router model settings; the existing catalog is unchanged. The bridge will retry automatically.");
     } finally { refreshing = false; }
@@ -444,11 +471,11 @@ export function routeHeaders(incoming, external, apiKey) {
   return result;
 }
 
-export async function decodeBody(raw, encoding) {
+export async function decodeBody(raw, encoding, maxOutputLength = MAX_BODY) {
   if (!encoding || encoding === "identity") return raw;
   const decode = { gzip: zlib.gunzip, deflate: zlib.inflate, br: zlib.brotliDecompress, zstd: zlib.zstdDecompress }[encoding];
   if (!decode) throw new Error(`Unsupported Content-Encoding: ${encoding}`);
-  return promisify(decode)(raw, { maxOutputLength: MAX_BODY });
+  return promisify(decode)(raw, { maxOutputLength });
 }
 
 function sendError(response, status, message) {
@@ -561,8 +588,36 @@ export async function exportNativeCompaction(item, { state, headers, requestUpst
   });
 }
 
+async function sendNativeCatalog(response, upstreamResponse, headers, getManifest, warn) {
+  try {
+    let size = 0;
+    const chunks = [];
+    for await (const chunk of upstreamResponse) {
+      size += chunk.length;
+      if (size > MAX_CATALOG_BODY) throw new Error("Native catalog is too large.");
+      chunks.push(Buffer.from(chunk));
+    }
+    const decoded = await decodeBody(Buffer.concat(chunks), upstreamResponse.headers["content-encoding"], MAX_CATALOG_BODY);
+    const catalog = JSON.parse(decoded.toString("utf8"));
+    if (!Array.isArray(catalog.models) || catalog.models.some(model => typeof model?.slug !== "string")) throw new Error("Invalid native catalog.");
+    let manifest = { models: [] };
+    try { manifest = validateManifest(await getManifest()); }
+    catch { warn("Could not load saved 9router models; serving the native Codex catalog."); }
+    const body = json({ ...catalog, ...mergeCatalog(catalog.models, manifest) });
+    // The native ETag cannot describe added router entries. Always fetch the
+    // account catalog and give Codex an ETag for the complete merged response.
+    for (const key of ["content-encoding", "content-md5", "content-digest", "digest"]) delete headers[key];
+    response.writeHead(200, { ...headers, "content-type": "application/json", "cache-control": "no-store",
+      etag: `W/"${createHash("sha256").update(body).digest("hex")}"` });
+    response.end(body);
+  } catch {
+    if (!response.headersSent && !response.destroyed) sendError(response, 502, "Invalid native model catalog.");
+    else response.destroy();
+  }
+}
+
 // Native traffic deliberately uses http(s).request: it neither follows redirects
-// nor decompresses responses. SSE and response headers arrive byte-for-byte.
+// nor decompresses inference responses. SSE and response headers arrive byte-for-byte.
 export function createBridge(state, options = {}) {
   const agents = { "http:": new http.Agent({ proxyEnv: state.proxyEnv || {} }), "https:": new https.Agent({ proxyEnv: state.proxyEnv || {} }) };
   const requestUpstream = options.requestUpstream || ((url, init, callback) =>
@@ -614,6 +669,12 @@ export function createBridge(state, options = {}) {
         ? "https://chatgpt.com/backend-api/codex" : "https://api.openai.com/v1";
       const target = new URL(`${base}${suffix}${external ? "" : url.search}`);
       const forwarded = routeHeaders(request.headers, external, state.apiKey);
+      const liveCatalog = request.method === "GET" && suffix === "/models" && !!request.headers["chatgpt-account-id"];
+      if (liveCatalog) {
+        delete forwarded["if-none-match"];
+        delete forwarded["if-modified-since"];
+        forwarded["accept-encoding"] = "identity";
+      }
       const controller = new AbortController();
       response.once("close", () => controller.abort());
       const prepared = inference ? await prepareHistory(body, { external, apiKey: state.apiKey, exportNativeSummary: async item => {
@@ -634,6 +695,9 @@ export function createBridge(state, options = {}) {
       const upstream = requestUpstream(target, { method: request.method, headers: forwarded }, async upstreamResponse => {
         const safeHeaders = {};
         for (const [key, value] of Object.entries(upstreamResponse.headers)) if (!HOP_HEADERS.has(key) && key !== "set-cookie") safeHeaders[key] = value;
+        if (liveCatalog && upstreamResponse.statusCode === 200) {
+          return sendNativeCatalog(response, upstreamResponse, safeHeaders, getManifest, options.warn || console.warn);
+        }
         response.writeHead(upstreamResponse.statusCode, { ...safeHeaders, "x-accel-buffering": "no" });
         try { await pipeline(upstreamResponse, response); }
         catch { response.destroy(); }
@@ -804,7 +868,7 @@ async function runMain(args) {
   const command = args[0] || "help";
   const arg = name => { const index = args.indexOf(name); return index < 0 ? undefined : args[index + 1]; };
   if (command === "help" || command === "--help") {
-    console.log("9router Codex integration (macOS, Node.js 24.5+)\n\n  enable --url https://your-router/api/chatgpt/v1 [--port 20130]\n  sync       Refresh models, then restart Codex\n  status     Check the local bridge\n  disable    Restore previous settings and stop the bridge\n\nOptional: --codex-home /path/to/.codex\n  enable --ask-api-key  Enter a different key even when one is already saved\nThe API key is read from ROUTER9_API_KEY or a hidden terminal prompt.");
+    console.log("9router Codex integration (macOS, Node.js 24.5+)\n\n  enable --url https://your-router/api/chatgpt/v1 [--port 20130]\n  sync       Refresh saved model metadata\n  status     Check the local bridge\n  disable    Restore previous settings and stop the bridge\n\nOptional: --codex-home /path/to/.codex\n  enable --ask-api-key  Enter a different key even when one is already saved\nThe API key is read from ROUTER9_API_KEY or a hidden terminal prompt.");
     return;
   }
   const [major, minor] = process.versions.node.split(".").map(Number);
@@ -829,7 +893,7 @@ async function runMain(args) {
     if (!previous?.active) throw new Error("Enable the integration first.");
     assertOwnership(await readConfig(configPath), previous);
     const manifest = await syncCatalog(previous);
-    console.log(`Synced ${manifest.models.length} router models and ${manifest.nativeModelCount} native models. Restart Codex to refresh its model picker.`);
+    console.log(`Synced ${manifest.models.length} router models and ${manifest.nativeModelCount} native models. ${catalogRefreshHint(previous)}`);
     return;
   }
   if (process.platform !== "darwin") throw new Error("Automatic installation currently supports macOS only.");
@@ -851,7 +915,8 @@ async function runMain(args) {
   const manifest = await fetchManifest(state);
   const native = await nativeCatalog(codexHome, { proxyEnv: state.proxyEnv });
   const text = await readConfig(configPath);
-  const config = enableConfig(text, endpointFor(state), path.join(directory, "catalog.json"), native, previous);
+  const liveCatalog = await usesNativeDiscovery(codexHome);
+  const config = enableConfig(text, endpointFor(state), path.join(directory, "catalog.json"), native, previous, { liveCatalog });
   Object.assign(state, { original: config.original, applied: config.applied, nativeDefault: config.nativeDefault });
   await fs.mkdir(directory, { recursive: true, mode: 0o700 });
   await fs.chmod(directory, 0o700);

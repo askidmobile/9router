@@ -62,7 +62,7 @@ export default function ChatGPTPage() {
       setSaved(data.models.map(model => model.id));
       setWebSearchModel(data.webSearchModel || "");
       setSavedWebSearchModel(data.webSearchModel || "");
-      setNotice("Saved. Run sync on your computer and restart Codex to update the model picker.");
+      setNotice("Saved. Run sync on your computer. With the updated helper, ChatGPT logins refresh models automatically.");
     } catch (error) { setError(error.message); }
     finally { setSaving(false); }
   }
@@ -155,18 +155,19 @@ export default function ChatGPTPage() {
 
     <Card title={t("Endpoint")} subtitle={t("Used by the local helper to reach the selected 9router models.")}>
       {command("endpoint", endpoint)}
-      <p className="mt-3 text-xs leading-5 text-text-muted">{t("Use the installer for a combined Codex model picker. It configures a local endpoint and model catalog; this server endpoint alone only serves 9router models. ChatGPT credentials stay on your computer.")}</p>
+      <p className="mt-3 text-xs leading-5 text-text-muted">{t("Use the installer for a combined Codex model picker with automatic native model updates. This server endpoint alone only serves 9router models. ChatGPT credentials stay on your computer.")}</p>
     </Card>
 
     <Card title={t("Update or disconnect")} subtitle={t("Run these commands on the same computer where you enabled the integration.")}>
       <div className="space-y-4">
-        <div><p className="mb-2 text-sm font-medium">{t("After changing models: sync, then restart Codex")}</p>{command("sync command", `${helper} sync`)}</div>
+        <div><p className="mb-2 text-sm font-medium">{t("After changing models: sync")}</p>{command("sync command", `${helper} sync`)}</div>
         <div><p className="mb-2 text-sm font-medium">{t("Check the local helper")}</p>{command("status command", `${helper} status`)}</div>
         <div><p className="mb-2 text-sm font-medium">{t("Enter a different API key (hidden terminal prompt)")}</p>{command("change API key command", `${helper} enable --ask-api-key`)}</div>
         <div><p className="mb-2 text-sm font-medium">{t("Disable and restore previous routing, then restart Codex")}</p>{command("disable command", `${helper} disable`)}</div>
       </div>
       <p className="mt-4 text-xs leading-5 text-text-muted">{t("Disabling restores the connection settings saved during installation and stops the helper. Other Codex settings and auth.json are preserved. Re-run the install command to enable it again. If CC Switch or Ollama changes those connection settings, the helper reports a conflict instead of overwriting them.")}</p>
       <p className="mt-3 text-xs leading-5 text-text-muted">{t("Reasoning levels in Codex follow provider support. Combos expose levels shared by all members. A model with a fixed reasoning suffix keeps that setting. To update an older helper, run the install command above again and restart Codex; sync only refreshes the model list.")}</p>
+      <p className="mt-3 text-xs leading-5 text-text-muted">{t("ChatGPT logins receive new native models on Codex's normal catalog refresh. Restart Codex once after installing or upgrading the helper. API-key logins still need a restart after sync.")}</p>
       <p className="mt-3 text-xs leading-5 text-text-muted">{t("The latest helper transfers conversation history when you switch between native and 9router models, including compacted summaries. If a summary cannot be transferred, it stops the request and preserves the saved history. Commands use the default ~/.codex directory; for a custom CODEX_HOME, use its bridge.mjs and pass --codex-home explicitly.")}</p>
     </Card>
   </div>;
