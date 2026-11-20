@@ -7,6 +7,8 @@ export const REFRESH_INTERVAL_MS = 60000;
 export const CLAUDE_REFRESH_INTERVAL_MS = 600000;
 export const DEPLETED_QUOTA_THRESHOLD = 5;
 export const AUTO_REFRESH_STORAGE_KEY = "quotaAutoRefresh";
+// Режим страницы квот: table (сводка по провайдерам, основной) | cards (карточки по аккаунтам).
+export const VIEW_MODE_STORAGE_KEY = "quotaViewMode";
 export const CONNECTIONS_PAGE_SIZE = 20;
 export const ACCOUNT_PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 export const ACCOUNT_PAGE_SIZE_MAX = 500;
@@ -213,6 +215,24 @@ export function setQuotaCache(connectionId, quotaEntry) {
       ...quotaEntry,
       cachedAt: new Date().toISOString(),
     };
+    window.localStorage.setItem(QUOTA_CACHE_KEY, JSON.stringify(cache));
+  } catch (error) {
+    console.error("Error writing quota cache:", error);
+  }
+}
+
+// Батч-запись кэша квот: один read-modify-write localStorage на цикл
+// обновления вместо одного на каждый аккаунт ( per-account запись растёт
+// квадратично с числом аккаунтов и подтормаживает страницу).
+export function setQuotaCacheBatch(entries = []) {
+  if (typeof window === "undefined" || entries.length === 0) return;
+  try {
+    const cache = getQuotaCache();
+    const cachedAt = new Date().toISOString();
+    for (const entry of entries) {
+      if (!entry?.id || !entry.quotaEntry) continue;
+      cache[entry.id] = { ...entry.quotaEntry, cachedAt };
+    }
     window.localStorage.setItem(QUOTA_CACHE_KEY, JSON.stringify(cache));
   } catch (error) {
     console.error("Error writing quota cache:", error);

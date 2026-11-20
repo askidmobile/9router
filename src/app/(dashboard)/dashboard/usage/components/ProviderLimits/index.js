@@ -4,11 +4,11 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import QuotaTable from "./QuotaTable";
+import ProviderOverviewTable from "./ProviderOverviewTable";
 import Toggle from "@/shared/components/Toggle";
 import Tooltip from "@/shared/components/Tooltip";
 import {
   parseQuotaData,
-  calculatePercentage,
   filterQuotasByVisibility,
   getHiddenQuotaRows,
   getQuotaVisibilityKey,
@@ -27,18 +27,23 @@ import {
   getProviderOptions,
   reconcileConnectionsPage,
   getQuotaCache,
-  setQuotaCache,
+  setQuotaCacheBatch,
   QUOTA_CACHE_KEY,
   REFRESH_INTERVAL_MS,
   CLAUDE_REFRESH_INTERVAL_MS,
-  DEPLETED_QUOTA_THRESHOLD,
   AUTO_REFRESH_STORAGE_KEY,
+  VIEW_MODE_STORAGE_KEY,
   CONNECTIONS_PAGE_SIZE,
   ACCOUNT_PAGE_SIZE_OPTIONS,
   ACCOUNT_PAGE_SIZE_MAX,
   ACCOUNT_FILTER_OPTIONS,
   QUOTA_SORT_OPTIONS,
 } from "./utils";
+import {
+  buildProviderOverviewRows,
+  isQuotaEntryDepleted,
+  sortProviderRows,
+} from "./overviewUtils";
 import Card from "@/shared/components/Card";
 import { ConfirmModal, EditConnectionModal } from "@/shared/components";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
@@ -46,6 +51,7 @@ import { isUsageEligible } from "@/shared/utils/providerQuota";
 import AutoPingScheduleModal from "@/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal";
 import { getScheduleSlotLabels } from "@/shared/services/quotaPingSchedule";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
+import { useTranslation } from "@/i18n/useTranslation";
 
 // Maps the stored providerSpecificData.authMethod to a human label for Kiro.
 // Values come from the Kiro connect flows: builder-id/idc (device code),
@@ -63,6 +69,11 @@ const AUTO_PING_SETTINGS_KEYS = {
   claude: "claudeAutoPing",
   codex: "codexAutoPing",
 };
+
+// Кэш ответа /api/usage/stats?period=24h: полный проход по суточной истории
+// недешёв, поэтому в автотике перечитываем не чаще раза в 5 минут
+// (ручное обновление игнорирует TTL).
+const STATS_TTL_MS = 5 * 60 * 1000;
 
 const AUTO_PING_TOOLTIPS = {
   claude: "When your 5h quota runs out, auto-sends a request the moment it resets so a new window starts right away.",
@@ -156,6 +167,7 @@ function formatTimeRemaining(value) {
 
 export default function ProviderLimits() {
   const { copied, copy } = useCopyToClipboard();
+  const t = useTranslation();
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -164,6 +176,12 @@ export default function ProviderLimits() {
   const [loading, setLoading] = useState({});
   const [errors, setErrors] = useState({});
   const [autoRefresh, setAutoRefresh] = useState(true);
+  // Режим страницы: "table" — сводка по провайдерам (основной),
+  // "cards" — карточки по аккаунтам (дополнительный).
+  const [viewMode, _setViewMode] = useState("table");
+  const [hasHydratedViewMode, setHasHydratedViewMode] = useState(false);
+  // Расход за 24ч из /api/usage/stats: провайдер → {cost, requests, tokens…}.
+  const [statsByProvider, setStatsByProvider] = useState({});
   const [autoPingConfigs, setAutoPingConfigs] = useState({ claude: {}, codex: {} });
   const [scheduleConnection, setScheduleConnection] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
@@ -222,17 +240,23 @@ export default function ProviderLimits() {
     eligibleConnections: 0,
     providerFilteredConnections: 0,
   });
+  const [tableSort, setTableSort] = useState({ key: "severity", dir: "desc" });
 
   const intervalRef = useRef(null);
   const countdownRef = useRef(null);
   const tickCountRef = useRef(0);
+  const statsFetchedAtRef = useRef(0);
+
+  // В табличном режиме агрегация идёт по всем коннектам провайдера, поэтому
+  // просим максимум сразу (сохранённый pageSize карточного режима не трогаем).
+  const isTableMode = viewMode === "table";
 
   const fetchConnections = useCallback(
     async (targetPage = page) => {
       try {
         const params = new URLSearchParams({
-          page: String(targetPage),
-          pageSize: String(pageSize),
+          page: String(isTableMode ? 1 : targetPage),
+          pageSize: String(isTableMode ? ACCOUNT_PAGE_SIZE_MAX : pageSize),
           accountStatus: accountFilter,
           sort: "priority",
         });
@@ -267,8 +291,23 @@ export default function ProviderLimits() {
         return [];
       }
     },
-    [accountFilter, expiringFirst, page, pageSize, providerFilter],
+    [accountFilter, expiringFirst, isTableMode, page, pageSize, providerFilter],
   );
+
+  // Расход за 24ч нужен только таблице; обновляется не чаще STATS_TTL_MS
+  // (ручное обновление — force).
+  const fetchStats24h = useCallback(async (force = false) => {
+    if (!force && Date.now() - statsFetchedAtRef.current < STATS_TTL_MS) return;
+    try {
+      const response = await fetch("/api/usage/stats?period=24h", { cache: "no-store" });
+      if (!response.ok) return;
+      const data = await response.json();
+      statsFetchedAtRef.current = Date.now();
+      setStatsByProvider(data.byProvider || {});
+    } catch (error) {
+      console.error("Error fetching 24h usage stats:", error);
+    }
+  }, []);
 
   // Fetch quota for a specific connection
   const fetchQuota = useCallback(async (connectionId, provider, { force = false } = {}) => {
@@ -309,8 +348,7 @@ export default function ProviderLimits() {
             ...prev,
             [connectionId]: quotaEntry,
           }));
-          setQuotaCache(connectionId, quotaEntry);
-          return;
+          return { id: connectionId, quotaEntry };
         }
 
         throw new Error(`HTTP ${response.status}: ${errorMsg}`);
@@ -334,7 +372,7 @@ export default function ProviderLimits() {
         ...prev,
         [connectionId]: quotaEntry,
       }));
-      setQuotaCache(connectionId, quotaEntry);
+      return { id: connectionId, quotaEntry };
     } catch (error) {
       console.error(
         `[ProviderLimits] Error fetching quota for ${provider} (${connectionId}):`,
@@ -344,6 +382,7 @@ export default function ProviderLimits() {
         ...prev,
         [connectionId]: error.message || "Failed to fetch quota",
       }));
+      return null;
     } finally {
       setLoading((prev) => ({ ...prev, [connectionId]: false }));
     }
@@ -352,7 +391,8 @@ export default function ProviderLimits() {
   // Refresh quota for a specific provider
   const refreshProvider = useCallback(
     async (connectionId, provider) => {
-      await fetchQuota(connectionId, provider, { force: true });
+      const result = await fetchQuota(connectionId, provider, { force: true });
+      setQuotaCacheBatch(result ? [result] : []);
       setLastUpdated(new Date());
     },
     [fetchQuota],
@@ -379,7 +419,8 @@ export default function ProviderLimits() {
           throw new Error(result.message || result.error || result.code || "Failed to reset limit");
         }
 
-        await fetchQuota(connectionId, provider, { force: true });
+        const refreshed = await fetchQuota(connectionId, provider, { force: true });
+        setQuotaCacheBatch(refreshed ? [refreshed] : []);
         setLastUpdated(new Date());
       } catch (error) {
         setErrors((prev) => ({ ...prev, [connectionId]: error.message || "Failed to reset limit" }));
@@ -553,19 +594,22 @@ export default function ProviderLimits() {
         filterQuotaStateByConnections(prev, visibleConnections),
       );
 
-      await Promise.all(
+      const results = await Promise.all(
         visibleConnections
           .filter(shouldFetch)
           .map((conn) => fetchQuota(conn.id, conn.provider)),
       );
+      // Один read-modify-write localStorage на цикл вместо одного на аккаунт.
+      setQuotaCacheBatch(results.filter(Boolean));
 
+      if (isTableMode) fetchStats24h(force);
       setLastUpdated(new Date());
     } catch (error) {
       console.error("Error refreshing all providers:", error);
     } finally {
       setRefreshingAll(false);
     }
-  }, [refreshingAll, fetchConnections, fetchQuota, page]);
+  }, [refreshingAll, fetchConnections, fetchQuota, fetchStats24h, isTableMode, page]);
 
   useEffect(() => {
     const initializeData = async () => {
@@ -582,20 +626,28 @@ export default function ProviderLimits() {
         filterQuotaStateByConnections(prev, visibleConnections),
       );
 
-      await Promise.all(
+      const results = await Promise.all(
         visibleConnections.map((conn) => fetchQuota(conn.id, conn.provider)),
       );
+      setQuotaCacheBatch(results.filter(Boolean));
+
+      if (isTableMode) fetchStats24h(true);
       setLastUpdated(new Date());
     };
 
     initializeData();
-  }, [fetchConnections, fetchQuota, page]);
+  }, [fetchConnections, fetchQuota, fetchStats24h, isTableMode, page]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     const stored = window.localStorage.getItem(AUTO_REFRESH_STORAGE_KEY);
     setAutoRefresh(stored === null ? true : stored === "true");
+    const storedMode = window.localStorage.getItem(VIEW_MODE_STORAGE_KEY);
+    if (storedMode === "table" || storedMode === "cards") {
+      _setViewMode(storedMode);
+    }
     setHasHydratedAutoRefresh(true);
+    setHasHydratedViewMode(true);
   }, []);
 
   // Persist auto-refresh preference
@@ -603,6 +655,12 @@ export default function ProviderLimits() {
     if (typeof window === "undefined" || !hasHydratedAutoRefresh) return;
     window.localStorage.setItem(AUTO_REFRESH_STORAGE_KEY, String(autoRefresh));
   }, [autoRefresh, hasHydratedAutoRefresh]);
+
+  // Persist view mode preference
+  useEffect(() => {
+    if (typeof window === "undefined" || !hasHydratedViewMode) return;
+    window.localStorage.setItem(VIEW_MODE_STORAGE_KEY, viewMode);
+  }, [viewMode, hasHydratedViewMode]);
 
   // Load auto-ping per-connection configs
   useEffect(() => {
@@ -795,14 +853,50 @@ export default function ProviderLimits() {
     [connections, quotaData, expiringFirst, providerFilter, quotaSortMode],
   );
 
-  // Connection is depleted when any quota entry hit the threshold
+  // Строки таблицы «по провайдерам»: агрегация аккаунтов, балансов и расхода.
+  const providerRows = useMemo(() => {
+    if (!isTableMode) return [];
+    const rows = buildProviderOverviewRows({
+      connections: sortedConnections,
+      quotaData,
+      errors,
+      loading,
+      statsByProvider,
+      providerNames,
+      quotaVisibility,
+    });
+    return sortProviderRows(rows, tableSort.key, tableSort.dir);
+  }, [
+    isTableMode,
+    sortedConnections,
+    quotaData,
+    errors,
+    loading,
+    statsByProvider,
+    providerNames,
+    quotaVisibility,
+    tableSort,
+  ]);
+
+  const handleTableSort = useCallback((key) => {
+    setTableSort((prev) => {
+      if (prev.key === key) {
+        // severity всегда «критичные сверху», направление не переключаем.
+        if (key === "severity") return prev;
+        return { key, dir: prev.dir === "asc" ? "desc" : "asc" };
+      }
+      return { key, dir: key === "provider" ? "asc" : "desc" };
+    });
+  }, []);
+
+  // Connection is depleted when any quota entry hit the threshold.
+  // Единый хелпер с таблицей провайдеров: раньше calculatePercentage(used,total)
+  // считал vercel-строки наоборот (остаток $4.9 из $5 → «2%») и «Turn off Empty»
+  // отключал рабочие аккаунты.
   const isConnectionDepleted = (conn) => {
     const quotas = quotaData[conn.id]?.quotas;
     if (!quotas?.length) return false;
-    return quotas.some((q) => {
-      if (!q.total || q.total <= 0) return false;
-      return calculatePercentage(q.used, q.total) <= DEPLETED_QUOTA_THRESHOLD;
-    });
+    return quotas.some(isQuotaEntryDepleted);
   };
 
   const bulkSetActive = useCallback(
@@ -898,6 +992,42 @@ export default function ProviderLimits() {
       {/* Header Controls */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-end">
         <div className="flex flex-wrap items-center gap-1.5">
+          {/* View mode: provider table (default) ↔ account cards */}
+          <div
+            className="flex h-8 items-center rounded-lg border border-black/10 bg-black/[0.02] p-0.5 dark:border-white/10 dark:bg-white/[0.03]"
+            role="group"
+            aria-label="Quota view mode"
+          >
+            <button
+              type="button"
+              onClick={() => _setViewMode("table")}
+              aria-pressed={viewMode === "table"}
+              title={t("Providers overview table")}
+              className={`flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium transition-colors ${
+                viewMode === "table"
+                  ? "bg-primary/10 text-primary"
+                  : "text-text-muted hover:text-text-primary"
+              }`}
+            >
+              <span className="material-symbols-outlined text-[14px]">table_chart</span>
+              <span className="hidden sm:inline">{t("Table")}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => _setViewMode("cards")}
+              aria-pressed={viewMode === "cards"}
+              title={t("Per-account cards")}
+              className={`flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium transition-colors ${
+                viewMode === "cards"
+                  ? "bg-primary/10 text-primary"
+                  : "text-text-muted hover:text-text-primary"
+              }`}
+            >
+              <span className="material-symbols-outlined text-[14px]">dashboard</span>
+              <span className="hidden sm:inline">{t("Cards")}</span>
+            </button>
+          </div>
+
           <div className="relative">
             <button
               type="button"
@@ -1050,7 +1180,7 @@ export default function ProviderLimits() {
             onClick={handleDisableDepleted}
             disabled={bulkToggling}
             className="flex h-8 shrink-0 items-center gap-1 rounded-lg border border-red-500/30 px-2 text-xs text-red-500 transition-colors hover:bg-red-500/10 disabled:opacity-50"
-            title="Disable connections with depleted quota on the current page"
+            title={isTableMode ? "Disable connections with depleted quota" : "Disable connections with depleted quota on the current page"}
           >
             <span className="material-symbols-outlined text-[14px]">block</span>
             <span className="hidden sm:inline">Turn off Empty</span>
@@ -1062,7 +1192,7 @@ export default function ProviderLimits() {
             onClick={handleEnableAvailable}
             disabled={bulkToggling}
             className="flex h-8 shrink-0 items-center gap-1 rounded-lg border border-emerald-500/30 px-2 text-xs text-emerald-500 transition-colors hover:bg-emerald-500/10 disabled:opacity-50"
-            title="Enable connections that still have quota on the current page"
+            title={isTableMode ? "Enable connections that still have quota" : "Enable connections that still have quota on the current page"}
           >
             <span className="material-symbols-outlined text-[14px]">
               check_circle
@@ -1111,15 +1241,35 @@ export default function ProviderLimits() {
         </div>
       </div>
 
-      {/* Provider cards: 2 columns, compact */}
-      {expiringFirst && (
-        <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-          Expiring-first currently reorders accounts inside the current page.
-          Cross-page ordering still follows backend pagination.
-        </div>
+      {/* Providers overview table (main mode) */}
+      {isTableMode && (
+        <>
+          {pagination.total > ACCOUNT_PAGE_SIZE_MAX && (
+            <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+              {`More than ${ACCOUNT_PAGE_SIZE_MAX} accounts match the current filters — the table aggregates only the first ${ACCOUNT_PAGE_SIZE_MAX}. Narrow the provider filter for exact totals.`}
+            </div>
+          )}
+          <ProviderOverviewTable
+            rows={providerRows}
+            sortKey={tableSort.key}
+            sortDir={tableSort.dir}
+            onSort={handleTableSort}
+            onHideQuota={handleHideQuota}
+          />
+        </>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      {/* Provider cards: 2 columns, compact (additional mode) */}
+      {viewMode === "cards" && (
+        <>
+          {expiringFirst && (
+            <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+              Expiring-first currently reorders accounts inside the current page.
+              Cross-page ordering still follows backend pagination.
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {sortedConnections.map((conn) => {
           const quota = quotaData[conn.id];
           const isLoading = loading[conn.id];
@@ -1551,6 +1701,8 @@ export default function ProviderLimits() {
             </div>
           </div>
         </div>
+        </>
+      )}
 
       <ConfirmModal
         isOpen={Boolean(resetConfirmState)}
