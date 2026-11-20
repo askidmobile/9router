@@ -107,14 +107,16 @@ describe("quota provider overview", () => {
     expect(rows[0].availableCount).toBe(2);
     expect(rows[0].activeCount).toBe(3);
     expect(rows[0].worstRemainingPct).toBe(1);
-    // Средний остаток по аккаунтам с данными: (1 + 90 + 100) / 3 = 63.67 → 64.
-    expect(rows[0].avgRemainingPct).toBe(64);
-    expect(rows[0].dataAccountCount).toBe(3);
+    // Квота «5h» жива у двоих (90, 100) — их среднее и есть доступный остаток.
+    expect(rows[0].quotaSummaries).toEqual([
+      { name: "5h", avgPct: 95, worstPct: 1, accountCount: 2, totalAccounts: 3 },
+    ]);
   });
 
-  it("shows the average remaining limit next to the worst (OpenCode Go 50/0/50 case)", () => {
-    // Сценарий с продa: один аккаунт исчерпан (0% Monthly), у двух — по 50%;
-    // строка провайдера не должна выглядеть «мёртвой»: worst 0%, avg 33%.
+  it("aggregates per quota name over accounts where that quota is alive (OpenCode Go 50/0/50)", () => {
+    // Сценарий с прода: Ae10 исчерпан только по Monthly. Строка провайдера
+    // должна показывать «сколько осталось и доступно»: Monthly — среднее по
+    // двум живым (50%), с пометкой 2/3; остальные квоты — по всем трём.
     const rows = buildProviderOverviewRows({
       connections: [
         { id: "o1", provider: "opencode-go", name: "Askid Gmail", isActive: true },
@@ -149,20 +151,38 @@ describe("quota provider overview", () => {
     const row = rows[0];
     expect(row.status).toBe("low"); // часть аккаунтов исчерпана, но не все
     expect(row.availableCount).toBe(2);
-    // Худший per-account остаток = Monthly 0% у Ae10; средний = (50+0+50)/3 = 33.
-    expect(row.worstRemainingPct).toBe(0);
-    expect(row.worstQuotaName).toBe("Monthly");
-    expect(row.avgRemainingPct).toBe(33);
+    // Самая расходуемая квота — первой.
+    expect(row.quotaSummaries).toEqual([
+      { name: "Monthly", avgPct: 50, worstPct: 0, accountCount: 2, totalAccounts: 3 },
+      { name: "Rolling (5h)", avgPct: 100, worstPct: 100, accountCount: 3, totalAccounts: 3 },
+      { name: "Weekly", avgPct: 100, worstPct: 100, accountCount: 3, totalAccounts: 3 },
+    ]);
   });
 
-  it("single account with data has no average shown (it duplicates the worst)", () => {
+  it("quota depleted on all accounts averages over all of them", () => {
+    const rows = buildProviderOverviewRows({
+      connections: [
+        { id: "a1", provider: "codex", name: "acc1", isActive: true },
+        { id: "a2", provider: "codex", name: "acc2", isActive: true },
+      ],
+      quotaData: {
+        a1: { quotas: [limitQuota("5h", 98, 100)] }, // 2%
+        a2: { quotas: [limitQuota("5h", 100, 100)] }, // 0%
+      },
+    });
+    expect(rows[0].quotaSummaries).toEqual([
+      { name: "5h", avgPct: 1, worstPct: 0, accountCount: 2, totalAccounts: 2 },
+    ]);
+  });
+
+  it("single account quota summary is its own percentage", () => {
     const rows = buildProviderOverviewRows({
       connections: [{ id: "s1", provider: "qoder", name: "acc", isActive: true }],
       quotaData: { s1: { quotas: [limitQuota("Personal", 10, 100)] } },
     });
-    expect(rows[0].dataAccountCount).toBe(1);
-    // Поле считается, но компонент показывает ⌀ только при dataAccountCount > 1.
-    expect(rows[0].avgRemainingPct).toBe(90);
+    expect(rows[0].quotaSummaries).toEqual([
+      { name: "Personal", avgPct: 90, worstPct: 90, accountCount: 1, totalAccounts: 1 },
+    ]);
   });
 
   it("all active accounts depleted → critical; turned-off accounts excluded", () => {

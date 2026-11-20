@@ -36,22 +36,16 @@ const ACCOUNT_STATE_LABELS = {
   inactive: "off",
 };
 
-function worstBarColor(pct) {
+function quotaBarColor(pct) {
   if (pct > 70) return "bg-green-500";
   if (pct >= 30) return "bg-yellow-500";
   return "bg-red-500";
 }
 
-function worstTextColor(pct) {
+function quotaTextColor(pct) {
   if (pct > 70) return "text-green-600 dark:text-green-400";
   if (pct >= 30) return "text-yellow-600 dark:text-yellow-400";
   return "text-red-600 dark:text-red-400";
-}
-
-// Средний остаток показываем, только когда аккаунтов с данными больше одного:
-// среднее по одному аккаунту дублирует худший процент.
-function showAvg(row) {
-  return row.avgRemainingPct !== null && row.dataAccountCount > 1;
 }
 
 function SortHeader({ label, sortKey, activeSortKey, sortDir, onSort, align = "left" }) {
@@ -227,37 +221,41 @@ export default function ProviderOverviewTable({
                       </span>
                     </td>
 
-                    {/* Квоты/баланс: худший лимит + суммы денег по валютам */}
+                    {/* Квоты/баланс: агрегаты по квотам (сколько осталось и
+                        доступно) + суммы денег по валютам */}
                     <td className="min-w-[180px] px-3 py-2.5">
                       <div className="space-y-1">
-                        {row.worstRemainingPct !== null && (
+                        {row.quotaSummaries.slice(0, 3).map((summary) => (
                           <div
+                            key={summary.name}
                             className="flex items-center gap-2"
-                            title={`${t("Worst quota")}: ${row.worstQuotaName || "—"}${
-                              showAvg(row)
-                                ? ` · ${t("Average remaining across accounts")}: ${row.avgRemainingPct}%`
-                                : ""
-                            }`}
+                            title={`${summary.name}: ${t("Average remaining across available accounts")} ${summary.avgPct}% · ${summary.accountCount}/${summary.totalAccounts} ${t("accounts")} · ${t("Worst quota")} ${summary.worstPct}%`}
                           >
-                            <div className="h-1.5 w-20 overflow-hidden rounded-full border border-transparent bg-black/5 dark:bg-white/10">
+                            <div className="h-1.5 w-16 shrink-0 overflow-hidden rounded-full border border-transparent bg-black/5 dark:bg-white/10">
                               <div
-                                className={`h-full ${worstBarColor(row.worstRemainingPct)}`}
-                                style={{ width: `${Math.min(row.worstRemainingPct, 100)}%` }}
+                                className={`h-full ${quotaBarColor(summary.avgPct)}`}
+                                style={{ width: `${Math.min(summary.avgPct, 100)}%` }}
                               />
                             </div>
-                            <span className={`text-xs font-medium tabular-nums ${worstTextColor(row.worstRemainingPct)}`}>
-                              {row.worstRemainingPct}%
+                            <span className={`text-xs font-medium tabular-nums ${quotaTextColor(summary.avgPct)}`}>
+                              {summary.avgPct}%
                             </span>
-                            {showAvg(row) && (
-                              <span className="text-xs font-medium tabular-nums text-text-muted">
-                                ⌀ {row.avgRemainingPct}%
+                            <span className="max-w-[120px] truncate text-[11px] text-text-muted">
+                              {summary.name}
+                            </span>
+                            {summary.accountCount < summary.totalAccounts && (
+                              <span className="shrink-0 text-[11px] tabular-nums text-text-muted">
+                                {summary.accountCount}/{summary.totalAccounts}
                               </span>
                             )}
-                            {row.worstQuotaName && (
-                              <span className="max-w-[140px] truncate text-[11px] text-text-muted">
-                                {row.worstQuotaName}
-                              </span>
-                            )}
+                          </div>
+                        ))}
+                        {row.quotaSummaries.length > 3 && (
+                          <div
+                            className="text-[11px] text-text-muted"
+                            title={row.quotaSummaries.map((s) => `${s.name}: ${s.avgPct}% (${s.accountCount}/${s.totalAccounts})`).join(" · ")}
+                          >
+                            +{row.quotaSummaries.length - 3}
                           </div>
                         )}
                         {Object.entries(row.balances).map(([currency, amount]) => (
@@ -269,7 +267,7 @@ export default function ProviderOverviewTable({
                             {formatMoney(amount, currency)}
                           </div>
                         ))}
-                        {row.worstRemainingPct === null && Object.keys(row.balances).length === 0 && (
+                        {row.quotaSummaries.length === 0 && Object.keys(row.balances).length === 0 && (
                           <span className="text-xs italic text-text-muted">—</span>
                         )}
                       </div>

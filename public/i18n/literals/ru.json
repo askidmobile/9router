@@ -389,5 +389,5 @@
   "Cards": "Карточки",
   "Providers overview table": "Сводная таблица по провайдерам",
   "Per-account cards": "Карточки по аккаунтам",
-  "Average remaining across accounts": "Средний остаток по аккаунтам"
+  "Average remaining across available accounts": "Средний остаток по доступным аккаунтам"
 }

@@ -173,26 +173,26 @@ export function buildProviderOverviewRows({
     const availableCount = dataAccounts.filter((a) => a.state === "available").length;
     const erroredCount = activeAccounts.filter((a) => a.state === "error").length;
 
-    // Худший остаток %, средний по аккаунтам и ближайший сброс — по аккаунтам
-    // с данными. Средний нужен, чтобы один исчерпанный аккаунт не выглядел
-    // мёртвым всем провайдером: Ae10 0% + два по 50% → worst 0%, avg 33%.
+    // Худший остаток % (для статуса) и ближайший сброс — по аккаунтам
+    // с данными.
     let worstPct = null;
-    let pctSum = 0;
-    let pctCount = 0;
     let resetTs = null;
     for (const account of dataAccounts) {
-      if (account.worstRemainingPct !== null) {
-        pctSum += account.worstRemainingPct;
-        pctCount += 1;
-        if (worstPct === null || account.worstRemainingPct < worstPct) {
-          worstPct = account.worstRemainingPct;
-        }
+      if (account.worstRemainingPct !== null && (worstPct === null || account.worstRemainingPct < worstPct)) {
+        worstPct = account.worstRemainingPct;
       }
       if (account.resetAt !== null && (resetTs === null || account.resetAt < resetTs)) {
         resetTs = account.resetAt;
       }
     }
-    const avgRemainingPct = pctCount > 0 ? Math.round(pctSum / pctCount) : null;
+
+    // Агрегаты по именам квот — то, что видит пользователь в колонке:
+    // «сколько осталось и доступно». Для каждой квоты провайдера средний
+    // остаток считается по аккаунтам, где ЭТА квота не исчерпана (Ae10 мёртв
+    // только по Monthly — его Rolling/Weekly продолжают участвовать в своих
+    // агрегатах); если исчерпана у всех — среднее по всем. Худший процент
+    // сохраняем для тултипа.
+    const quotaSummaries = buildQuotaSummaries(dataAccounts);
 
     const spend = statsByProvider[providerId] || {};
     const spend24h = {
@@ -242,9 +242,7 @@ export function buildProviderOverviewRows({
       balances,
       balanceUsd,
       worstRemainingPct: worstPct,
-      avgRemainingPct,
-      // Сколько аккаунтов дали данные — по нему решаем, показывать ли среднее.
-      dataAccountCount: dataAccounts.length,
+      quotaSummaries,
       worstQuotaName: worstQuotaNameFor(dataAccounts),
       nearestResetAt: resetTs,
       spend24h,
@@ -272,8 +270,7 @@ export function buildProviderOverviewRows({
       balances: {},
       balanceUsd: null,
       worstRemainingPct: null,
-      avgRemainingPct: null,
-      dataAccountCount: 0,
+      quotaSummaries: [],
       worstQuotaName: null,
       nearestResetAt: null,
       spend24h: {
@@ -304,6 +301,43 @@ function worstQuotaNameFor(dataAccounts) {
     }
   }
   return name;
+}
+
+/**
+ * Агрегаты по именам квот для строки провайдера.
+ * Для каждого имени: средний остаток % по аккаунтам, где эта квота жива
+ * (остаток > порога исчерпания); счётчик живых из всех; худший процент.
+ * Сортировка — самые расходуемые первыми. Процентные заглушки (0/0) и
+ * денежные строки не участвуют (isLimitQuota).
+ */
+export function buildQuotaSummaries(dataAccounts) {
+  const byName = new Map();
+  for (const account of dataAccounts) {
+    for (const quota of account.quotas) {
+      if (!isLimitQuota(quota)) continue;
+      const name = quota.name;
+      if (!byName.has(name)) byName.set(name, []);
+      byName.get(name).push(quota);
+    }
+  }
+
+  const summaries = [];
+  for (const [name, quotas] of byName) {
+    const pcts = quotas.map((quota) => getRemainingPercentage(quota));
+    const alive = pcts.filter((pct) => pct > DEPLETED_QUOTA_THRESHOLD);
+    const pool = alive.length > 0 ? alive : pcts;
+    const avgPct = Math.round(pool.reduce((sum, pct) => sum + pct, 0) / pool.length);
+    summaries.push({
+      name,
+      avgPct,
+      worstPct: Math.min(...pcts),
+      accountCount: pool.length,
+      totalAccounts: pcts.length,
+    });
+  }
+
+  summaries.sort((a, b) => a.avgPct - b.avgPct || a.name.localeCompare(b.name));
+  return summaries;
 }
 
 export const PROVIDER_SORT_KEYS = ["severity", "spend", "eta", "provider"];
