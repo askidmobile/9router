@@ -366,3 +366,39 @@ export function formatMoney(amount, currency = "USD") {
   });
   return currency === "USD" ? `$${fixed}` : `${fixed} ${currency}`;
 }
+
+// Стили и иконки статусов таблицы. Данные живут здесь (не в JSX), чтобы тест
+// мог проверить имена иконок против i18n-словарей: runtime-транслятор ходит
+// по DOM и переписывает текстовые ноды по словарю — совпадение имени иконки с
+// ключом словаря ломает ligature Material Symbols (в бейдже вместо глифа
+// появляется переведённое слово). Поэтому icon ≠ ключу ни одного словаря.
+export const STATUS_STYLES = {
+  critical: {
+    chip: "border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400",
+    icon: "priority_high",
+  },
+  low: {
+    chip: "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400",
+    icon: "warning",
+  },
+  ok: {
+    chip: "border-green-500/30 bg-green-500/10 text-green-600 dark:text-green-400",
+    icon: "check_circle",
+  },
+  loading: {
+    chip: "border-black/10 bg-black/[0.02] text-text-muted dark:border-white/10 dark:bg-white/[0.03]",
+    icon: "progress_activity",
+  },
+  error: {
+    chip: "border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400",
+    icon: "cloud_off",
+  },
+  nodata: {
+    chip: "border-black/10 bg-black/[0.02] text-text-muted dark:border-white/10 dark:bg-white/[0.03]",
+    icon: "hourglass_empty",
+  },
+  spendOnly: {
+    chip: "border-black/10 bg-black/[0.02] text-text-muted dark:border-white/10 dark:bg-white/[0.03]",
+    icon: "payments",
+  },
+};

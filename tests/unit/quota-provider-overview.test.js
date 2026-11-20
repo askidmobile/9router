@@ -2,12 +2,16 @@
 // Сам компонент — "use client" JSX и по конвенции репозитория в vitest не
 // импортируется; покрыта чистая логика из overviewUtils.js.
 import { describe, expect, it } from "vitest";
+import { readdirSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import {
   buildProviderOverviewRows,
   formatEtaDays,
   formatMoney,
   isQuotaEntryDepleted,
   sortProviderRows,
+  STATUS_STYLES,
 } from "@/app/(dashboard)/dashboard/usage/components/ProviderLimits/overviewUtils.js";
 
 // Кредитный баланс в стиле creditBalance(): баланс в total, used=0.
@@ -245,5 +249,28 @@ describe("quota provider overview", () => {
     expect(formatEtaDays(31, 5)).toBe("> 30d");
     expect(formatMoney(12.345)).toBe("$12.35");
     expect(formatMoney(7, "CNY")).toBe("7.00 CNY");
+  });
+
+  it("status icon names never collide with i18n dictionary keys", () => {
+    // Runtime-транслятор переписывает текстовые ноды по словарю; совпадение
+    // имени material-иконки с ключом ломает ligature («error» → «ошибка»
+    // вместо глифа в бейдже Critical). Ни один словарь не должен содержать
+    // имён иконок статусов (инцидент 2026-11-20: ключ «error» в ru/uk).
+    const literalsDir = join(
+      dirname(dirname(fileURLToPath(import.meta.url))),
+      "..",
+      "public",
+      "i18n",
+      "literals",
+    );
+    const iconNames = Object.values(STATUS_STYLES).map((s) => s.icon);
+    const files = readdirSync(literalsDir).filter((f) => f.endsWith(".json"));
+    expect(files.length).toBeGreaterThan(0);
+    for (const file of files) {
+      const dict = JSON.parse(readFileSync(join(literalsDir, file), "utf-8"));
+      for (const icon of iconNames) {
+        expect(dict, `${file} must not translate the icon name "${icon}"`).not.toHaveProperty(icon);
+      }
+    }
   });
 });

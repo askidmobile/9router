@@ -5,38 +5,7 @@ import ProviderIcon from "@/shared/components/ProviderIcon";
 import QuotaTable from "./QuotaTable";
 import { useTranslation } from "@/i18n/useTranslation";
 import { formatResetTime, getConnectionLabel } from "./utils";
-import { formatEtaDays, formatMoney } from "./overviewUtils";
-
-const STATUS_STYLES = {
-  critical: {
-    chip: "border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400",
-    icon: "error",
-  },
-  low: {
-    chip: "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400",
-    icon: "warning",
-  },
-  ok: {
-    chip: "border-green-500/30 bg-green-500/10 text-green-600 dark:text-green-400",
-    icon: "check_circle",
-  },
-  loading: {
-    chip: "border-black/10 bg-black/[0.02] text-text-muted dark:border-white/10 dark:bg-white/[0.03]",
-    icon: "progress_activity",
-  },
-  error: {
-    chip: "border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400",
-    icon: "cloud_off",
-  },
-  nodata: {
-    chip: "border-black/10 bg-black/[0.02] text-text-muted dark:border-white/10 dark:bg-white/[0.03]",
-    icon: "hourglass_empty",
-  },
-  spendOnly: {
-    chip: "border-black/10 bg-black/[0.02] text-text-muted dark:border-white/10 dark:bg-white/[0.03]",
-    icon: "payments",
-  },
-};
+import { formatEtaDays, formatMoney, STATUS_STYLES } from "./overviewUtils";
 
 const STATUS_LABELS = {
   critical: "Critical",
@@ -60,7 +29,8 @@ const ACCOUNT_STATE_STYLES = {
 const ACCOUNT_STATE_LABELS = {
   available: "available",
   depleted: "depleted",
-  error: "error",
+  // не «error»: слово совпадает с material-иконкой и ломало бы её глиф
+  error: "Failed",
   nodata: "no data",
   loading: "loading",
   inactive: "off",
@@ -97,6 +67,7 @@ function SortHeader({ label, sortKey, activeSortKey, sortDir, onSort, align = "l
         <span
           className={`material-symbols-outlined text-[14px] ${isActive ? "" : "opacity-0"}`}
           aria-hidden="true"
+          data-i18n-skip="true"
         >
           {sortDir === "asc" ? "arrow_upward" : "arrow_downward"}
         </span>
@@ -206,6 +177,7 @@ export default function ProviderOverviewTable({
                         >
                           <span
                             className={`material-symbols-outlined text-[16px] transition-transform ${isOpen ? "rotate-90" : ""}`}
+                            data-i18n-skip="true"
                           >
                             chevron_right
                           </span>
@@ -241,6 +213,7 @@ export default function ProviderOverviewTable({
                           className={`material-symbols-outlined text-[13px] ${
                             row.status === "loading" ? "animate-spin" : ""
                           }`}
+                          data-i18n-skip="true"
                         >
                           {status.icon}
                         </span>
