@@ -48,6 +48,12 @@ function worstTextColor(pct) {
   return "text-red-600 dark:text-red-400";
 }
 
+// Средний остаток показываем, только когда аккаунтов с данными больше одного:
+// среднее по одному аккаунту дублирует худший процент.
+function showAvg(row) {
+  return row.avgRemainingPct !== null && row.dataAccountCount > 1;
+}
+
 function SortHeader({ label, sortKey, activeSortKey, sortDir, onSort, align = "left" }) {
   const isActive = sortKey === activeSortKey;
   return (
@@ -225,7 +231,14 @@ export default function ProviderOverviewTable({
                     <td className="min-w-[180px] px-3 py-2.5">
                       <div className="space-y-1">
                         {row.worstRemainingPct !== null && (
-                          <div className="flex items-center gap-2" title={`${t("Worst quota")}: ${row.worstQuotaName || "—"}`}>
+                          <div
+                            className="flex items-center gap-2"
+                            title={`${t("Worst quota")}: ${row.worstQuotaName || "—"}${
+                              showAvg(row)
+                                ? ` · ${t("Average remaining across accounts")}: ${row.avgRemainingPct}%`
+                                : ""
+                            }`}
+                          >
                             <div className="h-1.5 w-20 overflow-hidden rounded-full border border-transparent bg-black/5 dark:bg-white/10">
                               <div
                                 className={`h-full ${worstBarColor(row.worstRemainingPct)}`}
@@ -235,6 +248,11 @@ export default function ProviderOverviewTable({
                             <span className={`text-xs font-medium tabular-nums ${worstTextColor(row.worstRemainingPct)}`}>
                               {row.worstRemainingPct}%
                             </span>
+                            {showAvg(row) && (
+                              <span className="text-xs font-medium tabular-nums text-text-muted">
+                                ⌀ {row.avgRemainingPct}%
+                              </span>
+                            )}
                             {row.worstQuotaName && (
                               <span className="max-w-[140px] truncate text-[11px] text-text-muted">
                                 {row.worstQuotaName}

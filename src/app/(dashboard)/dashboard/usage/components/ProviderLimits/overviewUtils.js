@@ -173,17 +173,26 @@ export function buildProviderOverviewRows({
     const availableCount = dataAccounts.filter((a) => a.state === "available").length;
     const erroredCount = activeAccounts.filter((a) => a.state === "error").length;
 
-    // Худший остаток % и ближайший сброс — по аккаунтам с данными.
+    // Худший остаток %, средний по аккаунтам и ближайший сброс — по аккаунтам
+    // с данными. Средний нужен, чтобы один исчерпанный аккаунт не выглядел
+    // мёртвым всем провайдером: Ae10 0% + два по 50% → worst 0%, avg 33%.
     let worstPct = null;
+    let pctSum = 0;
+    let pctCount = 0;
     let resetTs = null;
     for (const account of dataAccounts) {
-      if (account.worstRemainingPct !== null && (worstPct === null || account.worstRemainingPct < worstPct)) {
-        worstPct = account.worstRemainingPct;
+      if (account.worstRemainingPct !== null) {
+        pctSum += account.worstRemainingPct;
+        pctCount += 1;
+        if (worstPct === null || account.worstRemainingPct < worstPct) {
+          worstPct = account.worstRemainingPct;
+        }
       }
       if (account.resetAt !== null && (resetTs === null || account.resetAt < resetTs)) {
         resetTs = account.resetAt;
       }
     }
+    const avgRemainingPct = pctCount > 0 ? Math.round(pctSum / pctCount) : null;
 
     const spend = statsByProvider[providerId] || {};
     const spend24h = {
@@ -233,6 +242,9 @@ export function buildProviderOverviewRows({
       balances,
       balanceUsd,
       worstRemainingPct: worstPct,
+      avgRemainingPct,
+      // Сколько аккаунтов дали данные — по нему решаем, показывать ли среднее.
+      dataAccountCount: dataAccounts.length,
       worstQuotaName: worstQuotaNameFor(dataAccounts),
       nearestResetAt: resetTs,
       spend24h,
@@ -260,6 +272,8 @@ export function buildProviderOverviewRows({
       balances: {},
       balanceUsd: null,
       worstRemainingPct: null,
+      avgRemainingPct: null,
+      dataAccountCount: 0,
       worstQuotaName: null,
       nearestResetAt: null,
       spend24h: {

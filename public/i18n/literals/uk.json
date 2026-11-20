@@ -293,5 +293,6 @@
   "Table": "Таблиця",
   "Cards": "Картки",
   "Providers overview table": "Зведена таблиця по провайдерах",
-  "Per-account cards": "Картки по акаунтах"
+  "Per-account cards": "Картки по акаунтах",
+  "Average remaining across accounts": "Середній залишок по акаунтах"
 }

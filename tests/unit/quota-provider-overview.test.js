@@ -107,6 +107,62 @@ describe("quota provider overview", () => {
     expect(rows[0].availableCount).toBe(2);
     expect(rows[0].activeCount).toBe(3);
     expect(rows[0].worstRemainingPct).toBe(1);
+    // Средний остаток по аккаунтам с данными: (1 + 90 + 100) / 3 = 63.67 → 64.
+    expect(rows[0].avgRemainingPct).toBe(64);
+    expect(rows[0].dataAccountCount).toBe(3);
+  });
+
+  it("shows the average remaining limit next to the worst (OpenCode Go 50/0/50 case)", () => {
+    // Сценарий с продa: один аккаунт исчерпан (0% Monthly), у двух — по 50%;
+    // строка провайдера не должна выглядеть «мёртвой»: worst 0%, avg 33%.
+    const rows = buildProviderOverviewRows({
+      connections: [
+        { id: "o1", provider: "opencode-go", name: "Askid Gmail", isActive: true },
+        { id: "o2", provider: "opencode-go", name: "Ae10", isActive: true },
+        { id: "o3", provider: "opencode-go", name: "Ae10Us", isActive: true },
+      ],
+      quotaData: {
+        o1: {
+          quotas: [
+            limitQuota("Rolling (5h)", 0, 100),
+            limitQuota("Weekly", 0, 100),
+            limitQuota("Monthly", 50, 100),
+          ],
+        },
+        o2: {
+          quotas: [
+            limitQuota("Rolling (5h)", 0, 100),
+            limitQuota("Weekly", 0, 100),
+            limitQuota("Monthly", 100, 100),
+          ],
+        },
+        o3: {
+          quotas: [
+            limitQuota("Rolling (5h)", 0, 100),
+            limitQuota("Weekly", 0, 100),
+            limitQuota("Monthly", 50, 100),
+          ],
+        },
+      },
+    });
+
+    const row = rows[0];
+    expect(row.status).toBe("low"); // часть аккаунтов исчерпана, но не все
+    expect(row.availableCount).toBe(2);
+    // Худший per-account остаток = Monthly 0% у Ae10; средний = (50+0+50)/3 = 33.
+    expect(row.worstRemainingPct).toBe(0);
+    expect(row.worstQuotaName).toBe("Monthly");
+    expect(row.avgRemainingPct).toBe(33);
+  });
+
+  it("single account with data has no average shown (it duplicates the worst)", () => {
+    const rows = buildProviderOverviewRows({
+      connections: [{ id: "s1", provider: "qoder", name: "acc", isActive: true }],
+      quotaData: { s1: { quotas: [limitQuota("Personal", 10, 100)] } },
+    });
+    expect(rows[0].dataAccountCount).toBe(1);
+    // Поле считается, но компонент показывает ⌀ только при dataAccountCount > 1.
+    expect(rows[0].avgRemainingPct).toBe(90);
   });
 
   it("all active accounts depleted → critical; turned-off accounts excluded", () => {
