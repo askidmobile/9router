@@ -51,22 +51,39 @@ export async function getAccountUsage(connection, proxyOptions = null) {
     } else if (provider === "kilocode") {
       quotas["Balance (USD)"] = creditBalance(data.balance, "USD");
     } else if (provider === "unorouter") {
-      // /api/usage/token/ reports quota units, 500,000 per US$1 (Platform API docs).
+      // /api/usage/token/ reports quota units, 500,000 per US$1 (Platform API
+      // docs). The top-level total_* describe the API key's own grant: an
+      // unlimited key has granted=0, so its total_available goes negative by
+      // construction — that is NOT the account balance. The money the
+      // provider's dashboard shows lives in user_quota (verified 2026-11-20:
+      // user_quota.total_available 2 517 459 = $5.03 on the payment page).
       const payload = data?.data ?? data;
-      const available = toFiniteNumber(payload.total_available, null);
-      if (available === null) throw new Error("Balance data unavailable.");
-      quotas["Available (USD)"] = creditBalance(available / 500000, "USD");
-      if (payload.unlimited_quota === true) {
-        quotas["Available (USD)"].detail = "Unlimited quota";
-      } else {
-        const granted = toFiniteNumber(payload.total_granted, null);
-        const used = toFiniteNumber(payload.total_used, null);
-        const detail = [
-          granted !== null ? `Granted: $${(granted / 500000).toFixed(2)}` : null,
-          used !== null ? `Used: $${(used / 500000).toFixed(2)}` : null,
-        ].filter(Boolean).join(" · ");
-        if (detail) quotas["Available (USD)"].detail = detail;
+      const DIVISOR = 500000;
+      const userAvailable = toFiniteNumber(payload.user_quota?.total_available, null);
+      const keyAvailable = toFiniteNumber(payload.total_available, null);
+      const keyGranted = toFiniteNumber(payload.total_granted, null);
+
+      let available = userAvailable;
+      if (available === null) {
+        // Fallback for payloads without user_quota: the key view is only
+        // meaningful when the key actually holds a grant.
+        if (keyAvailable === null || (payload.unlimited_quota === true && (keyGranted ?? 0) === 0)) {
+          throw new Error("Balance data unavailable.");
+        }
+        available = keyAvailable;
       }
+      quotas["Available (USD)"] = creditBalance(available / DIVISOR, "USD");
+
+      const usedUnits = toFiniteNumber(payload.user_quota?.total_used ?? payload.total_used, null);
+      const detail = [
+        usedUnits !== null ? `Used: $${(usedUnits / DIVISOR).toFixed(2)}` : null,
+        payload.unlimited_quota === true
+          ? "API key: unlimited"
+          : keyGranted !== null && keyGranted > 0
+            ? `Key grant: $${(keyGranted / DIVISOR).toFixed(2)}`
+            : null,
+      ].filter(Boolean).join(" · ");
+      if (detail) quotas["Available (USD)"].detail = detail;
     } else if (provider === "refuseless") {
       const available = toFiniteNumber(data.available, null);
       if (available === null) throw new Error("Balance data unavailable.");
