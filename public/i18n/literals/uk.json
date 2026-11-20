@@ -294,5 +294,13 @@
   "Cards": "Картки",
   "Providers overview table": "Зведена таблиця по провайдерах",
   "Per-account cards": "Картки по акаунтах",
-  "Average remaining across available accounts": "Середній залишок по доступним акаунтам"
+  "Average remaining across available accounts": "Середній залишок по доступним акаунтам",
+  "Subscription tracking (optional)": "Відстеження підписки (опційно)",
+  "The API key cannot read the weekly plan quota. Paste the site access token (unorouter.com → Settings) and your user id to show the subscription window on the Quota page.": "API-ключ не бачить тижневу квоту тарифу. Вставте токен доступу сайту (unorouter.com → Налаштування) і ваш user id, щоб бачити вікно підписки на сторінці квот.",
+  "Access token": "Токен доступу",
+  "29–32 characters, no sk- prefix": "29–32 символи, без префікса sk-",
+  "Leave blank to keep the saved token.": "Залиште порожнім, щоб зберегти поточний токен.",
+  "User ID": "User ID",
+  "e.g. 117133": "напр. 117133",
+  "Numeric id from unorouter.com; sent as the New-Api-User header.": "Числовий id з unorouter.com; надсилається заголовком New-Api-User."
 }

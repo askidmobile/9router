@@ -27,6 +27,9 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
     organization: "",
   });
   const [cloudflareData, setCloudflareData] = useState({ accountId: "" });
+  // UnoRouter: токен доступа сайта + id пользователя для чтения подписочной
+  // квоты (/api/subscription/self) — sk-ключ её не видит. Поля опциональны.
+  const [unorouterData, setUnorouterData] = useState({ accessToken: "", userId: "" });
   const [awsData, setAwsData] = useState({ profile: "", region: "", accessKeyId: "", sessionToken: "" });
   const [clearAwsSessionToken, setClearAwsSessionToken] = useState(false);
   const [region, setRegion] = useState("");
@@ -59,6 +62,12 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
       }
       if (connection.provider === "cloudflare-ai" && connection.providerSpecificData) {
         setCloudflareData({ accountId: connection.providerSpecificData.accountId || "" });
+      }
+      if (connection.provider === "unorouter" && connection.providerSpecificData) {
+        setUnorouterData({
+          accessToken: connection.providerSpecificData.unorouterAccessToken || "",
+          userId: connection.providerSpecificData.unorouterUserId || "",
+        });
       }
       if (AI_PROVIDERS?.[connection.provider]?.credentialForm === "aws") {
         const psd = connection.providerSpecificData || {};
@@ -229,6 +238,15 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
       if (isCloudflareAi) {
         updates.providerSpecificData = { accountId: cloudflareData.accountId };
       }
+      // UnoRouter: мерджим, а не заменяем — в psd лежат и proxy-настройки
+      // коннекта; пустые значения стирают креды подписки.
+      if (connection.provider === "unorouter") {
+        updates.providerSpecificData = {
+          ...(connection.providerSpecificData || {}),
+          unorouterAccessToken: unorouterData.accessToken.trim(),
+          unorouterUserId: unorouterData.userId.trim(),
+        };
+      }
       if (usesAwsCredentialForm) {
         updates.providerSpecificData = buildAwsSpecificData();
       }
@@ -342,6 +360,34 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
               </Badge>
             )}
           </>
+        )}
+
+        {connection.provider === "unorouter" && !isOAuth && (
+          <div className="bg-sidebar/50 p-4 rounded-lg border border-accent/20">
+            <h3 className="font-semibold mb-1 text-sm">Subscription tracking (optional)</h3>
+            <p className="text-xs text-text-muted mb-3">
+              The API key cannot read the weekly plan quota. Paste the site access token
+              (unorouter.com → Settings) and your user id to show the subscription window on the Quota page.
+            </p>
+            <div className="flex flex-col gap-3">
+              <Input
+                label="Access token"
+                type="password"
+                value={unorouterData.accessToken}
+                onChange={(e) => setUnorouterData({ ...unorouterData, accessToken: e.target.value })}
+                placeholder="29–32 characters, no sk- prefix"
+                hint="Leave blank to keep the saved token."
+              />
+              <Input
+                label="User ID"
+                type="text"
+                value={unorouterData.userId}
+                onChange={(e) => setUnorouterData({ ...unorouterData, userId: e.target.value })}
+                placeholder="e.g. 117133"
+                hint="Numeric id from unorouter.com; sent as the New-Api-User header."
+              />
+            </div>
+          </div>
         )}
 
         {isAzure && (

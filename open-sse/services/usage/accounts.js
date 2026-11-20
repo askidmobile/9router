@@ -84,6 +84,45 @@ export async function getAccountUsage(connection, proxyOptions = null) {
             : null,
       ].filter(Boolean).join(" · ");
       if (detail) quotas["Available (USD)"].detail = detail;
+
+      // Подписка (недельная квота тарифа). sk-ключ её не видит: роуту нужен
+      // токен доступа сайта + заголовок New-Api-User с id пользователя
+      // (оба хранятся в providerSpecificData, поля опциональны). Провал
+      // запроса не должен глушить баланс — просто остаёмся без строки.
+      const subToken = typeof providerSpecificData?.unorouterAccessToken === "string" ? providerSpecificData.unorouterAccessToken.trim() : "";
+      const subUserId = typeof providerSpecificData?.unorouterUserId === "string" ? providerSpecificData.unorouterUserId.trim() : "";
+      if (subToken && subUserId) {
+        try {
+          const subRes = await fetchWithTimeout(
+            "https://api.unorouter.com/api/subscription/self",
+            {
+              headers: { Authorization: `Bearer ${subToken}`, "New-Api-User": subUserId, Accept: "application/json" },
+              redirect: "error",
+            },
+            10000,
+            proxyOptions,
+          );
+          if (subRes.ok) {
+            const subJson = await subRes.json();
+            const subs = Array.isArray(subJson?.data?.subscriptions) ? subJson.data.subscriptions : [];
+            for (const entry of subs) {
+              const sub = entry?.subscription ?? entry;
+              if (!sub || sub.status !== "active") continue;
+              const totalUsd = (toFiniteNumber(sub.amount_total, 0) || 0) / DIVISOR;
+              const usedUsd = (toFiniteNumber(sub.amount_used, 0) || 0) / DIVISOR;
+              if (totalUsd <= 0) continue;
+              quotas[`Subscription · ${entry.plan_title || "plan"}`] = {
+                used: usedUsd,
+                total: totalUsd,
+                unit: "USD",
+                remainingPercentage: Math.max(0, Math.round(((totalUsd - usedUsd) / totalUsd) * 100)),
+                resetAt: sub.next_reset_time ? new Date(sub.next_reset_time * 1000).toISOString() : null,
+                recurring: true,
+              };
+            }
+          }
+        } catch { /* подписка недоступна — баланс уже показан */ }
+      }
     } else if (provider === "refuseless") {
       const available = toFiniteNumber(data.available, null);
       if (available === null) throw new Error("Balance data unavailable.");

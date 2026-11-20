@@ -8,6 +8,31 @@ import { proxyAwareFetch } from "../../open-sse/utils/proxyFetch.js";
 import { getAccountUsage } from "../../open-sse/services/usage/accounts.js";
 
 const UNOROUTER_USAGE_URL = "https://api.unorouter.com/api/usage/token/";
+const UNOROUTER_SUBSCRIPTION_URL = "https://api.unorouter.com/api/subscription/self";
+
+// Живой ответ /api/subscription/self (2026-11-20): 5 000 000 единиц = $10.00,
+// использовано 86 785 = $0.17, недельный сброс next_reset_time.
+const SUBSCRIPTION_PAYLOAD = {
+  success: true,
+  message: "",
+  data: {
+    billing_preference: "subscription_first",
+    subscriptions: [
+      {
+        subscription: {
+          id: 953, user_id: 117133, plan_id: 1,
+          amount_total: 5000000, amount_used: 86785,
+          start_time: 1794565179, end_time: 1797157179,
+          status: "active", source: "order",
+          last_reset_time: 1795169979, next_reset_time: 1795774779,
+          allow_wallet_overflow: true,
+        },
+        plan_title: "20$ 1 Month",
+      },
+    ],
+    all_subscriptions: [],
+  },
+};
 
 function jsonResponse(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -97,6 +122,55 @@ describe("unorouter usage parser", () => {
     // На ошибке парсер возвращает { message } без quotas вовсе.
     expect(usage.quotas).toBeUndefined();
     expect(usage.message).toBe("Balance data unavailable.");
+  });
+
+  it("adds the subscription window when the access token + user id are configured", async () => {
+    vi.mocked(proxyAwareFetch).mockImplementation((url, opts) => {
+      if (String(url).includes("/api/subscription/self")) {
+        const headers = opts?.headers || {};
+        expect(headers["New-Api-User"]).toBe("117133");
+        expect(headers.Authorization).toBe("Bearer site-access-token");
+        return Promise.resolve(jsonResponse(SUBSCRIPTION_PAYLOAD));
+      }
+      return Promise.resolve(jsonResponse(REAL_PAYLOAD));
+    });
+
+    const usage = await getAccountUsage(
+      { ...connection, providerSpecificData: { unorouterAccessToken: "site-access-token", unorouterUserId: "117133" } },
+      null,
+    );
+
+    // Баланс на месте, подписка — рядом с ним отдельной строкой-окном.
+    expect(usage.quotas["Available (USD)"].total).toBeCloseTo(5.03, 2);
+    const sub = usage.quotas["Subscription · 20$ 1 Month"];
+    expect(sub).toBeDefined();
+    expect(sub.total).toBeCloseTo(10, 6);
+    expect(sub.used).toBeCloseTo(0.17357, 4);
+    expect(sub.unit).toBe("USD");
+    expect(sub.remainingPercentage).toBe(98);
+    expect(sub.resetAt).toBe(new Date(1795774779 * 1000).toISOString());
+    expect(sub.recurring).toBe(true);
+  });
+
+  it("skips the subscription call without credentials and survives its failure", async () => {
+    // Без токена — один запрос, только баланс.
+    vi.mocked(proxyAwareFetch).mockResolvedValue(jsonResponse(REAL_PAYLOAD));
+    let usage = await getAccountUsage(connection, null);
+    expect(proxyAwareFetch).toHaveBeenCalledTimes(1);
+    expect(Object.keys(usage.quotas)).toEqual(["Available (USD)"]);
+
+    // Подписочный роут недоступен (истёкший токен) — баланс не глушится.
+    vi.mocked(proxyAwareFetch).mockImplementation((url) =>
+      String(url).includes("/api/subscription/self")
+        ? Promise.resolve(new Response("{}", { status: 401 }))
+        : Promise.resolve(jsonResponse(REAL_PAYLOAD)),
+    );
+    usage = await getAccountUsage(
+      { ...connection, providerSpecificData: { unorouterAccessToken: "stale", unorouterUserId: "117133" } },
+      null,
+    );
+    expect(usage.quotas["Available (USD)"].total).toBeCloseTo(5.03, 2);
+    expect(usage.quotas["Subscription · 20$ 1 Month"]).toBeUndefined();
   });
 
   it("exposes the quota to the dashboard parser as a credit balance row", async () => {
