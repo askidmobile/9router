@@ -37,11 +37,15 @@ describe("Antigravity model import", () => {
     expect(result.status).toBe(200);
     expect(result.body.models).toHaveLength(3);
     for (const tier of ["high", "medium", "low"]) {
-      expect(result.body.models.find(model => model.id === `gemini-4-argon-${tier}`)).toEqual({
+      expect(result.body.models.find(model => model.id === `gemini-4-argon-${tier}`)).toMatchObject({
         id: `gemini-4-argon-${tier}`, name: `Gemini 4 Argon (${tier})`,
         upstreamModelId: `gemini-4-argon-${tier}(${tier})`, contextWindow: 1048576, maxOutput: 65536,
       });
     }
+    // Обогащение роута из апстрима: поля пикера заполняются из реестра.
+    expect(result.body.models.find(model => model.id === "gemini-4-argon-high")).toMatchObject({
+      contextLength: 1048576, isVL: true, isReasoning: true, thinking_levels: ["low", "medium", "high"],
+    });
   });
 
   it("imports all six live Claude variants through the API and keeps effort routing", async () => {
@@ -54,7 +58,7 @@ describe("Antigravity model import", () => {
     const result = await request();
     expect(result.status).toBe(200);
     expect(result.body.models).toHaveLength(6);
-    expect(result.body.models.find(m => m.id === "claude-sonnet-5-5-medium")).toEqual({
+    expect(result.body.models.find(m => m.id === "claude-sonnet-5-5-medium")).toMatchObject({
       id: "claude-sonnet-5-5-medium", name: "Claude sonnet 5.5 (medium)",
       upstreamModelId: "claude-sonnet-5-5-medium(medium)", contextWindow: 1000000,
     });
@@ -62,13 +66,13 @@ describe("Antigravity model import", () => {
       expect(url).toMatch(/^https:\/\/(?:daily-)?cloudcode-pa\.googleapis\.com\//);
       expect(url).not.toContain("sandbox");
       expect(options.headers.Authorization).toBe("Bearer old-token");
-      expect(options.headers["User-Agent"]).toBe("antigravity/hub/2.23.1 darwin/arm64");
+      expect(options.headers["User-Agent"]).toBe("antigravity/hub/2.33.0 darwin/arm64");
       expect(options.cache).toBe("no-store");
       expect(options.signal).toBeInstanceOf(AbortSignal);
       expect(proxy.strictProxy).toBe(true);
     }
     const [, options] = mocks.fetch.mock.calls.find(([url]) => url === modelsUrl);
-    expect(options.headers["X-Client-Version"]).toBe("2.23.1");
+    expect(options.headers["X-Client-Version"]).toBe("2.33.0");
     expect(JSON.parse(options.body)).toEqual({ project: "live-project" });
   });
 
@@ -80,6 +84,15 @@ describe("Antigravity model import", () => {
     expect((await request()).body.models.map(m => m.id)).toEqual(["claude-future-v2"]);
     expect(mocks.fetch.mock.calls.filter(([url]) => url === modelsUrl)).toHaveLength(2);
     expect(JSON.parse(mocks.fetch.mock.calls[1][1].body)).toEqual({ project: "stored-project" });
+  });
+
+  it("omits ids Google marked disabled and the IDE's tab_ helpers", async () => {
+    mocks.fetch.mockImplementation(async url => url === modelsUrl ? page({ models: {
+      "gemini-4-argon-high": { displayName: "Gemini 4 Argon (High)" },
+      "gemini-4-carbon-disabled": { displayName: "Gemini 4 Carbon (disabled)" },
+      tab_flash_lite_preview: { displayName: "Tab Flash Lite" },
+    } }) : page({}));
+    expect((await request()).body.models.map(m => m.id)).toEqual(["gemini-4-argon-high"]);
   });
 
   it("refreshes a 401 with the Antigravity client and persists before retry", async () => {

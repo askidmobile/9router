@@ -1,5 +1,5 @@
 import antigravity from "../providers/registry/antigravity.js";
-import { ANTIGRAVITY_APP_USER_AGENT, ANTIGRAVITY_APP_VERSION } from "../providers/shared.js";
+import { ANTIGRAVITY_IDE_USER_AGENT, ANTIGRAVITY_IDE_VERSION } from "../providers/shared.js";
 import { ANTIGRAVITY_CATALOG_TIMEOUT_MS, CLIENT_METADATA } from "../config/appConstants.js";
 import { normalizeCloudCodeProjectId } from "./usage/shared.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
@@ -8,12 +8,12 @@ const fetchCatalog = (url, options, proxyOptions) => proxyAwareFetch(url, {
   ...options, cache: "no-store", signal: AbortSignal.timeout(ANTIGRAVITY_CATALOG_TIMEOUT_MS),
 }, proxyOptions);
 
-// Import, quota discovery and inference share the App identity so Argon is visible.
+// Импорт, поиск квоты и инференс используют общий Hub-identity (единый источник — providers/shared.js).
 export async function fetchAntigravityModelCatalog(accessToken, providerSpecificData = {}, proxyOptions = null) {
   const headers = {
     Authorization: `Bearer ${accessToken}`,
     "Content-Type": "application/json",
-    "User-Agent": ANTIGRAVITY_APP_USER_AGENT,
+    "User-Agent": ANTIGRAVITY_IDE_USER_AGENT,
   };
   let subscriptionInfo = null;
   try {
@@ -29,7 +29,7 @@ export async function fetchAntigravityModelCatalog(accessToken, providerSpecific
     || normalizeCloudCodeProjectId(providerSpecificData?.projectId);
   const response = await fetchCatalog(antigravity.transport.usage.quotaApiUrl, {
     method: "POST",
-    headers: { ...headers, "X-Client-Name": "antigravity", "X-Client-Version": ANTIGRAVITY_APP_VERSION },
+    headers: { ...headers, "X-Client-Name": "antigravity", "X-Client-Version": ANTIGRAVITY_IDE_VERSION },
     body: JSON.stringify(project ? { project } : {}),
   }, proxyOptions);
   return { response, subscriptionInfo, projectId: project };
@@ -43,7 +43,10 @@ export function parseAntigravityModels(data) {
     : Object.entries(raw);
   const models = new Map();
   for (const [id, info] of entries) {
-    if (typeof id !== "string" || !id.trim() || !info || typeof info !== "object" || info.isInternal) continue;
+    // Внутренние записи, id, помеченные Google как «<model>-disabled», и служебные
+    // tab_* IDE маршрутизировать нельзя (тот же фильтр, что в каталоге дашборда апстрима).
+    if (typeof id !== "string" || !id.trim() || !info || typeof info !== "object" || info.isInternal
+      || id.includes("-disabled") || id.startsWith("tab_")) continue;
     const modelId = id.trim();
     if (models.has(modelId)) continue;
     const curated = antigravity.models.find(model => model.id === modelId);

@@ -8,6 +8,7 @@ import { AI_MODELS } from "@/shared/constants/config";
 import { getProviderAlias, getProviderByAlias } from "@/shared/constants/providers";
 
 import { getCapabilitiesForModel as resolveCapsForModel } from "open-sse/providers/capabilities.js";
+import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
 
 // Capabilities resolve through pattern tables, so an uncached merge of 800+ rows
 // on every /api/models request costs real time. Cache resolved rows in process
@@ -61,12 +62,16 @@ export async function GET() {
         const saved = savedByModel.get(routedModel);
         const override = capsOverrides[`${providerAlias}|${m.model}`] || capsOverrides[`${providerId}|${m.model}`];
         const c = { ...capsFor(providerId, m.model), ...(saved?.caps || {}), ...(override || {}) };
+        const thinkingLevels = getThinkingLevels(providerId, m.model);
         return {
           ...m,
           name: resolveModelName(modelNames, providerId, m.model, saved?.name || m.name),
           fullModel,
           routedModel,
           alias: modelAliases[fullModel] || m.model,
+          // Same per-model set /v1/models already publishes, so CLI-tool cards can
+          // seed thinking levels instead of guessing them (Pi, opencode).
+          ...(Array.isArray(thinkingLevels) && thinkingLevels.length > 0 ? { thinking_levels: thinkingLevels } : {}),
           caps: {
             ...(saved?.caps || {}),
             ...(override || {}),
@@ -99,6 +104,7 @@ export async function GET() {
         ...(m.caps || {}),
         ...(override || {}),
       };
+      const thinkingLevels = getThinkingLevels(providerId, m.id);
       models.push({
         provider: m.providerAlias,
         model: m.id,
@@ -106,6 +112,7 @@ export async function GET() {
         fullModel,
         routedModel: fullModel,
         alias: modelAliases[fullModel] || m.id,
+        ...(Array.isArray(thinkingLevels) && thinkingLevels.length > 0 ? { thinking_levels: thinkingLevels } : {}),
         caps: {
           ...(m.caps || {}),
           ...(override || {}),

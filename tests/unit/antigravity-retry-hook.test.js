@@ -69,16 +69,18 @@ describe("antigravity computeRetryDelay hook (D3)", () => {
 
   it("registry uses the daily cloudcode host and App user agent", () => {
     expect(antigravity.transport.baseUrls).toEqual(["https://daily-cloudcode-pa.googleapis.com"]);
+    expect(antigravity.transport.headers["User-Agent"]).toBe("antigravity/hub/2.33.0 darwin/arm64");
   });
 
-  it("buildHeaders uses App identity for model availability", () => {
+  it("buildHeaders uses the Hub identity for model availability", () => {
     ag._lastSessionId = "sess-123";
     const h = ag.buildHeaders({ accessToken: "tok" }, true);
+    expect(h["User-Agent"]).toBe("antigravity/hub/2.33.0 darwin/arm64");
     expect(h["Content-Type"]).toBe("application/json");
     expect(h["Authorization"]).toBe("Bearer tok");
     expect(h).not.toHaveProperty("X-Machine-Session-Id");
     expect(h).not.toHaveProperty("x-request-source");
-    expect(h).not.toHaveProperty("Accept");
+    expect(h["Accept"]).toBe("text/event-stream");
   });
 
   it("transforms chat requests with official IDE requestId shape and 64000 token cap", () => {

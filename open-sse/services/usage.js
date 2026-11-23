@@ -31,6 +31,8 @@ import { getAccountUsage } from "./usage/accounts.js";
 import { getQuotaProvider } from "@/shared/utils/providerQuota.js";
 import { getObservedUsage } from "./usage/rateLimits.js";
 import { getSyntheticUsage } from "./usage/synthetic.js";
+import { getDeepRelayUsage } from "./usage/deeprelay.js";
+import { getOpenDesignUsage } from "./usage/opendesign.js";
 import {
   getIflowUsage,
   getOllamaUsage,
@@ -95,6 +97,10 @@ const USAGE_HANDLERS = {
   zed: (c) => getZedUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),
   "xiaomi-mimo": (c) => getXiaomiMimoUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),
   synthetic: (c) => getSyntheticUsage(c.apiKey, c.proxyOptions),
+  deeprelay: (c) => getDeepRelayUsage(c.apiKey, c.proxyOptions),
+  // OpenDesign Go reads quota with the control-plane key from
+  // `providerSpecificData`, never the runtime apiKey (sk-amr cannot see quota).
+  "opendesign-go": (c) => getOpenDesignUsage(c),
   cursor: (c) => getCursorUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),
   experiential: (c) => getExperientialUsage(c.apiKey, c.proxyOptions),
   // OAuth WorkOS JWT (workos: prefix) or plain ClinePass API key — same usage-limits URL.

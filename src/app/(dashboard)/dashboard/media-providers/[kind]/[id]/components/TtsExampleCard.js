@@ -79,6 +79,18 @@ export function TtsExampleCard({ providerId }) {
     return "";
   });
 
+  // Live model list (providers with config.modelsEndpoint); null → static list below
+  const [liveModels, setLiveModels] = useState(null);
+  useEffect(() => {
+    if (!config.modelsEndpoint) return;
+    let cancelled = false;
+    fetch(config.modelsEndpoint)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!cancelled && d?.source === "live" && d.models?.length) setLiveModels(d.models); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [providerId, config.modelsEndpoint]);
+
   // Form state
   const [input, setInput]               = useState("Hello, this is a text to speech test.");
   const [style, setStyle]               = useState(""); // style/voice instructions (e.g. MiMo voicedesign)
@@ -380,14 +392,15 @@ export function TtsExampleCard({ providerId }) {
               />
             </Row>
           )}
-          {providerId !== "selfhosted-tts" && config.hasModelSelector && ttsModels.length > 0 && (
+          {providerId !== "selfhosted-tts" && config.hasModelSelector && (ttsModels.length > 0 || !!(config.modelsEndpoint && liveModels)) && (
             <Row label="Model">
               <select
                 value={selectedModel}
                 onChange={(e) => setSelectedModel(e.target.value)}
                 className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
               >
-                {ttsModels.map((m) => (
+                {/* A live list (providers with config.modelsEndpoint) replaces the static catalog. */}
+                {((config.modelsEndpoint && liveModels) || ttsModels).map((m) => (
                   <option key={m.id} value={m.id}>{getName(providerAlias, m.id, m.name)}</option>
                 ))}
               </select>

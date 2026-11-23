@@ -376,6 +376,11 @@ describe("Antigravity shared family quotas", () => {
     vi.useFakeTimers(); vi.setSystemTime(new Date("2026-08-26T00:00:00Z"));
     const quotas = { "claude-opus-5-5-high": { remainingPercentage: 0, resetAt: FUTURE_RESET } };
     expect(getAntigravityModelQuota(quotas, "claude-opus-5-5").remainingPercentage).toBe(0);
+    // The registry default tier wins when the payload reports several tiers.
+    expect(getAntigravityModelQuota({
+      "claude-opus-5-5-medium": { remainingPercentage: 10, resetAt: FUTURE_RESET },
+      "claude-opus-5-5-high": { remainingPercentage: 40, resetAt: FUTURE_RESET },
+    }, "claude-opus-5-5").remainingPercentage).toBe(10);
     expect(getAntigravityModelQuota({ gemini_weekly: quotas["claude-opus-5-5-high"] }, "gemini-3.1-flash-image")).toBeNull();
     vi.useRealTimers();
   });

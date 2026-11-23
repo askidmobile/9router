@@ -96,4 +96,19 @@ describe("/v1/models combo limits", () => {
       capabilities: { contextWindow: 180000, maxOutput: 16000 },
     });
   });
+
+  it("resolves a seat that carries a thinking-level override through its base model", async () => {
+    // «(max)» задаёт усилие, а не модель: суффикс не должен прятать лимиты базовой
+    // модели за значением по умолчанию из таблицы шаблонов.
+    const models = await modelsWithCombo("deepseek", "deepseek-chat", [
+      { name: "level-override-combo", models: ["ds/deepseek-chat(max)"] },
+    ]);
+    const published = models.find((model) => model.id === "level-override-combo");
+
+    expect(published).toMatchObject({
+      context_length: 180000,
+      max_completion_tokens: 16000,
+      capabilities: { contextWindow: 180000, maxOutput: 16000 },
+    });
+  });
 });

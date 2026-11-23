@@ -57,7 +57,7 @@ describe("Antigravity Gemini 4 Argon", () => {
       const result = await new AntigravityExecutor().execute({ model: upstream, body, stream, credentials });
       const [url, options] = fetch.mock.calls.at(-1);
       const wire = JSON.parse(options.body);
-      expect(options.headers["User-Agent"]).toBe("antigravity/hub/2.24.0 darwin/arm64");
+      expect(options.headers["User-Agent"]).toBe("antigravity/hub/2.33.0 darwin/arm64");
       expect(url).toContain(stream ? ":streamGenerateContent?alt=sse" : ":generateContent");
       expect(wire.model).toBe(id);
       expect(wire.project).toBe("test-project");
@@ -71,15 +71,20 @@ describe("Antigravity Gemini 4 Argon", () => {
   });
 
   it.each(["low", "medium", "high"])("routes the base alias to an available ID while preserving client effort %s", effort => {
-    const upstream = getModelUpstreamId("ag", "gemini-4-argon");
-    expect(upstream).toBe("gemini-4-argon-high");
+    // chatCore выбирает tier по усилию клиента ещё до трансляции.
+    const upstream = getModelUpstreamId("ag", "gemini-4-argon", { reasoning_effort: effort });
+    expect(stripThinkingSuffix(upstream)).toBe(`gemini-4-argon-${effort}`);
     const body = translateRequest("openai", "antigravity", upstream, {
       messages: [{ role: "user", content: "Hello" }], reasoning_effort: effort,
     }, false, {}, "antigravity");
     expect(body.request.generationConfig.thinkingConfig.thinkingLevel).toBe(effort);
   });
 
-  it("uses App identity and the available model ID for web search", async () => {
+  it("routes the base alias without a client effort to the upstream default tier", () => {
+    expect(getModelUpstreamId("ag", "gemini-4-argon")).toBe("gemini-4-argon-high(high)");
+  });
+
+  it("uses the Hub identity and the available model ID for web search", async () => {
     vi.stubGlobal("fetch", fetch);
     fetch.mockResolvedValueOnce(Response.json({ response: { candidates: [{ content: { parts: [{ text: "An answer" }] } }] } }));
     const result = await handleChatSearch({
@@ -88,7 +93,7 @@ describe("Antigravity Gemini 4 Argon", () => {
     });
     expect(result.success).toBe(true);
     const [, options] = fetch.mock.calls.at(-1);
-    expect(options.headers["User-Agent"]).toBe("antigravity/hub/2.23.1 darwin/arm64");
+    expect(options.headers["User-Agent"]).toBe("antigravity/hub/2.33.0 darwin/arm64");
     expect(JSON.parse(options.body).model).toBe("gemini-4-argon-high");
   });
 

@@ -157,6 +157,9 @@ import p156 from "./qubax.js";
 import p157 from "./sensenova-intl.js";
 import p158 from "./synthetic.js";
 import p159 from "./numes.js";
+import p160 from "./opendesign-go.js";
+import p161 from "./deeprelay.js";
+import p162 from "./qwencloud.js";
 export default [
   p110,
   p0,
@@ -315,4 +318,7 @@ export default [
   p157,
   p158,
   p159,
+  p160,
+  p161,
+  p162,
 ];

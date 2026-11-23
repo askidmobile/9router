@@ -93,3 +93,11 @@ Final comparison preserved all 47 connection configurations, 14 API keys, 11 Com
 Rollback container: `9router-before-argon-fix-20261016-e36bc30f`. Consistent SQLite and container configuration backup: `/root/9router-releases/argon-fix-20261016-e36bc30f/backup` on `omni-fr`. The old image/container are retained.
 
 Receipts: [deployment](audit/2026-10-16-antigravity-argon-fix-deploy/deployment-result.json), [offline QA](audit/2026-10-16-antigravity-argon-fix-deploy/qa-result.json), [production](audit/2026-10-16-antigravity-argon-fix-deploy/production-result.json), [public HTTPS](audit/2026-10-16-antigravity-argon-fix-deploy/public-result.json), [all Argon requests](audit/2026-10-16-antigravity-argon-fix-deploy/live-result.json), [final configuration and account checks](audit/2026-10-16-antigravity-argon-fix-deploy/postcheck-result.json).
+
+## Возврат identity Hub — 2026-11-23
+
+Вместе с мерджем upstream v0.5.123 каждый запрос к Antigravity (чат, стриминг, image executor, импорт моделей, поиск квоты, чат-поиск, обновление токена) снова отправляет identity Hub из апстрима — `antigravity/hub/2.33.0 darwin/arm64`; версия берётся из единого источника `src/mitm/antigravityIdeVersion.js`. Отдельный App-identity снят.
+
+Парные живые проверки с `omni-fr` 2026-11-23 (один сохранённый токен и его живой проект) показали, что октябрьского ограничения больше нет: `v1internal:fetchAvailableModels` вернул одинаковые 36 моделей (tier'ы Argon, Hydrogen, Neon, Claude 5.5) под `hub/2.23.1`, `hub/2.24.0` и `hub/2.33.0`; `v1internal:generateContent` ответил HTTP 200 для `gemini-4-argon-high` (в ответе — `gemini-4-argon-trial`) и `gemini-4-hydrogen-low` под `hub/2.23.1` и `hub/2.33.0`.
+
+В реестре — исправленные записи апстрима: `gemini-4-argon` без усилия от клиента резолвится в `gemini-4-argon-high(high)`, с усилием — в запрошенный tier. Gemini 3.8 Flash (High) остаётся первой записью и потому моделью по умолчанию. Импорт моделей, как и каталог дашборда апстрима, отбрасывает id вида `*-disabled` и служебные `tab_*`.

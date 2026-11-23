@@ -36,7 +36,9 @@ describe("Copilot account model import", () => {
     ] }));
     const result = await request();
     expect(result.status).toBe(200);
-    expect(result.body.models).toEqual([
+    // Роут обогащает каждую строку каталога caps из реестра; этот тест закрепляет
+    // именно политику видимости.
+    expect(result.body.models.map(({ id, name, available, policyState }) => ({ id, name, available, policyState }))).toEqual([
       { id: "gpt-6-sol", name: "gpt-6-sol", available: false, policyState: "disabled" },
       { id: "claude-opus-5.5", name: "claude-opus-5.5", available: false, policyState: "disabled" },
       { id: "gpt-6-luna", name: "gpt-6-luna", available: true, policyState: "enabled" },

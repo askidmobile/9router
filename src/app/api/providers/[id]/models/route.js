@@ -27,6 +27,8 @@ import { normalizeNumesModels } from "open-sse/services/numes.js";
 import { resolveRefuselessModels } from "open-sse/services/refuseless.js";
 import { withLiveCache } from "@/lib/providerModels/liveCache.js";
 import { resolveCommandCodeModels } from "open-sse/services/commandcodeModels.js";
+import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
+import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
 import codexProvider from "open-sse/providers/registry/codex.js";
 
 // A vendor that never answers must not hold the dashboard open. Resolvers get
@@ -36,6 +38,34 @@ const MODEL_LIST_TIMEOUT_MS = 20_000;
 // token rotation, timeouts) and expect every call to reach upstream; the cache
 // itself is covered by provider-live-cache.test.js.
 const MODEL_LIST_CACHE_TTL_MS = process.env.NODE_ENV === "test" ? 0 : 60_000;
+/**
+ * Fill in what the provider omitted, in the field names the pickers already read.
+ *
+ * Live catalogs are inconsistent: commandcode reports isVL / isReasoning /
+ * contextLength, cursor and zed report almost nothing. Consumers that seed a
+ * model's capabilities (CLI-tool cards) otherwise fall back to a text-only,
+ * non-reasoning default for every live model. The local registry already knows
+ * most of it, so only fill gaps and never overwrite what the provider said.
+ */
+const withModelCapabilities = (provider, models) => {
+  if (!Array.isArray(models)) return [];
+
+  return models.map((model) => {
+    const id = model?.id || model?.slug || model?.model;
+    if (!id) return model;
+
+    const caps = getCapabilitiesForModel(provider, id);
+    const levels = getThinkingLevels(provider, id);
+
+    return {
+      ...model,
+      contextLength: model.contextLength ?? caps.contextWindow,
+      isVL: model.isVL ?? caps.vision,
+      isReasoning: model.isReasoning ?? caps.reasoning,
+      ...(Array.isArray(levels) && levels.length > 0 ? { thinking_levels: levels } : {}),
+    };
+  });
+};
 
 const GEMINI_CLI_MODELS_URL = "https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels";
 
@@ -811,7 +841,7 @@ async function resolveModelsResponse(request, { params }) {
       return NextResponse.json({
         provider: connection.provider,
         connectionId: connection.id,
-        models
+        models: withModelCapabilities(connection.provider, models)
       });
     }
 
@@ -853,7 +883,7 @@ async function resolveModelsResponse(request, { params }) {
       return NextResponse.json({
         provider: connection.provider,
         connectionId: connection.id,
-        models
+        models: withModelCapabilities(connection.provider, models)
       });
     }
 
@@ -884,7 +914,7 @@ async function resolveModelsResponse(request, { params }) {
       return NextResponse.json({
         provider: connection.provider,
         connectionId: connection.id,
-        models: result.models,
+        models: withModelCapabilities(connection.provider, result.models),
         ...(result.warning ? { warning: result.warning } : {})
       });
     }
@@ -934,7 +964,7 @@ async function resolveModelsResponse(request, { params }) {
     return NextResponse.json({
       provider: connection.provider,
       connectionId: connection.id,
-      models
+      models: withModelCapabilities(connection.provider, models)
     });
     });
   } catch (error) {

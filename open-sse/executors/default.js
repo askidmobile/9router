@@ -5,6 +5,7 @@ import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE, selec
 import { resolveOpenAICompatibleApiType } from "../services/provider.js";
 import { OAUTH_ENDPOINTS, buildKimiHeaders, NOUS_ATTRIBUTION } from "../config/appConstants.js";
 import { buildClineCredentialHeaders } from "../shared/clineAuth.js";
+import { buildKiroIdentityHeaders } from "../shared/kiroIdentity.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
 import { stripUnsupportedParams } from "../translator/concerns/paramSupport.js";
@@ -12,6 +13,7 @@ import { splitGeminiModelId } from "../utils/geminiModels.js";
 import { GEMINI_FLEX_TIMEOUT_MS, GEMINI_SERVICE_TIERS } from "../config/gemini.js";
 import { extractClaudeSessionIdFromUserId } from "../utils/claudeCloaking.js";
 import { normalizeResponsesToolBody } from "../translator/concerns/toolSchema.js";
+import { wantsGeminiLongDecode, withGeminiLongDecode } from "../utils/geminiLongDecode.js";
 
 // Auth header descriptors — derived from registry transport.auth, fallback to hardcoded defaults.
 const BEARER = { combined: true, header: "Authorization", scheme: "bearer" };
@@ -112,6 +114,17 @@ export class DefaultExecutor extends BaseExecutor {
       return { headersTimeout: GEMINI_FLEX_TIMEOUT_MS, bodyTimeout: GEMINI_FLEX_TIMEOUT_MS };
     }
     return super.getDispatcherTimeouts(model, body);
+  }
+
+  // Gemini 4 long decode: a gemini-format request asking for more than one hop's output
+  // re-sends the same body with the top-level continuationToken until the model finishes.
+  async execute(args) {
+    const result = await super.execute(args);
+    if (this.config.format !== "gemini" || !result?.response?.ok) return result;
+    if (!wantsGeminiLongDecode(this.provider, args.model, result.transformedBody?.generationConfig)) return result;
+    const nextHop = async (continuationToken) =>
+      (await super.execute({ ...args, body: { ...args.body, continuationToken } })).response;
+    return withGeminiLongDecode(result, { stream: args.stream, nextHop, signal: args.signal, log: args.log });
   }
 
   transformRequest(model, body, stream, credentials) {
@@ -398,7 +411,7 @@ export class DefaultExecutor extends BaseExecutor {
   async refreshKiro(refreshToken, proxyOptions = null) {
     const response = await proxyAwareFetch(PROVIDERS.kiro.tokenUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Accept": "application/json", "User-Agent": "kiro-cli/1.0.0" },
+      headers: { "Content-Type": "application/json", "Accept": "application/json", ...buildKiroIdentityHeaders({ refreshToken }) },
       body: JSON.stringify({ refreshToken })
     }, proxyOptions);
     if (!response.ok) return null;

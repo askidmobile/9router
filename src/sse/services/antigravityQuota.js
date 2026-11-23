@@ -88,10 +88,15 @@ export function getAntigravityModelQuota(quotas, model) {
     candidates.push(quotas[cleanModel]);
   }
 
-  // 2. Registry aliases share their upstream model's quota.
+  // 2. Псевдонимы реестра делят квоту своей upstream-модели. Аккаунты отдают
+  // бакеты по tier'ам неравномерно, поэтому базовый псевдоним, чей tier по
+  // умолчанию отсутствует в ответе, берёт другой объявленный tier (сначала
+  // «high», как в поиске апстрима) — они принадлежат одной семье квоты.
   const upstreamModel = getModelUpstreamId("ag", cleanModel).replace(/\([^()]+\)\s*$/, "");
-  if (upstreamModel !== cleanModel && quotas[upstreamModel]) {
-    candidates.push(quotas[upstreamModel]);
+  if (upstreamModel !== cleanModel) {
+    const tiers = [upstreamModel, ...["high", "medium", "low", "max", "xhigh"].map((level) => `${cleanModel}-${level}`)];
+    const tier = tiers.find((id) => quotas[id]);
+    if (tier) candidates.push(quotas[tier]);
   }
 
   // 3. Shared family summary buckets (5h session & Weekly)
