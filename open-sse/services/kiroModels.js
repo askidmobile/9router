@@ -23,6 +23,7 @@ import { v4 as uuidv4 } from "uuid";
 import { createHash } from "crypto";
 import { refreshKiroToken } from "./tokenRefresh.js";
 import { buildKiroIdentityHeaders } from "../shared/kiroIdentity.js";
+import { resolveDefaultProfileArn } from "../config/kiroConstants.js";
 
 const DEFAULT_REGION = "us-east-1";
 const FETCH_TIMEOUT_MS = 30_000;
@@ -106,11 +107,29 @@ function formatDisplayName(modelName, modelId, rateMultiplier) {
 }
 
 /**
+ * Профиль для ListAvailableModels разрешается так же, как в инференсе
+ * (translator/request/openai-to-kiro.js). У Builder ID и социального входа
+ * собственного профиля нет: ListAvailableProfiles отвечает им 403, подключение
+ * сохраняется без profileArn, а запрос каталога без профиля отклоняется
+ * (400 «Invalid profileArn») — и дашборд падает на статический список с моделями,
+ * которых у аккаунта нет. api_key / idc / external_idp привязаны к аккаунту:
+ * общий профиль им не принадлежит и даёт 403, поэтому шлём только свой.
+ */
+function resolveCatalogProfileArn(credentials) {
+  const psd = credentials?.providerSpecificData || {};
+  const accountBoundAuth =
+    psd.authMethod === "api_key" || psd.authMethod === "idc" || psd.authMethod === "external_idp";
+  return accountBoundAuth
+    ? (psd.profileArn || "")
+    : (psd.profileArn || resolveDefaultProfileArn(psd.authMethod));
+}
+
+/**
  * Fetch the raw model catalog from Kiro. Returns the array under `.models`
  * from the API response, or throws on network/HTTP error.
  */
 async function fetchKiroCatalogRaw(credentials, signal) {
-  const profileArn = credentials?.providerSpecificData?.profileArn || "";
+  const profileArn = resolveCatalogProfileArn(credentials);
   const region = regionFromProfileArn(profileArn);
   const params = new URLSearchParams();
   params.set("origin", "AI_EDITOR");
