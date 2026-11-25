@@ -7,6 +7,7 @@ import { refreshGoogleToken, refreshCodexToken, updateProviderCredentials } from
 import { resolveOllamaLocalHost } from "open-sse/config/providers.js";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
+import { resolveCodeBuddyModels } from "open-sse/services/codebuddyModels.js";
 import { resolveQoderModels, routableQoderModels } from "open-sse/services/qoderModels.js";
 import { resolveGrokCliModels } from "open-sse/services/grokCliModels.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
@@ -55,7 +56,9 @@ const withModelCapabilities = (provider, models) => {
     if (!id) return model;
 
     const caps = getCapabilitiesForModel(provider, id);
-    const levels = getThinkingLevels(provider, id);
+    // A catalog that publishes its own effort set knows better than the static tables.
+    const published = Array.isArray(model.thinking_levels) ? model.thinking_levels : null;
+    const levels = published?.length ? published : getThinkingLevels(provider, id);
 
     return {
       ...model,
@@ -438,6 +441,23 @@ const PROVIDER_MODELS_CONFIG = {
   atria: createOpenAIModelsConfig("https://api.atria-asi.ai/v1/models"),
   agnes: createOpenAIModelsConfig("https://apihub.agnes-ai.com/v1/models"),
   bai: createOpenAIModelsConfig("https://api.b.ai/v1/models"),
+  // The gateway has no /models; the catalog is the CLI package's product.json.
+  // A custom resolver keeps the connection key away from that public CDN.
+  "codebuddy-intl": {
+    customResolver: async () => {
+      try {
+        const { models } = await resolveCodeBuddyModels();
+        if (models.length) return { models };
+      } catch (error) {
+        console.log("Failed to fetch CodeBuddy product.json, falling back to static:", error.message);
+        return {
+          models: getStaticProviderModels("codebuddy-intl"),
+          warning: `Failed to fetch CodeBuddy catalog: ${error.message}`,
+        };
+      }
+      return { models: [], warning: "CodeBuddy catalog is empty" };
+    },
+  },
   kimchi: {
     customResolver: async (connection) => {
       const result = await resolveKimchiModels({

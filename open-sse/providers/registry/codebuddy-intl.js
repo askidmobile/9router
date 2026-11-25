@@ -23,8 +23,9 @@ export default {
   // variant) answers 404 on both www.codebuddy.ai and www.workbuddy.ai, while
   // chat and billing work on either host. Without this flag the models route
   // derives `<baseUrl>/models`, so the dashboard showed an "Import Models"
-  // button that could only ever fail. The static `models` list below is the
-  // contract.
+  // button that could only ever fail. The catalog the Import button lists comes
+  // from the CLI package's product.json instead (services/codebuddyModels.js);
+  // the static `models` list below remains the offline contract.
   noModelsList: true,
   transport: {
     // Chat gateway is OpenAI-compatible SSE (same /v2/chat/completions path as CN).

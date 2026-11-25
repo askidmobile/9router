@@ -23,6 +23,7 @@ import { normalizeOrcaRouterModels } from "open-sse/services/orcarouter.js";
 import { resolveRespanModels } from "open-sse/services/respan.js";
 import { resolveUnorouterModels } from "open-sse/services/unorouter.js";
 import { resolveRefuselessModels } from "open-sse/services/refuseless.js";
+import { resolveCodeBuddyModels } from "open-sse/services/codebuddyModels.js";
 import { normalizeQubaxModels } from "open-sse/services/qubax.js";
 import { normalizeNumesModels } from "open-sse/services/numes.js";
 
@@ -54,6 +55,12 @@ function catalogRequest(connection) {
 
 /** Fetch the provider's own listing, or null when it publishes none. */
 export async function resolveProviderCatalog(connection) {
+  // CodeBuddy has no listing endpoint: its catalog is the CLI package's
+  // product.json (public, keyless), already normalized by the service.
+  if (connection.provider === "codebuddy-intl") {
+    const { models } = await resolveCodeBuddyModels();
+    return models.length ? { models, source: "provider" } : null;
+  }
   // Respan publishes a paginated POST listing instead of GET /models — the
   // service walks the pages and returns already-normalized entries.
   if (connection.provider === "respan") {
