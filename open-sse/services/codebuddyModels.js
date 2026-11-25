@@ -35,7 +35,9 @@ export function normalizeCodeBuddyModel(row) {
   const efforts = Array.isArray(row.reasoning?.supportedEfforts)
     ? row.reasoning.supportedEfforts.filter((level) => typeof level === "string")
     : null;
+  const levels = efforts?.length ? [...new Set([...(canDisable ? ["none"] : []), ...efforts])] : null;
 
+  // `reasoning_levels` feeds the caps import, `thinking_levels` the import list.
   return {
     id,
     name,
@@ -50,7 +52,7 @@ export function normalizeCodeBuddyModel(row) {
       ...(reasoning ? { reasoning: true } : {}),
     },
     ...(reasoning ? { reasoning: { mandatory: !canDisable } } : {}),
-    ...(efforts?.length ? { reasoning_levels: [...new Set([...(canDisable ? ["none"] : []), ...efforts])] } : {}),
+    ...(levels ? { reasoning_levels: levels, thinking_levels: levels } : {}),
     thinking_format: "openai",
   };
 }

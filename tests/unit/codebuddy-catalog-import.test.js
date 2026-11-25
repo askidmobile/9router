@@ -24,6 +24,7 @@ describe("CodeBuddy product.json catalog", () => {
       isVL: true, isReasoning: true,
       capabilities: { vision: true, tools: true, reasoning: true },
       reasoning: { mandatory: true },
+      thinking_levels: ["high"],
       reasoning_levels: ["high"],
     });
     expect(catalogMetadata(entry).caps).toMatchObject({
