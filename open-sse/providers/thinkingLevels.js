@@ -5,6 +5,7 @@ import { matchPattern } from "./pricing.js";
 import { resolveKiroEffortPath } from "../config/kiroConstants.js";
 import PROVIDERS from "./registry/index.js";
 import { getProviderModels } from "../config/providerModels.js";
+import { resolveProviderAlias } from "../services/model.js";
 
 export const REASONING_EFFORT_LEVELS = ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
 
@@ -118,6 +119,11 @@ const PATTERN_THINKING = [
   { provider: "codebuddy-cn", pattern: "hy4-preview",  levels: ["high"] },
   // codebuddy-intl rides the same gateway catalog, so its deepseek levels match.
   { provider: "codebuddy-intl", pattern: "deepseek-v4*", levels: ["low", "high", "xhigh"] },
+  // Hy4 / Hy4-Flash on the intl gateway (reasoned live 2026-11-25): every effort
+  // is accepted, but values outside the declared set are silently clamped, as on
+  // CN. The set matches the vendor's own Hy4 listing that other providers carry.
+  { provider: "codebuddy-intl", pattern: "hy4",       levels: ["none", "low", "high"] },
+  { provider: "codebuddy-intl", pattern: "hy4-flash", levels: ["none", "low", "high"] },
   // DeepSeek v4.* (Alibaba MaaS, probed live): effort low|medium|high|xhigh|max
   // all 200 via output_config.effort; "none" is a 400 on the anthropic route
   // (disable thinking instead). none kept for the picker = disable.
@@ -140,7 +146,7 @@ const isOpenAICompatibleNode = (provider) => String(provider || "").startsWith("
 
 // Returns valid thinking levels for a model, or null when the model has no reasoning.
 export function getThinkingLevels(provider, model, capsOverride = null) {
-  const normalizedProvider = provider === "ag" ? "antigravity" : provider;
+  const normalizedProvider = resolveProviderAlias(provider === "ag" ? "antigravity" : provider);
   if (normalizedProvider === "kiro" && resolveKiroEffortPath(model) === null) return null;
   const caps = { ...getCapabilitiesForModel(normalizedProvider, model), ...(capsOverride || {}) };
   if (!caps.reasoning) return null;
@@ -154,7 +160,7 @@ export function getThinkingLevels(provider, model, capsOverride = null) {
   const hit = PATTERN_THINKING.find((entry) =>
     (!entry.provider || entry.provider === normalizedProvider) && matchPattern(entry.pattern, model)
   );
-  const providerFmt = PROVIDERS.find((p) => p.id === provider)?.transport?.thinkingFormat;
+  const providerFmt = PROVIDERS.find((p) => p.id === normalizedProvider)?.transport?.thinkingFormat;
   const formatLevels = caps.thinkingFormat === "zai" && caps.thinkingEffortSupported
     ? L.zaiEffort : FORMAT_LEVELS[caps.thinkingFormat];
   let levels = modelLevels || hit?.levels
@@ -162,4 +168,39 @@ export function getThinkingLevels(provider, model, capsOverride = null) {
     || PROVIDER_THINKING_LEVELS[normalizedProvider] || PROVIDER_FORMAT_LEVELS[providerFmt] || formatLevels || L.base;
   if (caps.thinkingCanDisable === false) levels = levels.filter((l) => l !== "none");
   return levels;
+}
+
+// Levels a client may ask a combo for: the ones every member serves. Empty when the
+// combo does not reason or any member publishes no set — then there is nothing safe
+// to advertise and the client keeps its own default. `capsOverrides` and
+// `aliasCandidates` are the same inputs the conservative caps are resolved with;
+// `nestedModels` maps a slash-less member to the models of the combo it names.
+export function getComboThinkingLevels(models, capsOverrides = {}, options = {}) {
+  const seen = new Set();
+  let shared = null;
+  const walk = (list) => {
+    for (const item of Array.isArray(list) ? list : []) {
+      const modelStr = typeof item === "string" ? item : item?.id || item?.model || "";
+      if (!modelStr) continue;
+      const slash = modelStr.indexOf("/");
+      const provider = slash > 0 ? modelStr.slice(0, slash) : "";
+      const model = slash > 0 ? modelStr.slice(slash + 1) : modelStr;
+      // A slash-less member is a nested combo: intersect its own members.
+      if (slash <= 0) {
+        if (!options.nestedModels || seen.has(modelStr)) continue;
+        seen.add(modelStr);
+        walk(options.nestedModels(modelStr));
+        continue;
+      }
+      let override = null;
+      for (const key of [`${provider}|${model}`, ...(options.aliasCandidates?.(provider, model) || [])]) {
+        if (capsOverrides[key]) { override = capsOverrides[key]; break; }
+      }
+      const levels = getThinkingLevels(provider, model.replace(/\([^()]+\)\s*$/, ""), override);
+      if (!levels) { shared = []; continue; }
+      shared = shared ? shared.filter((level) => levels.includes(level)) : [...levels];
+    }
+  };
+  walk(models);
+  return shared || [];
 }

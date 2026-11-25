@@ -20,7 +20,7 @@ describe("real database capability writes",()=>{
     const catalog=()=>db.setCapsOverridesBulk("p",{[model]:{contextWindow:1000000,maxOutput:128000}},{source:"provider"});
     const manual=()=>db.setCapsOverride("p",model,{maxOutput:32000,reasoningLevels:["high"]});
     await Promise.all(manualFirst?[manual(),catalog()]:[catalog(),manual()]);
-    expect((await db.getCapsOverrides())["p|"+model]).toEqual({contextWindow:1000000,maxOutput:32000,reasoningLevels:["high"]});
+    expect((await db.getCapsOverrides())["p|"+model]).toEqual({contextWindow:1000000,maxOutput:32000,reasoning:true,reasoningLevels:["high"]});
   });
   it("preserves manual/automatic layers and provenance through backup export/import",async()=>{
     const before=await db.getCapsOverrides();

@@ -38,6 +38,7 @@
 import { matchPattern } from "./pricing.js";
 import { looksLikeVisionModel } from "./visionPatterns.js";
 import { splitGeminiModelId } from "../utils/geminiModels.js";
+import { resolveProviderAlias } from "../services/model.js";
 
 /**
  * Safe floor — every resolved result is merged over this so consumers
@@ -444,6 +445,11 @@ export const PROVIDER_CAPABILITIES = {
   // every combo that lists this model (conservative caps take the minimum).
   "codebuddy-intl": {
     "deepseek-v4.1-flash": { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 1000000, maxOutput: 393216 },
+    // Hy4 / Hy4-Flash: reasoned live 2026-11-25 — "none" yields no reasoning
+    // content, any other effort is accepted. Only the reasoning shape is asserted
+    // here; the gateway publishes no limits and the user's overrides carry them.
+    "hy4":        { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true },
+    "hy4-flash":  { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true },
   },
   // Qoder — upstream exposes opaque internal ids (dfmodel, kmodel, …); the
   // registry `name` is display-only and capability lookup matches on the raw
@@ -887,6 +893,9 @@ function refine(base, provider, model) {
 
 export function getCapabilitiesForModel(provider, model) {
   if (!model) return { ...DEFAULT_CAPABILITIES };
+  // Комбо перечисляют участников с алиасом («cbai/hy4»), а провайдерные таблицы
+  // ключованы по id: без разворота алиаса записи провайдера для них никогда не срабатывают.
+  provider = resolveProviderAlias(provider);
   if (provider === "gemini") model = splitGeminiModelId(model).baseModelId;
   // These virtual suffixes use the base model's upstream window. Keep gateway
   // limits ahead of the API-wide GPT patterns, including review/agentic aliases.

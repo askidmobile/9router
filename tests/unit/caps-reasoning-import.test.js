@@ -30,7 +30,7 @@ describe("catalog and manual capability layers", () => {
     await setCapsOverridesBulk("p",{m:{contextWindow:1000000,maxOutput:128000,reasoningLevels:["low","high"]}},{source:"provider"});
     await setCapsOverride("p","m",{maxOutput:32000,reasoningLevels:["high"]});
     await setCapsOverridesBulk("p",{m:{contextWindow:2000000,maxOutput:256000,reasoningLevels:["low","medium","high"]}},{source:"provider"});
-    expect((await getCapsOverrides())["p|m"]).toEqual({contextWindow:2000000,maxOutput:32000,reasoningLevels:["high"]});
+    expect((await getCapsOverrides())["p|m"]).toEqual({contextWindow:2000000,maxOutput:32000,reasoning:true,reasoningLevels:["high"]});
     const sources=(await getCapsMetadata())["p|m"];
     expect(sources.contextWindow.source).toBe("provider");
     expect(sources.maxOutput.source).toBe("manual");

@@ -20,7 +20,14 @@ function effective(record) {
   const { manual, automatic } = layers(record);
   const selected = { ...manual };
   if (selected.reasoningLevels === null && Object.hasOwn(automatic, "reasoningLevels")) delete selected.reasoningLevels;
-  return { ...automatic, ...selected };
+  const merged = { ...automatic, ...selected };
+  // Набор уровней рассуждений без явного флага reasoning означает, что модель
+  // рассуждает: иначе пикер в редакторе предлагает уровни, которые конвейер
+  // запроса срезает по статическому reasoning:false. Явный false остаётся приоритетным.
+  if (Array.isArray(merged.reasoningLevels) && merged.reasoningLevels.length > 0 && typeof merged.reasoning !== "boolean") {
+    merged.reasoning = true;
+  }
+  return merged;
 }
 export async function getCapsOverrides(key) {
   return Object.fromEntries(Object.entries(await records(key)).map(([key, record]) => [key, effective(record)]));

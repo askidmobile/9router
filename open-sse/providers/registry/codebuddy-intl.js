@@ -72,6 +72,11 @@ export default {
     { id: "kimi-k2.8-preview", name: "Kimi-K2.8-Preview" },
     { id: "hy3", name: "Hy3" },
     { id: "hy4-preview", name: "Hy4-Preview" },
+    // hy4 / hy4-flash verified live on www.codebuddy.ai/v2/chat/completions
+    // (2026-11-25): both stream 200, reasoning_effort "none" turns thinking off
+    // and the other levels are accepted.
+    { id: "hy4", name: "Hy4" },
+    { id: "hy4-flash", name: "Hy4-Flash" },
     // Drop log (11102 "model service info not found" on the live gateway):
     // glm-5.0-turbo, glm-4.7, minimax-m2.7, kimi-k3-1, hy3-preview,
     // deepseek-v4-pro, deepseek-v4-flash, deepseek-v3-2-volc.

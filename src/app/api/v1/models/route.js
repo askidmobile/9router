@@ -26,7 +26,7 @@ import { updateProviderCredentials } from "@/sse/services/tokenRefresh";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { capabilitiesFromServiceKind, getCapabilitiesForModel, getConservativeComboCapabilities } from "open-sse/providers/capabilities.js";
 import { applyComboCapOverrides } from "@/shared/utils/comboHealth";
-import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
+import { getThinkingLevels, getComboThinkingLevels } from "open-sse/providers/thinkingLevels.js";
 
 // Qoder shares one live resolver across intl (qoder) and CN (qoder-cn); the
 // credentials carry the provider id so qoderModels picks the right region's
@@ -762,6 +762,12 @@ export async function buildModelsList(kindFilter, options = {}) {
       entry.capabilities = comboCaps;
       if (Number.isFinite(comboCaps.contextWindow)) entry.context_length = comboCaps.contextWindow;
       if (Number.isFinite(comboCaps.maxOutput)) entry.max_completion_tokens = comboCaps.maxOutput;
+      // Same `thinking_levels` contract as a plain model: the set every member
+      // serves, so auto-configured clients pick a level the whole combo honours.
+      const thinkingLevels = comboCaps.reasoning
+        ? getComboThinkingLevels(comboModelsList, capsOverrides, { nestedModels: (n) => comboByName.get(n)?.models, aliasCandidates })
+        : [];
+      if (Array.isArray(thinkingLevels) && thinkingLevels.length > 0) entry.thinking_levels = thinkingLevels;
     }
     models.push(entry);
   }

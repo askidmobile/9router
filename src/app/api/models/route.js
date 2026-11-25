@@ -62,7 +62,7 @@ export async function GET() {
         const saved = savedByModel.get(routedModel);
         const override = capsOverrides[`${providerAlias}|${m.model}`] || capsOverrides[`${providerId}|${m.model}`];
         const c = { ...capsFor(providerId, m.model), ...(saved?.caps || {}), ...(override || {}) };
-        const thinkingLevels = getThinkingLevels(providerId, m.model);
+        const thinkingLevels = getThinkingLevels(providerId, m.model, c);
         return {
           ...m,
           name: resolveModelName(modelNames, providerId, m.model, saved?.name || m.name),
@@ -104,7 +104,7 @@ export async function GET() {
         ...(m.caps || {}),
         ...(override || {}),
       };
-      const thinkingLevels = getThinkingLevels(providerId, m.id);
+      const thinkingLevels = getThinkingLevels(providerId, m.id, c);
       models.push({
         provider: m.providerAlias,
         model: m.id,
