@@ -119,11 +119,14 @@ const PATTERN_THINKING = [
   { provider: "codebuddy-cn", pattern: "hy4-preview",  levels: ["high"] },
   // codebuddy-intl rides the same gateway catalog, so its deepseek levels match.
   { provider: "codebuddy-intl", pattern: "deepseek-v4*", levels: ["low", "high", "xhigh"] },
-  // Hy4 / Hy4-Flash on the intl gateway (reasoned live 2026-11-25): every effort
-  // is accepted, but values outside the declared set are silently clamped, as on
-  // CN. The set matches the vendor's own Hy4 listing that other providers carry.
-  { provider: "codebuddy-intl", pattern: "hy4",       levels: ["none", "low", "high"] },
-  { provider: "codebuddy-intl", pattern: "hy4-flash", levels: ["none", "low", "high"] },
+  // Hy4 / Hy4-Flash on the intl gateway. The vendor declares one effort for the
+  // family: product.json lists hy4-preview as supportedEfforts ["high"], and the
+  // CLI's embedded tencent-tokenhub overlay maps hy4 and hy4-flash to off + high.
+  // The gateway answers 200 to any value and clamps silently (probed live
+  // 2026-11-25: low/medium/high/xhigh/max all 200, "none" stops reasoning), so
+  // the declared set stays authoritative for the picker.
+  { provider: "codebuddy-intl", pattern: "hy4",       levels: ["none", "high"] },
+  { provider: "codebuddy-intl", pattern: "hy4-flash", levels: ["none", "high"] },
   // DeepSeek v4.* (Alibaba MaaS, probed live): effort low|medium|high|xhigh|max
   // all 200 via output_config.effort; "none" is a 400 on the anthropic route
   // (disable thinking instead). none kept for the picker = disable.

@@ -48,14 +48,14 @@ describe("CodeBuddy intl Hy4 reasoning", () => {
     const entry = PROVIDERS.find((p) => p.id === "codebuddy-intl");
     expect(entry.models.map((m) => m.id)).toEqual(expect.arrayContaining(["hy4", "hy4-flash"]));
     expect(getCapabilitiesForModel("codebuddy-intl", "hy4")).toMatchObject({ reasoning: true, thinkingFormat: "openai" });
-    expect(getThinkingLevels("codebuddy-intl", "hy4")).toEqual(["none", "low", "high"]);
-    expect(getThinkingLevels("codebuddy-intl", "hy4-flash")).toEqual(["none", "low", "high"]);
+    expect(getThinkingLevels("codebuddy-intl", "hy4")).toEqual(["none", "high"]);
+    expect(getThinkingLevels("codebuddy-intl", "hy4-flash")).toEqual(["none", "high"]);
   });
 
   it("resolves combo members spelled with the provider alias", () => {
     // Комбо хранит участников как «cbai/hy4»: без разворота алиаса провайдерные записи молчат.
     expect(getCapabilitiesForModel("cbai", "hy4").reasoning).toBe(true);
-    expect(getThinkingLevels("cbai", "hy4")).toEqual(["none", "low", "high"]);
+    expect(getThinkingLevels("cbai", "hy4")).toEqual(["none", "high"]);
     expect(getThinkingLevels("cbai", "hy4", { reasoningLevels: ["low", "high"] })).toEqual(["low", "high"]);
   });
 
@@ -85,14 +85,14 @@ describe("CodeBuddy intl Hy4 reasoning", () => {
     const combo = models.find((m) => m.id === "Hy4");
 
     expect(combo.capabilities.reasoning).toBe(true);
-    expect(combo.thinking_levels).toEqual(["low", "high"]);
+    expect(combo.thinking_levels).toEqual(["high"]);
   });
 
   it("intersects member sets and stays silent when a member publishes none", () => {
-    expect(getComboThinkingLevels(["cbai/hy4", "cbai/glm-5.3"])).toEqual(["low", "high"]);
+    expect(getComboThinkingLevels(["cbai/hy4", "cbai/glm-5.3"])).toEqual(["high"]);
     expect(getComboThinkingLevels(["cbai/hy4", "cbai/hy4-preview"])).toEqual([]);
     expect(getComboThinkingLevels(["Nested", "cbai/hy4"], {}, {
       nestedModels: (name) => (name === "Nested" ? ["cbai/hy4", "cbai/glm-5.3"] : []),
-    })).toEqual(["low", "high"]);
+    })).toEqual(["high"]);
   });
 });
